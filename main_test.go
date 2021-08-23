@@ -44,9 +44,9 @@ func TestMainNewDeathData(t *testing.T) {
 	dbFilename := fmt.Sprintf("%s/%s/%s.json", outDir, gameCode, gameCode)
 	file, err := os.Open(dbFilename)
 	require.NoError(t, err)
-	// defer func() {
-	// 	assert.NoError(t, os.Remove(dbFilename))
-	// }()
+	defer func() {
+		assert.NoError(t, os.Remove(dbFilename))
+	}()
 
 	var data map[string]interface{}
 	err = json.NewDecoder(file).Decode(&data)
