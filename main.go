@@ -71,5 +71,5 @@ func main() {
 		raiseError(4, "err_updatedb: filename='%s', cause='%s'", filename, err)
 	}
 
-	fmt.Printf("%s (version: %d): %s\n", gameData.Name, gameData.Version, deathData)
+	fmt.Printf("%s (version/deaths: %d): %s\n", gameData.Name, gameData.Version, deathData)
 }

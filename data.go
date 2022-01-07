@@ -22,7 +22,12 @@ func NewDeathData(name string, deaths int) DeathData {
 
 func (d DeathData) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "DeathData{Name='%s', Deaths=%d, Version=%d, CreatedAt=%s}", d.Name, d.Deaths, d.Version, d.CreatedAt.Format(time.RFC3339))
+	fmt.Fprint(&b, "DeathData")
+	if d != (DeathData{}) {
+		fmt.Fprintf(&b, "{Name='%s', Deaths=%d, Version=%d, CreatedAt=%s}", d.Name, d.Deaths, d.Version, d.CreatedAt.Format(time.RFC3339))
+	} else {
+		fmt.Fprint(&b, "{}")
+	}
 
 	return b.String()
 }
