@@ -1,4 +1,4 @@
-.PHONY: build run clean test help
+.PHONY: build run clean test test-e2e help
 
 # Build the application
 build:
@@ -16,7 +16,11 @@ run: build-console
 
 # Run tests
 test:
-	go test ./...
+	go test ./internal/...
+
+# Run E2E tests (requires a game running on Windows)
+test-e2e:
+	go test -tags e2e -v -count=1 ./internal/memreader/
 
 # Clean build artifacts
 clean:
@@ -46,6 +50,7 @@ help:
 	@echo "  make build-console - Build with console window (for debugging)"
 	@echo "  make run           - Build and run the application"
 	@echo "  make test          - Run tests"
+	@echo "  make test-e2e      - Run E2E tests (Windows, game required)"
 	@echo "  make clean         - Remove build artifacts"
 	@echo "  make fmt           - Format code"
 	@echo "  make vet           - Run go vet"
