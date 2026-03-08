@@ -1,6 +1,13 @@
 package memreader
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrNullPointer is returned when a null pointer is encountered in the chain.
+// This typically means the game is still loading and player data isn't available yet.
+var ErrNullPointer = errors.New("null pointer in chain")
 
 // GameReader handles reading memory from FromSoftware games.
 type GameReader struct {
@@ -114,7 +121,7 @@ func (r *GameReader) ReadDeathCount() (uint32, error) {
 	// Follow the pointer chain
 	for _, offset := range offsets {
 		if address == 0 {
-			return 0, fmt.Errorf("null pointer in chain")
+			return 0, ErrNullPointer
 		}
 
 		address += offset
