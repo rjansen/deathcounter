@@ -1,7 +1,7 @@
-# Dark Souls III - Glitchless Any% — Hybrid Route (Estoc → Anri → Sellsword)
+# Dark Souls III - Glitchless Any% — Hybrid Route (Estoc → Shortsword → Anri → Sellsword)
 
-Route-specific document for the hybrid 3-weapon route. This is the route used by the top
-runners and labeled as "Anri's Straight Sword" on speedrun.com, but it actually uses three
+Route-specific document for the hybrid 4-weapon route. This is the route used by the top
+runners and labeled as "Anri's Straight Sword" on speedrun.com, but it actually uses four
 weapons throughout the run with DEX as the primary stat.
 
 For shared category rules, boss sequence, and tooling notes see
@@ -12,7 +12,7 @@ For shared category rules, boss sequence, and tooling notes see
 | Attribute | Value |
 |-----------|-------|
 | **Route Name** | Hybrid (labeled "Anri's Straight Sword" on speedrun.com) |
-| **Weapons** | Estoc/Shortsword → Anri's Straight Sword → Sharp Sellsword Twinblades |
+| **Weapons** | Estoc → Shortsword → Anri's Straight Sword → Sharp Sellsword Twinblades |
 | **Scaling Stat** | Dexterity |
 | **Burial Gift** | Black Firebomb |
 | **Best Time** | 41:25 IGT (olzku23) |
@@ -43,19 +43,29 @@ utility — the route does **not** invest in Luck.
 
 This route uses 3 weapons in sequence. Each serves a specific purpose at different stages.
 
-### Weapon 1: Estoc / Shortsword (Bosses 1-2)
+### Weapon 1: Estoc (Boss 1)
 
 | Attribute | Value |
 |-----------|-------|
-| **Source** | Estoc: Assassin starting weapon. Shortsword: purchased at Firelink |
+| **Source** | Assassin starting weapon |
 | **Infusion** | None |
 | **Upgrade** | +0 |
-| **Used for** | Iudex Gundyr, Vordt |
+| **Used for** | Iudex Gundyr |
 
-The Assassin's starting Estoc and a purchased Shortsword carry the first two bosses.
-Black Firebombs supplement damage on Iudex Gundyr.
+The Assassin's starting Estoc is used for the tutorial boss. Black Firebombs supplement damage.
 
-### Weapon 2: Anri's Straight Sword (Bosses 3-4)
+### Weapon 2: Shortsword (Boss 2)
+
+| Attribute | Value |
+|-----------|-------|
+| **Source** | Purchased at Firelink Shrine |
+| **Infusion** | None |
+| **Upgrade** | +0 |
+| **Used for** | Vordt |
+
+The Shortsword is purchased at Firelink after Iudex Gundyr and used to kill Vordt.
+
+### Weapon 3: Anri's Straight Sword (Bosses 3-4)
 
 | Attribute | Value |
 |-----------|-------|
@@ -68,7 +78,7 @@ Anri's Straight Sword is used **not for damage** but for its **passive HP regene
 (Blessed effect: 2 HP/2s). This is critical for surviving Farron Keep's poison swamp without
 wasting Estus. It provides adequate damage for Abyss Watchers and Wolnir with resin buffs.
 
-### Weapon 3: Sharp Sellsword Twinblades (Bosses 5-13)
+### Weapon 4: Sharp Sellsword Twinblades (Bosses 5-13)
 
 | Attribute | Value |
 |-----------|-------|
@@ -85,8 +95,9 @@ Firelink after Wolnir, when the runner has enough souls and materials to upgrade
 
 ```
 Iudex Gundyr ──► Vordt ──► [kill Anri, pick up Twinblades + Farron Coal] ──►
-    Estoc/Shortsword          Abyss Watchers ──► Wolnir ──►
-                                 Anri's Sword (+0)
+    Estoc           Shortsword
+                                 Abyss Watchers ──► Wolnir ──►
+                                    Anri's Sword (+0)
 [Firelink: infuse Sharp, upgrade +3, level DEX 33] ──►
     Crystal Sage ──► ... ──► Aldrich ──►
        Sharp Sellsword Twinblades +3
@@ -288,7 +299,7 @@ early-to-mid game strategy. However:
 - The **Sharp Sellsword Twinblades** are the actual primary weapon for **9 of 13 bosses**
 - The build is **DEX-focused** (up to 47 DEX), not Luck
 
-The route should more accurately be called a hybrid or 3-weapon route, but the community
+The route should more accurately be called a hybrid or 4-weapon route, but the community
 convention on speedrun.com uses "Anri's Straight Sword" as the route label.
 
 ---
@@ -303,7 +314,7 @@ convention on speedrun.com uses "Anri's Straight Sword" as the route label.
 
 ## Route Disadvantages
 
-- **Complex execution** — 3 weapon transitions require precise inventory management
+- **Complex execution** — 4 weapon transitions require precise inventory management
 - **Requires NPC kill** — must find and kill Anri for the sword
 - **Multiple material pickups** — Farron Coal, Sharp Gem, Titanite Shards, Large Titanite Shards
 - **Late infusion** — Twinblades aren't Sharp-infused until after Wolnir (4th boss)

@@ -7,14 +7,14 @@ Glitchless Any% speedrun category. Route-specific documents describe the actual 
 
 | Route | Weapons | Scaling Stat | Best Time | Runner | Doc |
 |-------|---------|--------------|-----------|--------|-----|
-| **Hybrid** (labeled "Anri's" on speedrun.com) | Estoc → Anri's Sword → Sharp Twinblades | DEX | 41:25 | olzku23 | [hybrid](ds3-glitchless-any-percent-hybrid.md) |
+| **Hybrid** (labeled "Anri's" on speedrun.com) | Estoc → Shortsword → Anri's Sword → Sharp Twinblades | DEX | 41:25 | olzku23 | [hybrid](ds3-glitchless-any-percent-hybrid.md) |
 | Anri's Straight Sword (pure) | Anri's Straight Sword | Luck | — | — | [anri](ds3-glitchless-any-percent-anri.md) |
 | Sharp +3 Twinblades (pure) | Sellsword Twinblades | DEX | 43:21 | Sieg | [sellsword](ds3-glitchless-any-percent-sellsword.md) |
 | +0 Short Sword | Short Sword | — | 42:02 | Sieg | — |
 | Raw +1 Short Sword | Short Sword | — | 42:47 | Sieg | — |
 
 The **Hybrid route** is the dominant meta — all top 10 runners use it. It is labeled "Anri's
-Straight Sword" on speedrun.com but actually uses 3 weapons with a DEX build. Anri's Sword
+Straight Sword" on speedrun.com but actually uses 4 weapons with a DEX build. Anri's Sword
 is used unupgraded only for its HP regen in early-mid game.
 
 All routes share the same category rules, boss sequence, and split points. They differ in
