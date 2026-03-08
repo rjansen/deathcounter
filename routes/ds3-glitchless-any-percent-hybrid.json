@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "2",
+  "version": "3",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
@@ -28,6 +28,13 @@
       "name": "High Lord Wolnir",
       "event_type": "boss_kill",
       "event_flag_id": 13800800
+    },
+    {
+      "id": "twinblades-plus3",
+      "name": "Sellsword Twinblades +3",
+      "event_type": "weapon_upgrade",
+      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 3, "size": 1},
+      "optional": true
     },
     {
       "id": "dex-33",
@@ -65,6 +72,13 @@
       "name": "Aldrich, Devourer of Gods",
       "event_type": "boss_kill",
       "event_flag_id": 13701800
+    },
+    {
+      "id": "twinblades-plus6",
+      "name": "Sellsword Twinblades +6",
+      "event_type": "weapon_upgrade",
+      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 6, "size": 1},
+      "optional": true
     },
     {
       "id": "dex-38",
@@ -105,5 +119,5 @@
       "event_flag_id": 14100800
     }
   ],
-  "reference_times": [95000, 225000, 480000, 630000, 690000, 870000, 1020000, 1170000, 1320000, 1470000, 1530000, 1680000, 1830000, 2010000, 2070000, 2400000]
+  "reference_times": [95000, 225000, 480000, 630000, 680000, 690000, 870000, 1020000, 1170000, 1320000, 1470000, 1510000, 1530000, 1680000, 1830000, 2010000, 2070000, 2400000]
 }
