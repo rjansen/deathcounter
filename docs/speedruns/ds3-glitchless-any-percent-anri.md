@@ -43,8 +43,36 @@ bleed-susceptible bosses.
 
 ## Weapon Acquisition
 
-Kill **Anri of Astora** in the Road of Sacrifices (2x charged R2 + Black Firebomb).
-This is done in Phase 4 of the route, after Vordt and before returning to Firelink.
+Kill **Anri of Astora** at Halfway Fortress in the Road of Sacrifices (2x charged R2 +
+Black Firebomb). This is done early in the route, before the first Firelink shopping trip.
+
+---
+
+## Boss Kill Order
+
+13 mandatory bosses fought in this sequence (based on olzku23's WR):
+
+| # | Boss | Location |
+|---|------|----------|
+| 1 | Iudex Gundyr | Cemetery of Ash |
+| 2 | Vordt of the Boreal Valley | High Wall of Lothric |
+| 3 | Abyss Watchers | Farron Keep |
+| 4 | High Lord Wolnir | Catacombs of Carthus |
+| 5 | Crystal Sage | Road of Sacrifices (backtrack) |
+| 6 | Deacons of the Deep | Cathedral of the Deep |
+| 7 | Yhorm the Giant | Profaned Capital |
+| 8 | Pontiff Sulyvahn | Irithyll of the Boreal Valley |
+| 9 | Aldrich, Devourer of Gods | Anor Londo |
+| 10 | Dancer of the Boreal Valley | High Wall of Lothric |
+| 11 | Dragonslayer Armour | Lothric Castle |
+| 12 | Twin Princes (Lothric, Younger Prince) | Grand Archives |
+| 13 | Soul of Cinder | Kiln of the First Flame |
+
+**Key routing notes:**
+- Dancer is fought **late** (10th boss), triggered by killing Emma after Aldrich
+- Abyss Watchers + Wolnir are fought **before** Crystal Sage (backtrack to Sage after)
+- Yhorm is fought **before** Pontiff (non-linear Irithyll progression)
+- Oceiros and Champion Gundyr are **not fought**
 
 ---
 
@@ -55,80 +83,70 @@ This is done in Phase 4 of the route, after Vordt and before returning to Fireli
 1. Pick up Ashen Estus Flask
 2. Unequip head/chest armor for faster rolls
 3. **Boss: Iudex Gundyr**
-4. Firelink Shrine: purchase 2 Homeward Bones
+4. Firelink Shrine: purchase Homeward Bones
 
-### Phase 2: High Wall of Lothric (First Visit)
+### Phase 2: High Wall of Lothric + Vordt
 
 5. Pick up Gold Pine Resin
 6. Descend via Spook to fountain area
-7. Pick up 1 Ember
-8. Kill Emma (Black Firebomb + charged R2s) to get Basin of Vows + Small Lothric Banner
-9. **Boss: Dancer of the Boreal Valley**
-10. Proceed up ladder into Lothric Castle
+7. **Boss: Vordt of the Boreal Valley** (Gold Pine Resin)
+8. Take Small Lothric Banner to Undead Settlement
 
-### Phase 3: Lothric Castle / Consumed King's Garden / Untended Graves
+### Phase 3: Undead Settlement + Road of Sacrifices
 
-11. Navigate Lothric Castle toward Consumed King's Garden
-12. **Boss: Oceiros, the Consumed King**
-13. Access Untended Graves
-14. **Boss: Champion Gundyr**
-15. Homeward Bone / Darksign to return
+9. Navigate to Road of Sacrifices
+10. Kill Anri of Astora at Halfway Fortress to obtain **Anri's Straight Sword**
+11. Pick up Divine Braille Tome
 
-### Phase 4: Vordt + Undead Settlement + Road of Sacrifices
+### Phase 4: Farron Keep + Catacombs
 
-16. Return to High Wall
-17. **Boss: Vordt of the Boreal Valley** (Gold Pine Resin)
-18. Take banner to Undead Settlement
-19. Navigate to Road of Sacrifices
-20. Kill Anri of Astora to obtain **Anri's Straight Sword**
-21. Pick up Divine Braille Tome
-22. Homeward Bone to Firelink
+12. Navigate Farron Keep
+13. **Boss: Abyss Watchers** (Lord of Cinder)
+14. Navigate Catacombs of Carthus
+15. **Boss: High Lord Wolnir**
 
-### Phase 5: Firelink Shopping + Build Setup
+### Phase 5: Backtrack — Crystal Sage + Deacons
 
-23. Sell boss souls and Embers for souls
-24. Give Divine Braille Tome to Irina of Carim
-25. Purchase Tears of Denial + Saint's Ring from Irina
-26. Equip Saint's Ring, attune Tears of Denial
-27. Level Luck to ~29
+16. Backtrack to Crucifixion Woods
+17. **Boss: Crystal Sage**
+18. Proceed to Cathedral of the Deep
+19. **Boss: Deacons of the Deep** (obtain Small Doll)
+20. Homeward Bone to Firelink
 
-### Phase 6: Crystal Sage + Deacons
+### Phase 6: Firelink Shopping + Build Setup
 
-28. Warp to Halfway Fortress
-29. **Boss: Crystal Sage**
-30. Proceed to Cathedral of the Deep
-31. **Boss: Deacons of the Deep** (obtain Small Doll)
-32. Homeward Bone to Firelink
+21. Sell boss souls for souls
+22. Give Divine Braille Tome to Irina of Carim
+23. Purchase Tears of Denial + Saint's Ring from Irina
+24. Equip Saint's Ring, attune Tears of Denial
+25. Level Luck
 
-### Phase 7: Farron Keep + Catacombs + Irithyll
+### Phase 7: Irithyll + Profaned Capital + Anor Londo
 
-33. Navigate Catacombs of Carthus
-34. **Boss: Abyss Watchers** (Lord of Cinder)
-35. **Boss: High Lord Wolnir**
-36. Enter Irithyll of the Boreal Valley
-37. **Boss: Pontiff Sulyvahn**
+26. Enter Irithyll of the Boreal Valley (Small Doll required)
+27. Navigate to Profaned Capital
+28. **Boss: Yhorm the Giant** (Storm Ruler)
+29. Navigate to Irithyll / Church of Yorshka
+30. **Boss: Pontiff Sulyvahn**
+31. Navigate to Anor Londo
+32. **Boss: Aldrich, Devourer of Gods**
 
-### Phase 8: Profaned Capital + Anor Londo
+### Phase 8: Dancer + Lothric Castle + Grand Archives
 
-38. Navigate to Profaned Capital
-39. **Boss: Yhorm the Giant** (Storm Ruler)
-40. Navigate to Anor Londo
-41. **Boss: Aldrich, Devourer of Gods**
+33. After Aldrich, teleported to Emma's room — kill Emma to trigger Dancer
+34. **Boss: Dancer of the Boreal Valley**
+35. Proceed up ladder into Lothric Castle
+36. **Boss: Dragonslayer Armour**
+37. Grand Archives: pick up Twinkling Titanite (x3), upgrade Anri's Sword to +3
+38. **Boss: Twin Princes (Lothric, Younger Prince)**
+39. Place all Lords of Cinder on their thrones
 
-### Phase 9: Grand Archives + Endgame
+### Phase 9: Kiln of the First Flame
 
-42. Return to Lothric Castle
-43. **Boss: Dragonslayer Armour**
-44. Grand Archives: pick up Twinkling Titanite (x3), upgrade Anri's Sword to +3
-45. **Boss: Twin Princes (Lothric, Younger Prince)**
-46. Place all Lords of Cinder on their thrones
-
-### Phase 10: Kiln of the First Flame
-
-47. Warp to Kiln of the First Flame
-48. **Boss: Soul of Cinder**
-49. Link the First Flame
-50. Timer ends when IGT is confirmed on Load Game screen
+40. Warp to Kiln of the First Flame
+41. **Boss: Soul of Cinder**
+42. Link the First Flame
+43. Timer ends when IGT is confirmed on Load Game screen
 
 ---
 
@@ -136,23 +154,21 @@ This is done in Phase 4 of the route, after Vordt and before returning to Fireli
 
 Times are cumulative IGT. "Good run" targets ~45:00 finish. "Competitive" is near-WR (~41:30).
 
-| Split | Good Run (IGT) | Competitive (IGT) |
-|-------|---------------|--------------------|
-| Iudex Gundyr | ~1:50 | ~1:35 |
-| Dancer | ~6:30 | ~5:30 |
-| Oceiros | ~8:30 | ~7:20 |
-| Champion Gundyr | ~10:00 | ~8:40 |
-| Vordt | ~12:30 | ~11:00 |
-| Crystal Sage | ~17:00 | ~15:00 |
-| Deacons | ~19:30 | ~17:30 |
-| Abyss Watchers | ~23:00 | ~20:30 |
-| Wolnir | ~24:30 | ~22:00 |
-| Pontiff Sulyvahn | ~28:00 | ~25:30 |
-| Yhorm | ~31:00 | ~28:00 |
-| Aldrich | ~34:00 | ~31:00 |
-| Dragonslayer Armour | ~37:00 | ~34:00 |
-| Twin Princes | ~41:00 | ~37:30 |
-| Soul of Cinder | ~45:00 | ~41:30 |
+| # | Split | Good Run (IGT) | Competitive (IGT) |
+|---|-------|---------------|--------------------|
+| 1 | Iudex Gundyr | ~1:50 | ~1:35 |
+| 2 | Vordt | ~4:30 | ~3:45 |
+| 3 | Abyss Watchers | ~12:00 | ~10:30 |
+| 4 | Wolnir | ~13:30 | ~12:00 |
+| 5 | Crystal Sage | ~17:00 | ~15:00 |
+| 6 | Deacons | ~19:30 | ~17:30 |
+| 7 | Yhorm | ~25:00 | ~22:30 |
+| 8 | Pontiff Sulyvahn | ~28:00 | ~25:30 |
+| 9 | Aldrich | ~31:00 | ~28:00 |
+| 10 | Dancer | ~33:00 | ~30:00 |
+| 11 | Dragonslayer Armour | ~37:00 | ~34:00 |
+| 12 | Twin Princes | ~41:00 | ~37:30 |
+| 13 | Soul of Cinder | ~45:00 | ~41:30 |
 
 ---
 
@@ -183,8 +199,8 @@ Times are cumulative IGT. "Good run" targets ~45:00 finish. "Competitive" is nea
 | Ashen Estus Flask | Cemetery of Ash | FP recovery for Spook/Tears of Denial |
 | Gold Pine Resin | High Wall of Lothric | Lightning buff for Vordt |
 | Ember (x1-2) | High Wall of Lothric | Sold for souls |
-| Basin of Vows | Kill Emma | Triggers Dancer |
-| Small Lothric Banner | Kill Emma | Access Undead Settlement |
+| Basin of Vows | Kill Emma (after Aldrich) | Triggers Dancer |
+| Small Lothric Banner | High Wall of Lothric | Access Undead Settlement |
 | Anri's Straight Sword | Kill Anri (Road of Sacrifices) | Primary weapon for the run |
 | Divine Braille Tome | Road of Sacrifices | Unlocks Tears of Denial at Irina |
 | Charcoal Pine Bundles (x2) | Undead Settlement | Fire buff for specific fights |

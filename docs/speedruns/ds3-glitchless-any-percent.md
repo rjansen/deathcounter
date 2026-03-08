@@ -81,38 +81,41 @@ No other class has Spook at the start, and obtaining it otherwise wastes signifi
 
 ## Boss Sequence
 
-All route variants fight the same 15 mandatory bosses in this order:
+13 mandatory bosses to beat the game (any%). Routes may add optional bosses for strategic
+reasons — those belong in route-specific documents.
 
 | # | Boss | Location | Notes |
 |---|------|----------|-------|
 | 1 | Iudex Gundyr | Cemetery of Ash | Tutorial boss |
 | 2 | Vordt of the Boreal Valley | High Wall of Lothric | First area boss |
 | 3 | Dancer of the Boreal Valley | High Wall of Lothric | Early trigger by killing Emma |
-| 4 | Oceiros, the Consumed King | Consumed King's Garden | Accessed via Lothric Castle |
-| 5 | Champion Gundyr | Untended Graves | Accessed after Oceiros |
-| 6 | Crystal Sage | Road of Sacrifices | Required for Cathedral access |
-| 7 | Deacons of the Deep | Cathedral of the Deep | Grants Small Doll for Irithyll |
-| 8 | Abyss Watchers | Farron Keep | Lord of Cinder #1 |
-| 9 | High Lord Wolnir | Catacombs of Carthus | Gate to Irithyll |
-| 10 | Pontiff Sulyvahn | Irithyll of the Boreal Valley | Gate to Anor Londo |
-| 11 | Yhorm the Giant | Profaned Capital | Lord of Cinder #2 (Storm Ruler) |
-| 12 | Aldrich, Devourer of Gods | Anor Londo | Lord of Cinder #3 |
-| 13 | Dragonslayer Armour | Lothric Castle | Gate to Grand Archives |
-| 14 | Twin Princes (Lothric, Younger Prince) | Grand Archives | Lord of Cinder #4 |
-| 15 | Soul of Cinder | Kiln of the First Flame | Final boss |
+| 4 | Crystal Sage | Road of Sacrifices | Required for Cathedral access |
+| 5 | Deacons of the Deep | Cathedral of the Deep | Grants Small Doll for Irithyll |
+| 6 | Abyss Watchers | Farron Keep | Lord of Cinder #1 |
+| 7 | High Lord Wolnir | Catacombs of Carthus | Gate to Irithyll |
+| 8 | Pontiff Sulyvahn | Irithyll of the Boreal Valley | Gate to Anor Londo |
+| 9 | Yhorm the Giant | Profaned Capital | Lord of Cinder #2 (Storm Ruler) |
+| 10 | Aldrich, Devourer of Gods | Anor Londo | Lord of Cinder #3 |
+| 11 | Dragonslayer Armour | Lothric Castle | Gate to Grand Archives |
+| 12 | Twin Princes (Lothric, Younger Prince) | Grand Archives | Lord of Cinder #4 |
+| 13 | Soul of Cinder | Kiln of the First Flame | Final boss |
 
 ### Early Dancer
 
 Killing Emma in the High Wall triggers the Dancer fight immediately. This is **intended game
-behavior** (not a glitch). It opens access to Lothric Castle, Consumed King's Garden, and
-Untended Graves far earlier than normal progression.
+behavior** (not a glitch). It opens access to Lothric Castle and areas beyond far earlier than
+normal progression.
 
-### Skipped Bosses
+### Optional Bosses (Not Required for Any%)
 
-- Curse-Rotted Greatwood (optional)
-- Old Demon King (optional)
-- Ancient Wyvern (optional, not visited)
-- Nameless King (optional, not visited)
+- Oceiros, the Consumed King
+- Champion Gundyr
+- Curse-Rotted Greatwood
+- Old Demon King
+- Ancient Wyvern
+- Nameless King
+
+Routes may choose to fight optional bosses for strategic reasons (souls, items, area access).
 
 ---
 
@@ -124,19 +127,20 @@ Standard splits are on boss kills. These are the events a companion tool should 
 |---------|-------|------------|
 | 1 | Iudex Gundyr killed | Boss kill flag |
 | 2 | Dancer of the Boreal Valley killed | Boss kill flag |
-| 3 | Oceiros killed | Boss kill flag |
-| 4 | Champion Gundyr killed | Boss kill flag |
-| 5 | Vordt killed | Boss kill flag |
-| 6 | Crystal Sage killed | Boss kill flag |
-| 7 | Deacons of the Deep killed | Boss kill flag |
-| 8 | Abyss Watchers killed | Boss kill flag |
-| 9 | High Lord Wolnir killed | Boss kill flag |
-| 10 | Pontiff Sulyvahn killed | Boss kill flag |
-| 11 | Yhorm the Giant killed | Boss kill flag |
-| 12 | Aldrich killed | Boss kill flag |
-| 13 | Dragonslayer Armour killed | Boss kill flag |
-| 14 | Twin Princes killed | Boss kill flag |
-| 15 | Soul of Cinder killed | Boss kill flag |
+| 3 | Vordt killed | Boss kill flag |
+| 4 | Crystal Sage killed | Boss kill flag |
+| 5 | Deacons of the Deep killed | Boss kill flag |
+| 6 | Abyss Watchers killed | Boss kill flag |
+| 7 | High Lord Wolnir killed | Boss kill flag |
+| 8 | Pontiff Sulyvahn killed | Boss kill flag |
+| 9 | Yhorm the Giant killed | Boss kill flag |
+| 10 | Aldrich killed | Boss kill flag |
+| 11 | Dragonslayer Armour killed | Boss kill flag |
+| 12 | Twin Princes killed | Boss kill flag |
+| 13 | Soul of Cinder killed | Boss kill flag |
+
+Routes that include optional bosses (e.g., Oceiros, Champion Gundyr) add additional splits.
+See route-specific documents for complete split lists.
 
 Boss kill event flags are stored in game memory and can be read by tools like SoulSplitter.
 
