@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
+	"github.com/rjansen/deathcounter/internal/route"
 	"github.com/rjansen/deathcounter/internal/stats"
 	"github.com/rjansen/deathcounter/internal/tray"
 )
@@ -37,8 +38,20 @@ func main() {
 	// Initialize system tray
 	trayApp := tray.NewApp(reader, statsTracker)
 
+	// Load route runner if routes directory exists
+	var runner *route.Runner
+	routes, err := route.LoadRoutesDir("routes")
+	if err != nil {
+		log.Printf("Warning: Could not load routes: %v", err)
+	} else if len(routes) > 0 {
+		// Use the first available route for now
+		r := routes[0]
+		log.Printf("Loaded route: %s (%s)", r.Name, r.Game)
+		runner = route.NewRunner(r, statsTracker, nil)
+	}
+
 	// Start monitoring loop in background
-	go monitorDeathCount(reader, statsTracker, trayApp)
+	go monitorDeathCount(reader, statsTracker, trayApp, runner)
 
 	// Run system tray (blocks until quit)
 	if err := trayApp.Run(); err != nil {
@@ -46,7 +59,26 @@ func main() {
 	}
 }
 
-func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, trayApp *tray.App) {
+// routeAdapter adapts route.Runner to tray.RouteInfo interface.
+type routeAdapter struct {
+	runner *route.Runner
+}
+
+func (a *routeAdapter) IsActive() bool               { return a.runner.IsActive() }
+func (a *routeAdapter) GetRoute() tray.RouteData      { return tray.RouteData{Name: a.runner.GetRoute().Name} }
+func (a *routeAdapter) CompletionPercent() float64     { return a.runner.CompletionPercent() }
+func (a *routeAdapter) CompletedCount() int            { return a.runner.CompletedCount() }
+func (a *routeAdapter) TotalCount() int                { return a.runner.TotalCount() }
+func (a *routeAdapter) SplitDeaths() uint32            { return a.runner.SplitDeaths() }
+func (a *routeAdapter) CurrentCheckpointName() string {
+	cp := a.runner.CurrentCheckpoint()
+	if cp == nil {
+		return ""
+	}
+	return cp.Name
+}
+
+func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, trayApp *tray.App, runner *route.Runner) {
 	var lastCount uint32 = 0
 	var lastGame string = ""
 	var waitingForLoad bool = false
@@ -115,6 +147,19 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 			tracker.RecordDeath(count)
 			trayApp.UpdateCount(count)
 			lastCount = count
+		}
+
+		// Tick route runner if active
+		if runner != nil && runner.IsActive() {
+			events, err := runner.Tick(reader, lastCount)
+			if err != nil {
+				log.Printf("Route tracking error: %v", err)
+			}
+			for _, evt := range events {
+				log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
+					evt.Checkpoint.Name, evt.IGT, evt.Deaths)
+			}
+			trayApp.UpdateRouteProgress(&routeAdapter{runner: runner})
 		}
 	}
 }
