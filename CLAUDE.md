@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FromSoftware Death Counter is a Windows system tray application written in Go that tracks player deaths across multiple FromSoftware games by reading game memory. It automatically detects which game is running, reads the death count using game-specific memory addresses, stores session-based statistics in SQLite, and provides a minimal UI through the Windows system tray.
+FromSoftware Death Counter is a Windows system tray application written in Go that tracks player deaths and speedrun route progress across multiple FromSoftware games by reading game memory. It automatically detects which game is running, reads the death count using game-specific memory addresses, tracks speedrun checkpoints (boss kills, level-ups, weapon upgrades) via event flags and memory value checks, stores session-based statistics and route splits in SQLite, and provides a minimal UI through the Windows system tray.
 
 ## Supported Games
 
@@ -56,10 +56,12 @@ go mod tidy
 ### Core Components
 
 1. **main.go**: Application entry point
-   - Initializes stats tracker and memory reader
+   - Initializes stats tracker, memory reader, and route runner
    - Starts system tray UI
+   - Loads route definitions from `routes/` directory
    - Runs monitoring loop in goroutine that checks every 500ms
-   - Handles game switching automatically
+   - Handles game switching and route tick processing
+   - `routeAdapter` bridges `route.Runner` to `tray.RouteInfo` interface
 
 2. **internal/memreader**: Multi-game Windows memory reading
    - Supports 6 FromSoftware games with game-specific offsets
@@ -67,20 +69,45 @@ go mod tidy
    - Automatic architecture detection (32-bit vs 64-bit)
    - Module base address enumeration
    - Pointer chain traversal for memory reading
+   - `ReadDeathCount()`: follows pointer chain to death count value
+   - `ReadEventFlag(flagID)`: reads event flags (boss kills, bonfires, item pickups)
+   - `ReadIGT()`: reads in-game time in milliseconds
+   - `ReadMemoryValue(path, offset, size)`: reads arbitrary values from named memory paths
+   - `GameConfig` includes `EventFlagOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`
    - Auto-reconnection when process starts/stops
    - Memory addresses from DSDeaths project (https://github.com/quidrex/DSDeaths)
 
-3. **internal/stats**: Statistics tracking and persistence
+3. **internal/route**: Speedrun route tracking
+   - **route.go**: Route/Checkpoint data model with JSON loading and validation
+   - **state.go**: RunState machine with `ProcessTick` (pure logic, no I/O)
+   - **runner.go**: Runner orchestrator connecting state machine to memreader, stats, and backup
+   - Checkpoints support two condition types: event flags (`event_flag_id`) and memory value checks (`mem_check`)
+   - `MemCheck` supports `gte`, `gt`, `eq` comparisons with configurable read size (1/2/4 bytes)
+   - `TickInput` struct carries flags, memory values, IGT, and death count per cycle
+   - Tracks split times, per-segment deaths, completion percentage
+   - Automatically detects run completion when all required checkpoints are done
+
+4. **internal/stats**: Statistics tracking and persistence
    - SQLite-based session management
    - Tracks death counts with timestamps
    - Maintains current session vs. total statistics
    - Auto-creates/ends sessions
+   - Route run persistence: `route_runs`, `route_splits`, `route_pbs` tables
+   - `StartRouteRun`, `RecordSplit`, `EndRouteRun` for run lifecycle
+   - `UpdatePersonalBest` with UPSERT that keeps better times
    - Supports tracking across multiple games
 
-4. **internal/tray**: System tray UI
+5. **internal/backup**: Save file backup
+   - Copies save files with timestamped labels at each checkpoint
+   - `ResolveSavePath` expands environment variables and glob patterns
+   - Auto-creates backup directory
+
+6. **internal/tray**: System tray UI
    - Displays currently monitored game
    - Shows death counts in tray menu
    - Shows connection status
+   - Displays route progress (name, completion %, current checkpoint, split deaths)
+   - `RouteInfo` interface for decoupled progress reporting
    - Provides access to statistics
    - Graceful shutdown handling
 
@@ -102,17 +129,24 @@ Each game has a unique pointer chain that must be followed from the module base 
 
 ```
 Memory Reader (500ms poll) → Detect Game/Count Change → Update Stats DB → Update Tray UI
+                           → Route Runner Tick → Read Event Flags + Memory Values
+                             → ProcessTick (state machine) → Record Splits → Update PBs
+                             → Trigger Save Backup → Update Route Progress UI
 ```
 
 ## Important Notes
 
 ### Memory Address Configuration
 
-All memory addresses are stored in `internal/memreader/memreader.go` in the `supportedGames` slice. Each game has:
+Game configurations are stored in `internal/memreader/config.go` in the `supportedGames` slice. Each `GameConfig` has:
 - `Name`: Display name
 - `ProcessName`: Executable name without .exe
-- `Offsets32`: Pointer chain for 32-bit version (nil if not applicable)
-- `Offsets64`: Pointer chain for 64-bit version (nil if not applicable)
+- `Offsets32`: Pointer chain for 32-bit death count (nil if not applicable)
+- `Offsets64`: Pointer chain for 64-bit death count (nil if not applicable)
+- `EventFlagOffsets64`: Pointer chain to event flag manager (for boss kill detection)
+- `IGTOffsets64`: Pointer chain to in-game time value
+- `MemoryPaths`: Named pointer chains for arbitrary memory reads (e.g. `"player_stats"`)
+- `SaveFilePattern`: Glob pattern for save file location (e.g. `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`)
 
 **These addresses are game-version specific**. After game updates, offsets may need updating. Check the DSDeaths project for updated addresses.
 
@@ -146,10 +180,11 @@ Other games do not have anti-cheat and work normally.
 
 ### Testing
 
-The memory reading code is difficult to unit test without a running game process. Consider:
-- Mocking the Windows API calls for testing
-- Testing stats and tray components independently
-- Manual testing with actual games (recommended)
+- **Route and state machine tests** (`internal/route/`): Pure Go logic, fully testable on any platform
+- **Stats tests** (`internal/stats/`): SQLite-based, platform-independent
+- **Backup tests** (`internal/backup/`): File operations, platform-independent
+- **Memory reader tests** (`internal/memreader/`): Use `mockProcessOps` to simulate Windows API without a running game
+- Manual testing with actual games recommended for end-to-end validation
 
 ## Code Conventions
 
@@ -165,14 +200,19 @@ The memory reading code is difficult to unit test without a running game process
 ### Adding a New Game
 
 1. Find memory addresses using CheatEngine or similar tool
-2. Determine pointer chain from base address to death count
-3. Add entry to `supportedGames` in `internal/memreader/memreader.go`:
+2. Determine pointer chains for death count, event flags, IGT, and player stats
+3. Add entry to `supportedGames` in `internal/memreader/config.go`:
    ```go
    {
-       Name:        "Game Name",
-       ProcessName: "processname", // without .exe
-       Offsets32:   []int64{0x...}, // or nil
-       Offsets64:   []int64{0x..., 0x...},
+       Name:               "Game Name",
+       ProcessName:        "processname", // without .exe
+       Offsets64:          []int64{0x..., 0x...},
+       EventFlagOffsets64: []int64{0x..., 0x..., 0x...},
+       IGTOffsets64:       []int64{0x..., 0x...},
+       MemoryPaths: map[string][]int64{
+           "player_stats": {0x..., 0x..., 0x...},
+       },
+       SaveFilePattern: `%APPDATA%\GameName\*\save.sl2`,
    }
    ```
 4. Test with the actual game
@@ -182,9 +222,25 @@ The memory reading code is difficult to unit test without a running game process
 
 When a game updates and addresses change:
 1. Check DSDeaths project for updated addresses
-2. Update offsets in `supportedGames` in `internal/memreader/memreader.go`
+2. Update offsets in `supportedGames` in `internal/memreader/config.go`
 3. Test with the updated game
 4. Update README.md if needed
+
+### Creating a Custom Route
+
+1. Create a JSON file in `routes/` directory
+2. Set `game` field to match a `GameConfig.Name` exactly
+3. Define checkpoints with either `event_flag_id` (for boss kills) or `mem_check` (for levels/upgrades)
+4. Optional checkpoints (`"optional": true`) don't block run completion
+5. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
+6. Validate by loading the app — invalid routes log errors on startup
+
+### Adding a Named Memory Path
+
+To expose a new data structure for route checkpoints:
+1. Add the pointer chain to `MemoryPaths` in the game's `GameConfig` in `config.go`
+2. Document the struct offsets (use CheatEngine or game modding resources)
+3. Reference the path name in route JSON `mem_check.path` fields
 
 ### Adding New Statistics
 
@@ -227,6 +283,8 @@ Longer chains (like DS2) follow the same pattern with more steps.
 - **Elden Ring fails**: Easy Anti-Cheat is enabled; must launch without EAC
 - **Game not detected**: Process name may be wrong; check Task Manager for exact name
 - **Count doesn't update**: Pointer chain broken; game may have updated
+- **Route checkpoint not triggering**: Verify event flag ID is correct, or check mem_check path/offset/comparison
+- **Route not loading**: Check JSON syntax and that `game` field matches a supported game name exactly
 
 ### Memory Address Sources
 

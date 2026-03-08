@@ -15,6 +15,10 @@ A system tray application that tracks your death count in FromSoftware games by 
 
 - **Multi-Game Support**: Automatically detects and switches between all supported FromSoftware games
 - **Real-time Death Tracking**: Monitors game memory to track death count
+- **Speedrun Route Tracking**: Define custom routes with boss kills, level-up milestones, and weapon upgrade checkpoints
+- **Split Timing**: Records IGT-based split times and per-segment death counts for each checkpoint
+- **Personal Best Tracking**: Automatically tracks and compares against your best splits
+- **Save File Backup**: Automatically backs up save files at each checkpoint
 - **System Tray Integration**: Runs quietly in the background with easy access
 - **Session Statistics**: Tracks deaths per gaming session
 - **Historical Data**: SQLite database stores all-time statistics across all games
@@ -70,10 +74,98 @@ For other games (Dark Souls series, Sekiro), anti-cheat is not an issue.
    - View current death count
    - See session statistics
    - View total deaths across all sessions
+   - View route progress (if a route is loaded)
 
 4. **Switch games**: Close one game and start another - the app automatically switches
 
 5. **Exit**: Right-click the tray icon and select "Quit"
+
+## Speedrun Route Tracking
+
+The app supports custom speedrun route definitions as JSON files in the `routes/` directory. Routes track ordered checkpoints and record split times using in-game time (IGT).
+
+### Route Features
+
+- **Boss kill detection** via game event flags
+- **Level-up milestones** via memory value checks (e.g. "DEX >= 33")
+- **Weapon upgrade tracking** via max reinforcement level
+- **Per-checkpoint split times** (IGT-based)
+- **Per-segment death counts**
+- **Personal best tracking** with automatic comparison
+- **Save file backup** at each checkpoint
+
+### Included Routes
+
+- **DS3 Glitchless Any% - Hybrid Route** (`routes/ds3-glitchless-any-percent-hybrid.json`)
+  - 13 required boss checkpoints in hybrid route order
+  - 5 optional milestones: DEX 33/38/47 and Sellsword Twinblades +3/+6
+
+### Creating Custom Routes
+
+Routes are JSON files placed in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
+
+```json
+{
+  "id": "my-route",
+  "name": "My Custom Route",
+  "game": "Dark Souls III",
+  "category": "Any%",
+  "version": "1",
+  "checkpoints": [
+    {
+      "id": "vordt",
+      "name": "Vordt of the Boreal Valley",
+      "event_type": "boss_kill",
+      "event_flag_id": 13100800
+    },
+    {
+      "id": "level-30",
+      "name": "Reach Level 30",
+      "event_type": "level_up",
+      "mem_check": {
+        "path": "player_stats",
+        "offset": 104,
+        "comparison": "gte",
+        "value": 30,
+        "size": 4
+      },
+      "optional": true
+    }
+  ],
+  "reference_times": [225000, 500000]
+}
+```
+
+#### Checkpoint Condition Types
+
+| Type | Field | Description |
+|------|-------|-------------|
+| Event flag | `event_flag_id` | Game memory flag ID (boss kills, bonfires, item pickups) |
+| Memory value | `mem_check` | Read a value from a named memory path and compare it |
+
+#### Memory Check Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Named pointer chain from GameConfig (e.g. `"player_stats"`) |
+| `offset` | int | Additional byte offset from the resolved base address |
+| `comparison` | string | `"gte"` (>=), `"gt"` (>), or `"eq"` (==) |
+| `value` | int | Target value to compare against |
+| `size` | int | Bytes to read: `1`, `2`, or `4` (default `4`) |
+
+#### DS3 Player Stats Offsets
+
+When using `"path": "player_stats"` for Dark Souls III:
+
+| Offset | Stat |
+|--------|------|
+| `0x68` (104) | Soul Level |
+| `0x7C` (124) | Strength |
+| `0x80` (128) | Dexterity |
+| `0x84` (132) | Intelligence |
+| `0x88` (136) | Faith |
+| `0x8C` (140) | Luck |
+| `0xA2` (162) | Max Weapon Reinforcement Level (1 byte) |
 
 ## How It Works
 
@@ -124,14 +216,25 @@ make clean
 
 ```
 deathcounter/
-├── main.go                          # Application entry point
+├── main.go                          # Application entry point + route integration
 ├── internal/
 │   ├── memreader/                   # Windows memory reading
-│   │   └── memreader.go            # Multi-game support, process attachment, memory access
+│   │   ├── config.go               # Game configurations, offsets, memory paths
+│   │   ├── reader.go               # Death count, event flag, IGT, and memory value reading
+│   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
+│   │   └── process_ops_windows.go  # Windows API implementation
 │   ├── stats/                       # Statistics tracking
-│   │   └── stats.go                # SQLite persistence and session management
+│   │   └── stats.go                # SQLite persistence, sessions, route runs, PBs
+│   ├── route/                       # Speedrun route tracking
+│   │   ├── route.go                # Route/Checkpoint data model + JSON loader
+│   │   ├── state.go                # Run state machine (ProcessTick logic)
+│   │   └── runner.go               # Runner orchestrator (reader + stats + backup)
+│   ├── backup/                      # Save file backup
+│   │   └── backup.go               # Timestamped file copy manager
 │   └── tray/                        # System tray UI
-│       └── tray.go                 # System tray menu and event handling
+│       └── tray.go                 # Menu, route progress display, event handling
+├── routes/                          # Route definition files (JSON)
+│   └── ds3-glitchless-any-percent-hybrid.json
 ├── go.mod                           # Go module definition
 ├── Makefile                         # Build commands
 └── README.md                        # This file
@@ -169,6 +272,10 @@ Memory addresses and pointer patterns are from the [DSDeaths project](https://gi
 
 This Go implementation adds:
 - Cross-game support with auto-detection
+- Speedrun route tracking with custom JSON route definitions
+- Event flag reading, IGT reading, and memory value checks
+- Split timing with personal best tracking
+- Save file backup at checkpoints
 - System tray integration
 - Persistent statistics database
 - Session tracking

@@ -69,8 +69,43 @@ make clean        # Remove build artifacts
    - Current death count
    - Session statistics
    - All-time total deaths
+   - Route progress (if a route is loaded)
 4. **Switch games** - Close one game and start another; the app switches automatically
 5. **Exit** - Right-click the tray icon and select "Quit"
+
+## Speedrun Route Tracking
+
+The app can track your progress through a speedrun route, recording split times and deaths per segment.
+
+### Using the Included Route
+
+A DS3 Glitchless Any% Hybrid route is included in the `routes/` directory. It tracks:
+- 13 required boss kills (Iudex Gundyr through Soul of Cinder)
+- 5 optional milestones (DEX levels, weapon upgrades)
+
+The route loads automatically when you start the app and DS3 is detected.
+
+### Creating Your Own Route
+
+Place a JSON file in the `routes/` directory. Each checkpoint uses either an event flag (boss kills) or a memory value check (levels, weapon upgrades):
+
+```json
+{
+  "id": "my-route",
+  "name": "My Custom Route",
+  "game": "Dark Souls III",
+  "category": "Any%",
+  "version": "1",
+  "checkpoints": [
+    {"id": "vordt", "name": "Vordt", "event_type": "boss_kill", "event_flag_id": 13100800},
+    {"id": "dex-30", "name": "DEX 30", "event_type": "level_up", "optional": true,
+     "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 30, "size": 4}}
+  ],
+  "reference_times": [225000, 500000]
+}
+```
+
+See [README.md](README.md) for full route documentation and DS3 memory offsets.
 
 ## Troubleshooting
 
