@@ -16,7 +16,7 @@ run: build-console
 
 # Run tests
 test:
-	go test ./internal/...
+	go test -count=1 ./internal/...
 
 # Run E2E tests (requires a game running on Windows)
 test-e2e:
