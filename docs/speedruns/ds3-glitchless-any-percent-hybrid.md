@@ -93,17 +93,38 @@ Firelink after Wolnir, when the runner has enough souls and materials to upgrade
 
 ### Weapon Switch Timeline
 
-```
-Iudex Gundyr ──► Vordt ──► [kill Anri, pick up Twinblades + Farron Coal] ──►
-    Estoc           Shortsword
-                                 Abyss Watchers ──► Wolnir ──►
-                                    Anri's Sword (+0)
-[Firelink: infuse Sharp, upgrade +3, level DEX 33] ──►
-    Crystal Sage ──► ... ──► Aldrich ──►
-       Sharp Sellsword Twinblades +3
-[Firelink: upgrade +6, level DEX 38] ──►
-    Dancer ──► ... ──► Soul of Cinder
-       Sharp Sellsword Twinblades +6
+```mermaid
+timeline
+    title Weapon Progression — Hybrid Route
+
+    section Estoc
+        Boss 1 - Iudex Gundyr : Estoc +0 + Black Firebombs
+
+    section Shortsword
+        Boss 2 - Vordt : Shortsword +0
+        Pickup : Kill Anri → get Anri's Sword
+        Pickup : Sellsword Twinblades + Farron Coal
+
+    section Anri's Straight Sword +0
+        Boss 3 - Abyss Watchers : Anri's Sword + Gold Pine Resin
+        Boss 4 - Wolnir : Anri's Sword + Charcoal Pine Bundles
+        Pickup : Sharp Gem (Catacombs)
+        Firelink : Infuse Sharp, upgrade +3, DEX → 33
+
+    section Sharp Sellsword Twinblades +3
+        Boss 5 - Crystal Sage : + Carthus Rouge
+        Boss 6 - Deacons : + Carthus Rouge
+        Boss 7 - Yhorm : Storm Ruler
+        Boss 8 - Pontiff Sulyvahn : + Carthus Rouge
+        Firelink : Upgrade +6, DEX → 38, VIG → 16
+
+    section Sharp Sellsword Twinblades +6
+        Boss 9 - Aldrich : + Carthus Rouge
+        Boss 10 - Dancer : + Carthus Rouge
+        Boss 11 - Dragonslayer Armour : + Pale Pine Resin
+        Boss 12 - Twin Princes : + Carthus Rouge
+        Firelink : DEX → 47, VIG → 25
+        Boss 13 - Soul of Cinder : + Carthus Rouge + Green Blossom
 ```
 
 ---
