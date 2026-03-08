@@ -54,22 +54,29 @@ func (rs *RunState) Abandon() {
 	rs.Status = RunAbandoned
 }
 
-// ProcessTick checks which checkpoint flags are newly true and records events.
-// flags maps event flag IDs to their current state (true = triggered).
-func (rs *RunState) ProcessTick(flags map[uint32]bool, igt int64, deathCount uint32) []CheckpointEvent {
+// TickInput holds all memory readings for a single tick cycle.
+type TickInput struct {
+	Flags      map[uint32]bool          // event flag ID → set
+	MemValues  map[string]uint32        // checkpoint ID → current memory value (for mem_check checkpoints)
+	IGT        int64
+	DeathCount uint32
+}
+
+// ProcessTick checks which checkpoint conditions are newly met and records events.
+func (rs *RunState) ProcessTick(input TickInput) []CheckpointEvent {
 	if rs.Status != RunInProgress {
 		return nil
 	}
 
 	var events []CheckpointEvent
-	segmentDeaths := deathCount - rs.LastDeathCount
+	segmentDeaths := input.DeathCount - rs.LastDeathCount
 
 	for _, cp := range rs.Route.Checkpoints {
 		if rs.CompletedFlags[cp.ID] {
 			continue
 		}
 
-		if !flags[cp.EventFlagID] {
+		if !rs.checkCondition(cp, input) {
 			continue
 		}
 
@@ -79,14 +86,14 @@ func (rs *RunState) ProcessTick(flags map[uint32]bool, igt int64, deathCount uin
 		// Compute split duration: time since last completed checkpoint
 		var splitDuration int64
 		prevIGT := rs.lastCompletedIGT()
-		splitDuration = igt - prevIGT
+		splitDuration = input.IGT - prevIGT
 
-		rs.SplitTimes[cp.ID] = igt
+		rs.SplitTimes[cp.ID] = input.IGT
 		rs.SplitDeaths[cp.ID] = segmentDeaths
 
 		events = append(events, CheckpointEvent{
 			Checkpoint:    cp,
-			IGT:           igt,
+			IGT:           input.IGT,
 			SplitDuration: splitDuration,
 			Deaths:        segmentDeaths,
 		})
@@ -95,14 +102,40 @@ func (rs *RunState) ProcessTick(flags map[uint32]bool, igt int64, deathCount uin
 		segmentDeaths = 0
 	}
 
-	rs.LastDeathCount = deathCount
-	rs.LastIGT = igt
+	rs.LastDeathCount = input.DeathCount
+	rs.LastIGT = input.IGT
 
 	if len(events) > 0 && rs.IsComplete() {
 		rs.Status = RunCompleted
 	}
 
 	return events
+}
+
+// checkCondition returns true if the checkpoint's condition is met.
+func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
+	// Flag-based check
+	if cp.EventFlagID != 0 {
+		return input.Flags[cp.EventFlagID]
+	}
+
+	// Memory value check
+	if cp.MemCheck != nil {
+		val, ok := input.MemValues[cp.ID]
+		if !ok {
+			return false
+		}
+		switch cp.MemCheck.Comparison {
+		case "gte":
+			return val >= cp.MemCheck.Value
+		case "gt":
+			return val > cp.MemCheck.Value
+		case "eq":
+			return val == cp.MemCheck.Value
+		}
+	}
+
+	return false
 }
 
 // lastCompletedIGT returns the IGT of the most recently completed checkpoint,

@@ -43,7 +43,7 @@ func TestLoadRoute_MissingID(t *testing.T) {
 	route := Route{
 		Name:        "Test",
 		Game:        "Dark Souls III",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill"}},
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -60,7 +60,7 @@ func TestLoadRoute_MissingName(t *testing.T) {
 	route := Route{
 		ID:          "test",
 		Game:        "Dark Souls III",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill"}},
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -95,7 +95,7 @@ func TestLoadRoute_UnknownGame(t *testing.T) {
 		ID:          "test",
 		Name:        "Test",
 		Game:        "Bloodborne",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill"}},
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -166,6 +166,124 @@ func TestLoadRoute_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestLoadRoute_MemCheckValid(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "level-20", Name: "Level 20", EventType: "level_up",
+				MemCheck: &MemCheck{Path: "player_stats", Offset: 0x68, Comparison: "gte", Value: 20, Size: 4},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	loaded, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("LoadRoute: %v", err)
+	}
+	if loaded.Checkpoints[0].MemCheck == nil {
+		t.Fatal("expected MemCheck to be loaded")
+	}
+	if loaded.Checkpoints[0].MemCheck.Path != "player_stats" {
+		t.Errorf("got path %q, want player_stats", loaded.Checkpoints[0].MemCheck.Path)
+	}
+}
+
+func TestLoadRoute_MemCheckMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "level_up",
+				MemCheck: &MemCheck{Comparison: "gte", Value: 20},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for missing path")
+	}
+}
+
+func TestLoadRoute_MemCheckInvalidComparison(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "level_up",
+				MemCheck: &MemCheck{Path: "player_stats", Comparison: "lte", Value: 20},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid comparison")
+	}
+}
+
+func TestLoadRoute_MemCheckInvalidSize(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "level_up",
+				MemCheck: &MemCheck{Path: "player_stats", Comparison: "gte", Value: 20, Size: 3},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid size")
+	}
+}
+
+func TestLoadRoute_NoCondition(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "a", Name: "A", EventType: "boss_kill"}, // no flag_id, no mem_check
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for checkpoint with no condition")
+	}
+}
+
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
 
@@ -175,7 +293,7 @@ func TestLoadRoutesDir(t *testing.T) {
 			Name: id,
 			Game: "Dark Souls III",
 			Checkpoints: []Checkpoint{
-				{ID: "a", Name: "A", EventType: "boss_kill"},
+				{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000},
 			},
 		}
 		data, _ := json.Marshal(route)

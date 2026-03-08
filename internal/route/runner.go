@@ -98,17 +98,39 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 		return nil, nil
 	}
 
-	// Read all unfinished checkpoint event flags
-	flags := make(map[uint32]bool)
+	// Build tick input by reading all unfinished checkpoint conditions
+	input := TickInput{
+		Flags:      make(map[uint32]bool),
+		MemValues:  make(map[string]uint32),
+		DeathCount: deathCount,
+	}
+
 	for _, cp := range r.route.Checkpoints {
 		if r.state.CompletedFlags[cp.ID] {
 			continue
 		}
-		flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
+
+		// Flag-based checkpoint
+		if cp.EventFlagID != 0 {
+			flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
+			}
+			input.Flags[cp.EventFlagID] = flagSet
 		}
-		flags[cp.EventFlagID] = flagSet
+
+		// Memory value checkpoint
+		if cp.MemCheck != nil {
+			size := cp.MemCheck.Size
+			if size == 0 {
+				size = 4
+			}
+			val, err := reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read memory value for %s: %w", cp.ID, err)
+			}
+			input.MemValues[cp.ID] = val
+		}
 	}
 
 	// Read IGT
@@ -116,9 +138,10 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 	if err != nil {
 		return nil, fmt.Errorf("failed to read IGT: %w", err)
 	}
+	input.IGT = igt
 
 	// Process tick through state machine
-	events := r.state.ProcessTick(flags, igt, deathCount)
+	events := r.state.ProcessTick(input)
 
 	// Record each completed checkpoint
 	for _, evt := range events {

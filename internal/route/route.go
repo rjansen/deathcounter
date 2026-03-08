@@ -22,11 +22,21 @@ type Route struct {
 
 // Checkpoint represents a single trackable event in a route.
 type Checkpoint struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	EventType   string `json:"event_type"`    // "boss_kill", "bonfire_lit", "item_pickup"
-	EventFlagID uint32 `json:"event_flag_id"` // game memory flag ID
-	Optional    bool   `json:"optional"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	EventType   string    `json:"event_type"`              // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
+	EventFlagID uint32    `json:"event_flag_id,omitempty"` // game memory flag ID (for flag-based checks)
+	MemCheck    *MemCheck `json:"mem_check,omitempty"`     // memory value check (for value-based checks)
+	Optional    bool      `json:"optional"`
+}
+
+// MemCheck defines a condition based on reading an integer from game memory.
+type MemCheck struct {
+	Path       string `json:"path"`       // named pointer path in GameConfig.MemoryPaths (e.g. "player_stats")
+	Offset     int64  `json:"offset"`     // additional offset from the resolved base address
+	Comparison string `json:"comparison"` // "gte", "eq", "gt"
+	Value      uint32 `json:"value"`      // target value to compare against
+	Size       int    `json:"size"`       // bytes to read: 1, 2, or 4 (default 4)
 }
 
 // LoadRoute parses and validates a route JSON file.
@@ -107,6 +117,23 @@ func (r *Route) validate() error {
 		}
 		if cp.EventType == "" {
 			return fmt.Errorf("checkpoint %d: missing event_type", i)
+		}
+		if cp.EventFlagID == 0 && cp.MemCheck == nil {
+			return fmt.Errorf("checkpoint %d (%s): must have event_flag_id or mem_check", i, cp.ID)
+		}
+		if cp.MemCheck != nil {
+			if cp.MemCheck.Path == "" {
+				return fmt.Errorf("checkpoint %d (%s): mem_check missing path", i, cp.ID)
+			}
+			switch cp.MemCheck.Comparison {
+			case "gte", "eq", "gt":
+				// valid
+			default:
+				return fmt.Errorf("checkpoint %d (%s): mem_check invalid comparison %q (must be gte, eq, or gt)", i, cp.ID, cp.MemCheck.Comparison)
+			}
+			if cp.MemCheck.Size != 0 && cp.MemCheck.Size != 1 && cp.MemCheck.Size != 2 && cp.MemCheck.Size != 4 {
+				return fmt.Errorf("checkpoint %d (%s): mem_check invalid size %d (must be 1, 2, or 4)", i, cp.ID, cp.MemCheck.Size)
+			}
 		}
 	}
 
