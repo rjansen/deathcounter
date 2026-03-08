@@ -671,6 +671,118 @@ func TestReadIGT_NotAttached(t *testing.T) {
 	}
 }
 
+// --- ReadMemoryValue tests ---
+
+func TestReadMemoryValue_4Byte(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// DS3 player_stats path: {0x4768E78, 0x10, 0x10}
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000010, 0x40000000)
+	mock.setMemory64(0x40000010, 0x50000000)
+
+	// SoulLevel at offset 0x68 = 120
+	mock.setMemory32(0x50000068, 120)
+
+	val, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue: %v", err)
+	}
+	if val != 120 {
+		t.Errorf("got %d, want 120", val)
+	}
+}
+
+func TestReadMemoryValue_2Byte(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000010, 0x40000000)
+	mock.setMemory64(0x40000010, 0x50000000)
+
+	// 2-byte value at offset 0x100 = 500
+	b := make([]byte, 8)
+	b[0] = 0xF4 // 500 = 0x01F4
+	b[1] = 0x01
+	mock.memory[0x50000100] = b
+
+	val, err := reader.ReadMemoryValue("player_stats", 0x100, 2)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue: %v", err)
+	}
+	if val != 500 {
+		t.Errorf("got %d, want 500", val)
+	}
+}
+
+func TestReadMemoryValue_1Byte(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000010, 0x40000000)
+	mock.setMemory64(0x40000010, 0x50000000)
+
+	b := make([]byte, 8)
+	b[0] = 7 // weapon upgrade level
+	mock.memory[0x50000200] = b
+
+	val, err := reader.ReadMemoryValue("player_stats", 0x200, 1)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue: %v", err)
+	}
+	if val != 7 {
+		t.Errorf("got %d, want 7", val)
+	}
+}
+
+func TestReadMemoryValue_DefaultSize(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000010, 0x40000000)
+	mock.setMemory64(0x40000010, 0x50000000)
+	mock.setMemory32(0x50000068, 42)
+
+	// size=0 should default to 4
+	val, err := reader.ReadMemoryValue("player_stats", 0x68, 0)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue: %v", err)
+	}
+	if val != 42 {
+		t.Errorf("got %d, want 42", val)
+	}
+}
+
+func TestReadMemoryValue_UnknownPath(t *testing.T) {
+	_, reader := attachDS3WithEventFlags(t)
+
+	_, err := reader.ReadMemoryValue("nonexistent", 0, 4)
+	if err == nil {
+		t.Fatal("expected error for unknown path")
+	}
+}
+
+func TestReadMemoryValue_NotAttached(t *testing.T) {
+	mock := newMockProcessOps()
+	reader := NewGameReaderWithOps(mock)
+
+	_, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
+	if err == nil {
+		t.Fatal("expected error when not attached")
+	}
+}
+
+func TestReadMemoryValue_NullPointer(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0)
+
+	_, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
+	if err == nil {
+		t.Fatal("expected error for null pointer")
+	}
+}
+
 func TestReadIGT_NullPointer(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 

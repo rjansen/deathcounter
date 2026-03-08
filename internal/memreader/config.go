@@ -4,11 +4,12 @@ package memreader
 type GameConfig struct {
 	Name               string
 	ProcessName        string
-	Offsets32          []int64 // Offsets for 32-bit version (if exists)
-	Offsets64          []int64 // Offsets for 64-bit version
-	EventFlagOffsets64 []int64 // Pointer chain to event flag manager (64-bit)
-	IGTOffsets64       []int64 // Pointer chain to in-game time value (64-bit)
-	SaveFilePattern    string  // Glob pattern for save file, e.g. "%APPDATA%\\DarkSoulsIII\\*\\DS30000.sl2"
+	Offsets32          []int64            // Offsets for 32-bit version (if exists)
+	Offsets64          []int64            // Offsets for 64-bit version
+	EventFlagOffsets64 []int64            // Pointer chain to event flag manager (64-bit)
+	IGTOffsets64       []int64            // Pointer chain to in-game time value (64-bit)
+	MemoryPaths        map[string][]int64 // Named pointer chains for value-based checks (e.g. "player_stats", "inventory")
+	SaveFilePattern    string             // Glob pattern for save file, e.g. "%APPDATA%\\DarkSoulsIII\\*\\DS30000.sl2"
 }
 
 var supportedGames = []GameConfig{
@@ -31,7 +32,15 @@ var supportedGames = []GameConfig{
 		Offsets64:          []int64{0x47572B8, 0x98},
 		EventFlagOffsets64: []int64{0x4768E78, 0x0, 0x0},
 		IGTOffsets64:       []int64{0x4768E78, 0xA4},
-		SaveFilePattern:    `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
+		MemoryPaths: map[string][]int64{
+			// GameDataMan → PlayerGameData → player stats struct
+			// Final address is base of stats; use offset in MemCheck for specific fields:
+			//   +0x68 = SoulLevel (uint32)
+			//   +0x6C = Vigor, +0x70 = Attunement, +0x74 = Endurance, +0x78 = Vitality
+			//   +0x7C = Strength, +0x80 = Dexterity, +0x84 = Intelligence, +0x88 = Faith, +0x8C = Luck
+			"player_stats": {0x4768E78, 0x10, 0x10},
+		},
+		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 	},
 	{
 		Name:        "Dark Souls Remastered",

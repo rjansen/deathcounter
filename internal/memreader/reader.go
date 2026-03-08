@@ -213,6 +213,76 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 	return (singleByte[0] & (1 << bitPos)) != 0, nil
 }
 
+// ReadMemoryValue follows a named pointer path, adds an extra offset, and reads
+// an integer value of the given size (1, 2, or 4 bytes). Returns the value as uint32.
+func (r *GameReader) ReadMemoryValue(pathName string, extraOffset int64, size int) (uint32, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	if !r.is64Bit || r.game.MemoryPaths == nil {
+		return 0, fmt.Errorf("memory path reading not supported for this game")
+	}
+
+	offsets, ok := r.game.MemoryPaths[pathName]
+	if !ok {
+		return 0, fmt.Errorf("unknown memory path %q", pathName)
+	}
+
+	if size == 0 {
+		size = 4
+	}
+
+	// Follow pointer chain
+	address := int64(r.baseAddress)
+	buffer := make([]byte, 8)
+
+	for _, offset := range offsets {
+		if address == 0 {
+			return 0, ErrNullPointer
+		}
+
+		address += offset
+
+		err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buffer)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read memory at 0x%X: %w", address, err)
+		}
+
+		address = int64(uint64(buffer[0]) |
+			uint64(buffer[1])<<8 |
+			uint64(buffer[2])<<16 |
+			uint64(buffer[3])<<24 |
+			uint64(buffer[4])<<32 |
+			uint64(buffer[5])<<40 |
+			uint64(buffer[6])<<48 |
+			uint64(buffer[7])<<56)
+	}
+
+	if address == 0 {
+		return 0, ErrNullPointer
+	}
+
+	// Read value at resolved address + extra offset
+	valueAddr := uintptr(address + extraOffset)
+	err := r.ops.ReadProcessMemory(r.processHandle, valueAddr, buffer)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read value at 0x%X: %w", valueAddr, err)
+	}
+
+	switch size {
+	case 1:
+		return uint32(buffer[0]), nil
+	case 2:
+		return uint32(uint16(buffer[0]) | uint16(buffer[1])<<8), nil
+	default:
+		return uint32(buffer[0]) |
+			uint32(buffer[1])<<8 |
+			uint32(buffer[2])<<16 |
+			uint32(buffer[3])<<24, nil
+	}
+}
+
 // ReadIGT reads the in-game time in milliseconds.
 func (r *GameReader) ReadIGT() (int64, error) {
 	if !r.attached {
