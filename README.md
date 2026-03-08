@@ -1,7 +1,5 @@
 # FromSoftware Death Counter
 
-Changeeeeeeeeee
-
 A system tray application that tracks your death count in FromSoftware games by reading game memory. Built with Go for Windows.
 
 ## Supported Games
