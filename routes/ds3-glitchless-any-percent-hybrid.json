@@ -3,22 +3,107 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "1",
+  "version": "2",
   "checkpoints": [
-    {"id": "iudex-gundyr", "name": "Iudex Gundyr", "event_type": "boss_kill", "event_flag_id": 13000800, "optional": false},
-    {"id": "vordt", "name": "Vordt of the Boreal Valley", "event_type": "boss_kill", "event_flag_id": 13100800, "optional": false},
-    {"id": "crystal-sage", "name": "Crystal Sage", "event_type": "boss_kill", "event_flag_id": 13200800, "optional": false},
-    {"id": "abyss-watchers", "name": "Abyss Watchers", "event_type": "boss_kill", "event_flag_id": 13300800, "optional": false},
-    {"id": "wolnir", "name": "High Lord Wolnir", "event_type": "boss_kill", "event_flag_id": 13800800, "optional": false},
-    {"id": "pontiff", "name": "Pontiff Sulyvahn", "event_type": "boss_kill", "event_flag_id": 13700800, "optional": false},
-    {"id": "aldrich", "name": "Aldrich, Devourer of Gods", "event_type": "boss_kill", "event_flag_id": 13701800, "optional": false},
-    {"id": "yhorm", "name": "Yhorm the Giant", "event_type": "boss_kill", "event_flag_id": 13900800, "optional": false},
-    {"id": "dancer", "name": "Dancer of the Boreal Valley", "event_type": "boss_kill", "event_flag_id": 13010800, "optional": false},
-    {"id": "oceiros", "name": "Oceiros, the Consumed King", "event_type": "boss_kill", "event_flag_id": 13010850, "optional": false},
-    {"id": "champion-gundyr", "name": "Champion Gundyr", "event_type": "boss_kill", "event_flag_id": 14000800, "optional": false},
-    {"id": "dragonslayer-armour", "name": "Dragonslayer Armour", "event_type": "boss_kill", "event_flag_id": 13500800, "optional": false},
-    {"id": "twin-princes", "name": "Twin Princes", "event_type": "boss_kill", "event_flag_id": 13501800, "optional": false},
-    {"id": "soul-of-cinder", "name": "Soul of Cinder", "event_type": "boss_kill", "event_flag_id": 14100800, "optional": false}
+    {
+      "id": "iudex-gundyr",
+      "name": "Iudex Gundyr",
+      "event_type": "boss_kill",
+      "event_flag_id": 13000800
+    },
+    {
+      "id": "vordt",
+      "name": "Vordt of the Boreal Valley",
+      "event_type": "boss_kill",
+      "event_flag_id": 13100800
+    },
+    {
+      "id": "abyss-watchers",
+      "name": "Abyss Watchers",
+      "event_type": "boss_kill",
+      "event_flag_id": 13300800
+    },
+    {
+      "id": "wolnir",
+      "name": "High Lord Wolnir",
+      "event_type": "boss_kill",
+      "event_flag_id": 13800800
+    },
+    {
+      "id": "dex-33",
+      "name": "Level DEX to 33",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 33, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "crystal-sage",
+      "name": "Crystal Sage",
+      "event_type": "boss_kill",
+      "event_flag_id": 13200800
+    },
+    {
+      "id": "deacons",
+      "name": "Deacons of the Deep",
+      "event_type": "boss_kill",
+      "event_flag_id": 13500850
+    },
+    {
+      "id": "yhorm",
+      "name": "Yhorm the Giant",
+      "event_type": "boss_kill",
+      "event_flag_id": 13900800
+    },
+    {
+      "id": "pontiff",
+      "name": "Pontiff Sulyvahn",
+      "event_type": "boss_kill",
+      "event_flag_id": 13700800
+    },
+    {
+      "id": "aldrich",
+      "name": "Aldrich, Devourer of Gods",
+      "event_type": "boss_kill",
+      "event_flag_id": 13701800
+    },
+    {
+      "id": "dex-38",
+      "name": "Level DEX to 38",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 38, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "dancer",
+      "name": "Dancer of the Boreal Valley",
+      "event_type": "boss_kill",
+      "event_flag_id": 13010800
+    },
+    {
+      "id": "dragonslayer-armour",
+      "name": "Dragonslayer Armour",
+      "event_type": "boss_kill",
+      "event_flag_id": 13500800
+    },
+    {
+      "id": "twin-princes",
+      "name": "Twin Princes",
+      "event_type": "boss_kill",
+      "event_flag_id": 13501800
+    },
+    {
+      "id": "dex-47",
+      "name": "Level DEX to 47",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 47, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "soul-of-cinder",
+      "name": "Soul of Cinder",
+      "event_type": "boss_kill",
+      "event_flag_id": 14100800
+    }
   ],
-  "reference_times": [95000, 225000, 400000, 600000, 750000, 950000, 1100000, 1250000, 1400000, 1550000, 1700000, 1900000, 2100000, 2400000]
+  "reference_times": [95000, 225000, 480000, 630000, 690000, 870000, 1020000, 1170000, 1320000, 1470000, 1530000, 1680000, 1830000, 2010000, 2070000, 2400000]
 }
