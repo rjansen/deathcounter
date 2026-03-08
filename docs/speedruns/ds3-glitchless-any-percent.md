@@ -8,6 +8,7 @@ Glitchless Any% speedrun category. Route-specific documents describe the actual 
 | Route | Weapons | Scaling Stat | Best Time | Runner | Doc |
 |-------|---------|--------------|-----------|--------|-----|
 | **Hybrid** (labeled "Anri's" on speedrun.com) | Estoc → Shortsword → Anri's Sword → Sharp Twinblades | DEX | 41:25 | olzku23 | [hybrid](ds3-glitchless-any-percent-hybrid.md) |
+| Hybrid +10 | Estoc → Shortsword → Anri's Sword → Sharp Twinblades +10 | DEX | — | — | [hybrid +10](ds3-glitchless-any-percent-hybrid-plus10.md) |
 | Anri's Straight Sword (pure) | Anri's Straight Sword | Luck | — | — | [anri](ds3-glitchless-any-percent-anri.md) |
 | Sharp +3 Twinblades (pure) | Sellsword Twinblades | DEX | 43:21 | Sieg | [sellsword](ds3-glitchless-any-percent-sellsword.md) |
 | +0 Short Sword | Short Sword | — | 42:02 | Sieg | — |
