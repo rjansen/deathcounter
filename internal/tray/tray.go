@@ -9,16 +9,36 @@ import (
 	"github.com/rjansen/deathcounter/internal/stats"
 )
 
+// RouteInfo provides route progress data for the tray display.
+type RouteInfo interface {
+	IsActive() bool
+	GetRoute() RouteData
+	CompletionPercent() float64
+	CompletedCount() int
+	TotalCount() int
+	CurrentCheckpointName() string
+	SplitDeaths() uint32
+}
+
+// RouteData holds basic route metadata.
+type RouteData struct {
+	Name string
+}
+
 // App represents the system tray application
 type App struct {
-	reader       *memreader.GameReader
-	tracker      *stats.Tracker
-	menuTitle    *systray.MenuItem
-	menuGame     *systray.MenuItem
-	menuCount    *systray.MenuItem
-	menuSession  *systray.MenuItem
-	menuTotal    *systray.MenuItem
-	menuStatus   *systray.MenuItem
+	reader            *memreader.GameReader
+	tracker           *stats.Tracker
+	menuTitle         *systray.MenuItem
+	menuGame          *systray.MenuItem
+	menuCount         *systray.MenuItem
+	menuSession       *systray.MenuItem
+	menuTotal         *systray.MenuItem
+	menuStatus        *systray.MenuItem
+	menuRouteName     *systray.MenuItem
+	menuRouteProgress *systray.MenuItem
+	menuRouteCurrent  *systray.MenuItem
+	menuRouteSplitD   *systray.MenuItem
 }
 
 // NewApp creates a new system tray application
@@ -63,6 +83,19 @@ func (a *App) onReady() {
 
 	a.menuTotal = systray.AddMenuItem("Total: 0", "Total deaths across all sessions")
 	a.menuTotal.Disable()
+
+	systray.AddSeparator()
+
+	// Route section
+	systray.AddSeparator()
+	a.menuRouteName = systray.AddMenuItem("Route: None", "Active speedrun route")
+	a.menuRouteName.Disable()
+	a.menuRouteProgress = systray.AddMenuItem("Progress: -", "Route completion progress")
+	a.menuRouteProgress.Disable()
+	a.menuRouteCurrent = systray.AddMenuItem("Current: -", "Current checkpoint")
+	a.menuRouteCurrent.Disable()
+	a.menuRouteSplitD = systray.AddMenuItem("Split Deaths: 0", "Deaths in current segment")
+	a.menuRouteSplitD.Disable()
 
 	systray.AddSeparator()
 
@@ -144,6 +177,54 @@ func (a *App) UpdateGame(gameName string) {
 		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", gameName))
 	} else {
 		systray.SetTooltip("Death Counter - Waiting for game")
+	}
+}
+
+// UpdateRouteProgress refreshes the route progress menu items.
+func (a *App) UpdateRouteProgress(info RouteInfo) {
+	if info == nil || !info.IsActive() {
+		a.SetRoute("")
+		return
+	}
+	route := info.GetRoute()
+	if a.menuRouteName != nil {
+		a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", route.Name))
+	}
+	if a.menuRouteProgress != nil {
+		a.menuRouteProgress.SetTitle(fmt.Sprintf("Progress: %d/%d (%.0f%%)",
+			info.CompletedCount(), info.TotalCount(), info.CompletionPercent()))
+	}
+	if a.menuRouteCurrent != nil {
+		cp := info.CurrentCheckpointName()
+		if cp == "" {
+			cp = "Complete!"
+		}
+		a.menuRouteCurrent.SetTitle(fmt.Sprintf("Current: %s", cp))
+	}
+	if a.menuRouteSplitD != nil {
+		a.menuRouteSplitD.SetTitle(fmt.Sprintf("Split Deaths: %d", info.SplitDeaths()))
+	}
+}
+
+// SetRoute updates the route display name.
+func (a *App) SetRoute(name string) {
+	if a.menuRouteName != nil {
+		if name == "" {
+			a.menuRouteName.SetTitle("Route: None")
+		} else {
+			a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", name))
+		}
+	}
+	if name == "" {
+		if a.menuRouteProgress != nil {
+			a.menuRouteProgress.SetTitle("Progress: -")
+		}
+		if a.menuRouteCurrent != nil {
+			a.menuRouteCurrent.SetTitle("Current: -")
+		}
+		if a.menuRouteSplitD != nil {
+			a.menuRouteSplitD.SetTitle("Split Deaths: 0")
+		}
 	}
 }
 
