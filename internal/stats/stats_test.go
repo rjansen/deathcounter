@@ -275,6 +275,167 @@ func TestGetSessionHistory_OpenSession(t *testing.T) {
 	}
 }
 
+// --- Route run tests ---
+
+func TestStartRouteRun(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	if err != nil {
+		t.Fatalf("StartRouteRun: %v", err)
+	}
+	if runID <= 0 {
+		t.Errorf("got run ID %d, want > 0", runID)
+	}
+}
+
+func TestRecordSplit(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	if err != nil {
+		t.Fatalf("StartRouteRun: %v", err)
+	}
+
+	if err := tracker.RecordSplit(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+		t.Fatalf("RecordSplit: %v", err)
+	}
+
+	var count int
+	err = tracker.db.QueryRow("SELECT COUNT(*) FROM route_splits WHERE run_id = ?", runID).Scan(&count)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("got %d splits, want 1", count)
+	}
+}
+
+func TestEndRouteRun(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	tracker.RecordSplit(runID, "boss1", "Boss 1", 95000, 95000, 2)
+
+	if err := tracker.EndRouteRun(runID, "completed", 10, 400000); err != nil {
+		t.Fatalf("EndRouteRun: %v", err)
+	}
+
+	var status string
+	var totalDeaths int
+	var finalIGT int64
+	err := tracker.db.QueryRow("SELECT status, total_deaths, final_igt_ms FROM route_runs WHERE id = ?", runID).
+		Scan(&status, &totalDeaths, &finalIGT)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if status != "completed" {
+		t.Errorf("got status %q, want %q", status, "completed")
+	}
+	if totalDeaths != 10 {
+		t.Errorf("got total deaths %d, want 10", totalDeaths)
+	}
+	if finalIGT != 400000 {
+		t.Errorf("got final IGT %d, want 400000", finalIGT)
+	}
+}
+
+func TestUpdatePersonalBest_NewPB(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	if err := tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000); err != nil {
+		t.Fatalf("UpdatePersonalBest: %v", err)
+	}
+
+	pbs, err := tracker.GetPersonalBest("ds3")
+	if err != nil {
+		t.Fatalf("GetPersonalBest: %v", err)
+	}
+	if len(pbs) != 1 {
+		t.Fatalf("got %d PBs, want 1", len(pbs))
+	}
+	if pbs[0].IGTMs != 95000 {
+		t.Errorf("got IGT %d, want 95000", pbs[0].IGTMs)
+	}
+}
+
+func TestUpdatePersonalBest_BetterTime(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000)
+	tracker.UpdatePersonalBest("ds3", "boss1", 90000, 88000) // better
+
+	pbs, err := tracker.GetPersonalBest("ds3")
+	if err != nil {
+		t.Fatalf("GetPersonalBest: %v", err)
+	}
+	if pbs[0].IGTMs != 90000 {
+		t.Errorf("got IGT %d, want 90000", pbs[0].IGTMs)
+	}
+	if pbs[0].SplitDurationMs != 88000 {
+		t.Errorf("got split %d, want 88000", pbs[0].SplitDurationMs)
+	}
+}
+
+func TestUpdatePersonalBest_WorseTime(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	tracker.UpdatePersonalBest("ds3", "boss1", 90000, 90000)
+	tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000) // worse
+
+	pbs, err := tracker.GetPersonalBest("ds3")
+	if err != nil {
+		t.Fatalf("GetPersonalBest: %v", err)
+	}
+	if pbs[0].IGTMs != 90000 {
+		t.Errorf("got IGT %d, want 90000 (should keep better time)", pbs[0].IGTMs)
+	}
+}
+
+func TestGetPersonalBest_Empty(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	pbs, err := tracker.GetPersonalBest("nonexistent")
+	if err != nil {
+		t.Fatalf("GetPersonalBest: %v", err)
+	}
+	if len(pbs) != 0 {
+		t.Errorf("got %d PBs, want 0", len(pbs))
+	}
+}
+
+func TestRouteRunLifecycle(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	// Start run
+	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III")
+	if err != nil {
+		t.Fatalf("StartRouteRun: %v", err)
+	}
+
+	// Record splits
+	tracker.RecordSplit(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	tracker.RecordSplit(runID, "boss2", "Vordt", 225000, 130000, 2)
+
+	// Update PBs
+	tracker.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
+	tracker.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000)
+
+	// End run
+	if err := tracker.EndRouteRun(runID, "completed", 5, 225000); err != nil {
+		t.Fatalf("EndRouteRun: %v", err)
+	}
+
+	// Verify PBs
+	pbs, err := tracker.GetPersonalBest("ds3-any")
+	if err != nil {
+		t.Fatalf("GetPersonalBest: %v", err)
+	}
+	if len(pbs) != 2 {
+		t.Errorf("got %d PBs, want 2", len(pbs))
+	}
+}
+
 func TestClose(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	tracker, err := NewTracker(dbPath)

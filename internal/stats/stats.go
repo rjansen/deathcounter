@@ -58,6 +58,38 @@ func (t *Tracker) initDB() error {
 
 	CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
 	CREATE INDEX IF NOT EXISTS idx_deaths_session ON death_events(session_id);
+
+	CREATE TABLE IF NOT EXISTS route_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		route_id TEXT NOT NULL,
+		game TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'in_progress',
+		start_time DATETIME NOT NULL,
+		end_time DATETIME,
+		total_deaths INTEGER NOT NULL DEFAULT 0,
+		final_igt_ms INTEGER
+	);
+
+	CREATE TABLE IF NOT EXISTS route_splits (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id INTEGER NOT NULL,
+		checkpoint_id TEXT NOT NULL,
+		checkpoint_name TEXT NOT NULL,
+		igt_ms INTEGER NOT NULL,
+		split_duration_ms INTEGER NOT NULL,
+		deaths INTEGER NOT NULL DEFAULT 0,
+		completed_at DATETIME NOT NULL,
+		FOREIGN KEY (run_id) REFERENCES route_runs(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS route_pbs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		route_id TEXT NOT NULL,
+		checkpoint_id TEXT NOT NULL,
+		best_igt_ms INTEGER NOT NULL,
+		best_split_ms INTEGER NOT NULL,
+		UNIQUE(route_id, checkpoint_id)
+	);
 	`
 
 	_, err := t.db.Exec(schema)
@@ -198,6 +230,84 @@ func (t *Tracker) GetSessionHistory(limit int) ([]Session, error) {
 	}
 
 	return sessions, rows.Err()
+}
+
+// RouteSplit represents a recorded split in a route run.
+type RouteSplit struct {
+	CheckpointID   string
+	CheckpointName string
+	IGTMs          int64
+	SplitDurationMs int64
+	Deaths         uint32
+}
+
+// StartRouteRun creates a new route run record and returns its ID.
+func (t *Tracker) StartRouteRun(routeID, game string) (int64, error) {
+	result, err := t.db.Exec(
+		"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?)",
+		routeID, game, time.Now(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to start route run: %w", err)
+	}
+	return result.LastInsertId()
+}
+
+// RecordSplit records a completed checkpoint split.
+func (t *Tracker) RecordSplit(runID int64, checkpointID, name string, igtMs, splitMs int64, deaths uint32) error {
+	_, err := t.db.Exec(
+		`INSERT INTO route_splits (run_id, checkpoint_id, checkpoint_name, igt_ms, split_duration_ms, deaths, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		runID, checkpointID, name, igtMs, splitMs, deaths, time.Now(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to record split: %w", err)
+	}
+	return nil
+}
+
+// EndRouteRun marks a route run as finished.
+func (t *Tracker) EndRouteRun(runID int64, status string, totalDeaths uint32, finalIGT int64) error {
+	_, err := t.db.Exec(
+		"UPDATE route_runs SET status = ?, end_time = ?, total_deaths = ?, final_igt_ms = ? WHERE id = ?",
+		status, time.Now(), totalDeaths, finalIGT, runID,
+	)
+	return err
+}
+
+// GetPersonalBest returns the personal best splits for a route.
+func (t *Tracker) GetPersonalBest(routeID string) ([]RouteSplit, error) {
+	rows, err := t.db.Query(
+		"SELECT checkpoint_id, '', best_igt_ms, best_split_ms, 0 FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
+		routeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var splits []RouteSplit
+	for rows.Next() {
+		var s RouteSplit
+		if err := rows.Scan(&s.CheckpointID, &s.CheckpointName, &s.IGTMs, &s.SplitDurationMs, &s.Deaths); err != nil {
+			return nil, err
+		}
+		splits = append(splits, s)
+	}
+	return splits, rows.Err()
+}
+
+// UpdatePersonalBest updates the PB for a checkpoint if the new time is better.
+func (t *Tracker) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitMs int64) error {
+	// Try to insert, or update if existing PB is worse
+	_, err := t.db.Exec(`
+		INSERT INTO route_pbs (route_id, checkpoint_id, best_igt_ms, best_split_ms)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(route_id, checkpoint_id) DO UPDATE SET
+			best_igt_ms = MIN(best_igt_ms, excluded.best_igt_ms),
+			best_split_ms = MIN(best_split_ms, excluded.best_split_ms)
+	`, routeID, checkpointID, igtMs, splitMs)
+	return err
 }
 
 // Close closes the database connection
