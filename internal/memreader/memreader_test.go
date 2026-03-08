@@ -518,3 +518,166 @@ func TestReadDeathCount_MemoryReadFailure(t *testing.T) {
 		t.Fatal("expected error for memory read failure, got nil")
 	}
 }
+
+// --- ReadEventFlag tests ---
+
+func attachDS3WithEventFlags(t *testing.T) (*mockProcessOps, *GameReader) {
+	t.Helper()
+	mock := newMockProcessOps()
+	mock.processes["DarkSoulsIII.exe"] = 1234
+	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
+	mock.architectures[1234] = true
+
+	reader := NewGameReaderWithOps(mock)
+	if err := reader.Attach(); err != nil {
+		t.Fatalf("attach failed: %v", err)
+	}
+	return mock, reader
+}
+
+func TestReadEventFlag_FlagSet(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// DS3 EventFlagOffsets64: {0x4768E78, 0x0, 0x0}
+	// base(0x140000000) + 0x4768E78 = 0x144768E78 → pointer
+	mock.setMemory64(0x144768E78, 0x30000000)
+	// 0x30000000 + 0x0 = 0x30000000 → pointer
+	mock.setMemory64(0x30000000, 0x40000000)
+	// 0x40000000 + 0x0 = 0x40000000 → event flag manager base
+	mock.setMemory64(0x40000000, 0x50000000)
+
+	// Flag ID 13000800: byteOffset = 13000800/8 = 1625100, bitPos = 13000800%8 = 0
+	flagAddr := uintptr(0x50000000 + 1625100)
+	b := make([]byte, 8)
+	b[0] = 0x01 // bit 0 set
+	mock.memory[flagAddr] = b
+
+	set, err := reader.ReadEventFlag(13000800)
+	if err != nil {
+		t.Fatalf("ReadEventFlag: %v", err)
+	}
+	if !set {
+		t.Error("expected flag to be set")
+	}
+}
+
+func TestReadEventFlag_FlagNotSet(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000000, 0x40000000)
+	mock.setMemory64(0x40000000, 0x50000000)
+
+	flagAddr := uintptr(0x50000000 + 1625100)
+	b := make([]byte, 8)
+	b[0] = 0x00 // bit 0 not set
+	mock.memory[flagAddr] = b
+
+	set, err := reader.ReadEventFlag(13000800)
+	if err != nil {
+		t.Fatalf("ReadEventFlag: %v", err)
+	}
+	if set {
+		t.Error("expected flag to not be set")
+	}
+}
+
+func TestReadEventFlag_BitPosition(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000000, 0x40000000)
+	mock.setMemory64(0x40000000, 0x50000000)
+
+	// Flag ID 13000803: byteOffset = 13000803/8 = 1625100, bitPos = 13000803%8 = 3
+	flagAddr := uintptr(0x50000000 + 1625100)
+	b := make([]byte, 8)
+	b[0] = 0x08 // bit 3 set (0b00001000)
+	mock.memory[flagAddr] = b
+
+	set, err := reader.ReadEventFlag(13000803)
+	if err != nil {
+		t.Fatalf("ReadEventFlag: %v", err)
+	}
+	if !set {
+		t.Error("expected flag at bit 3 to be set")
+	}
+}
+
+func TestReadEventFlag_NotAttached(t *testing.T) {
+	mock := newMockProcessOps()
+	reader := NewGameReaderWithOps(mock)
+
+	_, err := reader.ReadEventFlag(13000800)
+	if err == nil {
+		t.Fatal("expected error when not attached")
+	}
+}
+
+func TestReadEventFlag_NullPointer(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// First read returns null
+	mock.setMemory64(0x144768E78, 0)
+
+	_, err := reader.ReadEventFlag(13000800)
+	if err == nil {
+		t.Fatal("expected error for null pointer")
+	}
+}
+
+// --- ReadIGT tests ---
+
+func TestReadIGT(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// DS3 IGTOffsets64: {0x4768E78, 0xA4}
+	// base + 0x4768E78 → pointer
+	mock.setMemory64(0x144768E78, 0x30000000)
+	// 0x30000000 + 0xA4 = 0x300000A4 → IGT value
+	mock.setMemory32(0x300000A4, 1234567) // 1234567 ms
+
+	igt, err := reader.ReadIGT()
+	if err != nil {
+		t.Fatalf("ReadIGT: %v", err)
+	}
+	if igt != 1234567 {
+		t.Errorf("got IGT %d, want 1234567", igt)
+	}
+}
+
+func TestReadIGT_Zero(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory32(0x300000A4, 0)
+
+	igt, err := reader.ReadIGT()
+	if err != nil {
+		t.Fatalf("ReadIGT: %v", err)
+	}
+	if igt != 0 {
+		t.Errorf("got IGT %d, want 0", igt)
+	}
+}
+
+func TestReadIGT_NotAttached(t *testing.T) {
+	mock := newMockProcessOps()
+	reader := NewGameReaderWithOps(mock)
+
+	_, err := reader.ReadIGT()
+	if err == nil {
+		t.Fatal("expected error when not attached")
+	}
+}
+
+func TestReadIGT_NullPointer(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	mock.setMemory64(0x144768E78, 0)
+
+	_, err := reader.ReadIGT()
+	if err == nil {
+		t.Fatal("expected error for null pointer")
+	}
+}

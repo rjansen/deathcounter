@@ -2,10 +2,13 @@ package memreader
 
 // GameConfig holds the configuration for a specific FromSoftware game
 type GameConfig struct {
-	Name        string
-	ProcessName string
-	Offsets32   []int64 // Offsets for 32-bit version (if exists)
-	Offsets64   []int64 // Offsets for 64-bit version
+	Name               string
+	ProcessName        string
+	Offsets32          []int64 // Offsets for 32-bit version (if exists)
+	Offsets64          []int64 // Offsets for 64-bit version
+	EventFlagOffsets64 []int64 // Pointer chain to event flag manager (64-bit)
+	IGTOffsets64       []int64 // Pointer chain to in-game time value (64-bit)
+	SaveFilePattern    string  // Glob pattern for save file, e.g. "%APPDATA%\\DarkSoulsIII\\*\\DS30000.sl2"
 }
 
 var supportedGames = []GameConfig{
@@ -22,10 +25,13 @@ var supportedGames = []GameConfig{
 		Offsets64:   []int64{0x16148F0, 0xD0, 0x490, 0x104},
 	},
 	{
-		Name:        "Dark Souls III",
-		ProcessName: "DarkSoulsIII",
-		Offsets32:   nil,
-		Offsets64:   []int64{0x47572B8, 0x98},
+		Name:               "Dark Souls III",
+		ProcessName:        "DarkSoulsIII",
+		Offsets32:          nil,
+		Offsets64:          []int64{0x47572B8, 0x98},
+		EventFlagOffsets64: []int64{0x4768E78, 0x0, 0x0},
+		IGTOffsets64:       []int64{0x4768E78, 0xA4},
+		SaveFilePattern:    `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 	},
 	{
 		Name:        "Dark Souls Remastered",
@@ -47,11 +53,18 @@ var supportedGames = []GameConfig{
 	},
 }
 
-// GetSupportedGames returns a list of all supported games
+// GetSupportedGames returns a list of all supported game names.
 func GetSupportedGames() []string {
 	games := make([]string, len(supportedGames))
 	for i, game := range supportedGames {
 		games[i] = game.Name
 	}
 	return games
+}
+
+// GetSupportedGameConfigs returns a copy of all supported game configurations.
+func GetSupportedGameConfigs() []GameConfig {
+	configs := make([]GameConfig, len(supportedGames))
+	copy(configs, supportedGames)
+	return configs
 }

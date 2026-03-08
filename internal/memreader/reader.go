@@ -153,3 +153,112 @@ func (r *GameReader) ReadDeathCount() (uint32, error) {
 	// Final address value IS the death count (not a pointer)
 	return uint32(address), nil
 }
+
+// ReadEventFlag checks if a game event flag is set (boss killed, bonfire lit, etc.).
+// The flag ID is game-specific; for DS3, flags come from the event flag manager.
+func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
+	if !r.attached {
+		return false, fmt.Errorf("not attached to process")
+	}
+
+	if !r.is64Bit || r.game.EventFlagOffsets64 == nil {
+		return false, fmt.Errorf("event flag reading not supported for this game")
+	}
+
+	offsets := r.game.EventFlagOffsets64
+
+	// Follow pointer chain to event flag manager base
+	address := int64(r.baseAddress)
+	buffer := make([]byte, 8)
+
+	for _, offset := range offsets {
+		if address == 0 {
+			return false, ErrNullPointer
+		}
+
+		address += offset
+
+		err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buffer)
+		if err != nil {
+			return false, fmt.Errorf("failed to read memory at 0x%X: %w", address, err)
+		}
+
+		address = int64(uint64(buffer[0]) |
+			uint64(buffer[1])<<8 |
+			uint64(buffer[2])<<16 |
+			uint64(buffer[3])<<24 |
+			uint64(buffer[4])<<32 |
+			uint64(buffer[5])<<40 |
+			uint64(buffer[6])<<48 |
+			uint64(buffer[7])<<56)
+	}
+
+	if address == 0 {
+		return false, ErrNullPointer
+	}
+
+	// Compute byte offset and bit position from flag ID
+	// DS3 event flag layout: flagID maps to byte offset and bit
+	byteOffset := (flagID / 8)
+	bitPos := flagID % 8
+
+	flagAddr := uintptr(address) + uintptr(byteOffset)
+
+	singleByte := make([]byte, 8)
+	err := r.ops.ReadProcessMemory(r.processHandle, flagAddr, singleByte)
+	if err != nil {
+		return false, fmt.Errorf("failed to read event flag at 0x%X: %w", flagAddr, err)
+	}
+
+	return (singleByte[0] & (1 << bitPos)) != 0, nil
+}
+
+// ReadIGT reads the in-game time in milliseconds.
+func (r *GameReader) ReadIGT() (int64, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	if !r.is64Bit || r.game.IGTOffsets64 == nil {
+		return 0, fmt.Errorf("IGT reading not supported for this game")
+	}
+
+	offsets := r.game.IGTOffsets64
+
+	// Follow pointer chain to IGT value
+	address := int64(r.baseAddress)
+	buffer := make([]byte, 8)
+
+	for i, offset := range offsets {
+		if address == 0 {
+			return 0, ErrNullPointer
+		}
+
+		address += offset
+
+		err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buffer)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read memory at 0x%X: %w", address, err)
+		}
+
+		// Last value in chain is the IGT value (int32 ms), not a pointer
+		if i < len(offsets)-1 {
+			address = int64(uint64(buffer[0]) |
+				uint64(buffer[1])<<8 |
+				uint64(buffer[2])<<16 |
+				uint64(buffer[3])<<24 |
+				uint64(buffer[4])<<32 |
+				uint64(buffer[5])<<40 |
+				uint64(buffer[6])<<48 |
+				uint64(buffer[7])<<56)
+		}
+	}
+
+	// Parse IGT as int32 milliseconds
+	igtMs := int64(int32(uint32(buffer[0]) |
+		uint32(buffer[1])<<8 |
+		uint32(buffer[2])<<16 |
+		uint32(buffer[3])<<24))
+
+	return igtMs, nil
+}
