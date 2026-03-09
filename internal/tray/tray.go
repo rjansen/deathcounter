@@ -3,32 +3,19 @@ package tray
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"fyne.io/systray"
-	"github.com/rjansen/deathcounter/internal/memreader"
+	"github.com/rjansen/deathcounter/internal/monitor"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
 
-// RouteInfo provides route progress data for the tray display.
-type RouteInfo interface {
-	IsActive() bool
-	GetRoute() RouteData
-	CompletionPercent() float64
-	CompletedCount() int
-	TotalCount() int
-	CurrentCheckpointName() string
-	SplitDeaths() uint32
-}
-
-// RouteData holds basic route metadata.
-type RouteData struct {
-	Name string
-}
-
 // App represents the system tray application
 type App struct {
-	reader            *memreader.GameReader
+	monitor           monitor.Monitor
 	tracker           *stats.Tracker
+	ticker            *time.Ticker
+	stopCh            chan struct{}
 	menuTitle         *systray.MenuItem
 	menuGame          *systray.MenuItem
 	menuCount         *systray.MenuItem
@@ -42,9 +29,9 @@ type App struct {
 }
 
 // NewApp creates a new system tray application
-func NewApp(reader *memreader.GameReader, tracker *stats.Tracker) *App {
+func NewApp(mon monitor.Monitor, tracker *stats.Tracker) *App {
 	return &App{
-		reader:  reader,
+		monitor: mon,
 		tracker: tracker,
 	}
 }
@@ -108,6 +95,33 @@ func (a *App) onReady() {
 
 	mQuit := systray.AddMenuItem("Quit", "Quit the application")
 
+	// Start tick loop and listen for display updates
+	a.ticker = time.NewTicker(500 * time.Millisecond)
+	a.stopCh = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-a.ticker.C:
+				a.monitor.Tick()
+			case <-a.stopCh:
+				return
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case update, ok := <-a.monitor.DisplayUpdates():
+				if !ok {
+					return
+				}
+				a.refreshDisplay(update)
+			case <-a.stopCh:
+				return
+			}
+		}
+	}()
+
 	// Handle menu clicks
 	go func() {
 		for {
@@ -130,101 +144,103 @@ func (a *App) onReady() {
 // onExit is called when the system tray is exiting
 func (a *App) onExit() {
 	log.Println("Shutting down...")
+	if a.ticker != nil {
+		a.ticker.Stop()
+	}
+	if a.stopCh != nil {
+		close(a.stopCh)
+	}
 }
 
-// UpdateCount updates the death count display
-func (a *App) UpdateCount(count uint32) {
-	if a.menuCount != nil {
-		a.menuCount.SetTitle(fmt.Sprintf("Current: %d", count))
-	}
-	if a.menuSession != nil {
-		a.menuSession.SetTitle(fmt.Sprintf("Session: %d", count))
-	}
-	a.updateTotalDeaths()
-}
-
-// UpdateStatus updates the connection status
-func (a *App) UpdateStatus(status string) {
+// refreshDisplay updates all tray menu items from a DisplayUpdate.
+func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
+	// Status
 	if a.menuStatus != nil {
-		a.menuStatus.SetTitle(fmt.Sprintf("Status: %s", status))
+		a.menuStatus.SetTitle(fmt.Sprintf("Status: %s", update.Status))
 	}
 
-	// Update tooltip based on status
-	if status == "Connected" {
-		gameName := a.reader.GetCurrentGame()
-		if gameName != "" {
-			systray.SetTooltip(fmt.Sprintf("Death Counter - %s", gameName))
-		} else {
-			systray.SetTooltip("Death Counter - Connected")
-		}
-	} else {
-		systray.SetTooltip("Death Counter - " + status)
-	}
-}
-
-// UpdateGame updates the currently monitored game
-func (a *App) UpdateGame(gameName string) {
+	// Game
 	if a.menuGame != nil {
-		if gameName == "" {
+		if update.GameName == "" {
 			a.menuGame.SetTitle("Game: None")
 		} else {
-			a.menuGame.SetTitle(fmt.Sprintf("Game: %s", gameName))
+			a.menuGame.SetTitle(fmt.Sprintf("Game: %s", update.GameName))
 		}
 	}
 
-	// Update tooltip
-	if gameName != "" {
-		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", gameName))
+	// Tooltip
+	if update.Status == "Connected" && update.GameName != "" {
+		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", update.GameName))
+	} else if update.GameName != "" {
+		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", update.GameName))
 	} else {
-		systray.SetTooltip("Death Counter - Waiting for game")
+		systray.SetTooltip("Death Counter - " + update.Status)
 	}
+
+	// Death count
+	if a.menuCount != nil {
+		a.menuCount.SetTitle(fmt.Sprintf("Current: %d", update.DeathCount))
+	}
+	if a.menuSession != nil {
+		a.menuSession.SetTitle(fmt.Sprintf("Session: %d", update.DeathCount))
+	}
+	a.updateTotalDeaths()
+
+	// Route fields
+	a.refreshRouteDisplay(update.Fields)
 }
 
-// UpdateRouteProgress refreshes the route progress menu items.
-func (a *App) UpdateRouteProgress(info RouteInfo) {
-	if info == nil || !info.IsActive() {
-		a.SetRoute("")
+// refreshRouteDisplay updates route-specific menu items from Fields map.
+func (a *App) refreshRouteDisplay(fields map[string]any) {
+	if fields == nil {
+		// No route data — show defaults
+		a.setRouteDefaults()
 		return
 	}
-	route := info.GetRoute()
+
+	routeName, _ := fields["route_name"].(string)
+	if routeName == "" {
+		a.setRouteDefaults()
+		return
+	}
+
 	if a.menuRouteName != nil {
-		a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", route.Name))
+		a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", routeName))
 	}
+
 	if a.menuRouteProgress != nil {
-		a.menuRouteProgress.SetTitle(fmt.Sprintf("Progress: %d/%d (%.0f%%)",
-			info.CompletedCount(), info.TotalCount(), info.CompletionPercent()))
+		completed, _ := fields["completed_count"].(int)
+		total, _ := fields["total_count"].(int)
+		percent, _ := fields["completion_percent"].(float64)
+		a.menuRouteProgress.SetTitle(fmt.Sprintf("Progress: %d/%d (%.0f%%)", completed, total, percent))
 	}
+
 	if a.menuRouteCurrent != nil {
-		cp := info.CurrentCheckpointName()
+		cp, _ := fields["current_checkpoint"].(string)
 		if cp == "" {
 			cp = "Complete!"
 		}
 		a.menuRouteCurrent.SetTitle(fmt.Sprintf("Current: %s", cp))
 	}
+
 	if a.menuRouteSplitD != nil {
-		a.menuRouteSplitD.SetTitle(fmt.Sprintf("Split Deaths: %d", info.SplitDeaths()))
+		deaths, _ := fields["split_deaths"].(uint32)
+		a.menuRouteSplitD.SetTitle(fmt.Sprintf("Split Deaths: %d", deaths))
 	}
 }
 
-// SetRoute updates the route display name.
-func (a *App) SetRoute(name string) {
+func (a *App) setRouteDefaults() {
 	if a.menuRouteName != nil {
-		if name == "" {
-			a.menuRouteName.SetTitle("Route: None")
-		} else {
-			a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", name))
-		}
+		a.menuRouteName.SetTitle("Route: None")
 	}
-	if name == "" {
-		if a.menuRouteProgress != nil {
-			a.menuRouteProgress.SetTitle("Progress: -")
-		}
-		if a.menuRouteCurrent != nil {
-			a.menuRouteCurrent.SetTitle("Current: -")
-		}
-		if a.menuRouteSplitD != nil {
-			a.menuRouteSplitD.SetTitle("Split Deaths: 0")
-		}
+	if a.menuRouteProgress != nil {
+		a.menuRouteProgress.SetTitle("Progress: -")
+	}
+	if a.menuRouteCurrent != nil {
+		a.menuRouteCurrent.SetTitle("Current: -")
+	}
+	if a.menuRouteSplitD != nil {
+		a.menuRouteSplitD.SetTitle("Split Deaths: 0")
 	}
 }
 
