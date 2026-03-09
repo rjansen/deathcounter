@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
 )
@@ -13,8 +14,8 @@ import (
 type Route struct {
 	ID             string       `json:"id"`
 	Name           string       `json:"name"`
-	Game           string       `json:"game"`            // must match GameConfig.Name
-	Category       string       `json:"category"`        // e.g. "Any% Glitchless"
+	Game           string       `json:"game"`     // must match GameConfig.Name
+	Category       string       `json:"category"` // e.g. "Any% Glitchless"
 	Version        string       `json:"version"`
 	Checkpoints    []Checkpoint `json:"checkpoints"`     // ordered
 	ReferenceTimes []int64      `json:"reference_times"` // IGT ms per checkpoint (optional)
@@ -94,13 +95,7 @@ func (r *Route) validate() error {
 
 	// Validate game name matches a supported game
 	supported := memreader.GetSupportedGames()
-	found := false
-	for _, g := range supported {
-		if g == r.Game {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(supported, r.Game)
 	if !found {
 		return fmt.Errorf("unknown game %q", r.Game)
 	}
