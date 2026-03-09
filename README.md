@@ -86,13 +86,16 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 
 ### Route Features
 
-- **Boss kill detection** via game event flags
+- **Boss kill detection** via game event flags (hierarchical algorithm ported from SoulSplitter)
+- **Boss encounter detection** via separate event flags (triggers save backup before the fight)
+- **AOB scanning** to dynamically find memory structures (resilient to game updates)
 - **Level-up milestones** via memory value checks (e.g. "DEX >= 33")
 - **Weapon upgrade tracking** via max reinforcement level
+- **Pre-existing progress detection**: logs already-completed checkpoints on startup
 - **Per-checkpoint split times** (IGT-based)
 - **Per-segment death counts**
 - **Personal best tracking** with automatic comparison
-- **Save file backup** at each checkpoint
+- **Save file backup** on boss encounter (or boss kill if no encounter flag configured)
 
 ### Included Routes
 
@@ -116,7 +119,8 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13100800
+      "event_flag_id": 13100800,
+      "backup_flag_id": 13100801
     },
     {
       "id": "level-30",
@@ -141,6 +145,7 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
 | Type | Field | Description |
 |------|-------|-------------|
 | Event flag | `event_flag_id` | Game memory flag ID (boss kills, bonfires, item pickups) |
+| Backup trigger | `backup_flag_id` | Event flag that triggers a save backup (e.g. boss encounter) |
 | Memory value | `mem_check` | Read a value from a named memory path and compare it |
 
 #### Memory Check Fields
@@ -169,15 +174,17 @@ When using `"path": "player_stats"` for Dark Souls III:
 
 ## How It Works
 
-This application uses memory addresses discovered and shared by the [DSDeaths project](https://github.com/quidrex/DSDeaths) by quidrex. The memory reading technique:
+This application uses memory addresses discovered and shared by the [DSDeaths project](https://github.com/quidrex/DSDeaths) by quidrex, and event flag algorithms ported from [SoulSplitter](https://github.com/CapitaineToinworst/SoulSplitter). The memory reading technique:
 
 1. **Process Detection**: Scans for any supported game process
 2. **Architecture Detection**: Determines if the game is 32-bit or 64-bit
 3. **Memory Attachment**: Opens the process with read permissions
-4. **Pointer Traversal**: Follows pointer chains to find the death count value
-5. **Change Detection**: Monitors for changes in the death count
-6. **Statistics**: Records each death with timestamp in SQLite database
-7. **Display**: Updates system tray menu with current statistics
+4. **AOB Scanning**: Dynamically finds game structures (SprjEventFlagMan, FieldArea) by scanning for byte patterns in the `.text` section — more resilient to game updates than static offsets
+5. **Pointer Traversal**: Follows pointer chains to find the death count value
+6. **Event Flag Reading**: Uses hierarchical decimal decomposition to check boss kill/encounter flags
+7. **Change Detection**: Monitors for changes in the death count
+8. **Statistics**: Records each death with timestamp in SQLite database
+9. **Display**: Updates system tray menu with current statistics
 
 ### Memory Address Details
 
@@ -217,22 +224,26 @@ make clean
 ```
 deathcounter/
 ├── main.go                          # Application entry point + route integration
+├── cmd/
+│   └── icongen/main.go             # System tray icon generator (ICO format)
 ├── internal/
 │   ├── memreader/                   # Windows memory reading
-│   │   ├── config.go               # Game configurations, offsets, memory paths
+│   │   ├── config.go               # Game configurations, offsets, AOB patterns
 │   │   ├── reader.go               # Death count, event flag, IGT, and memory value reading
+│   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
 │   ├── stats/                       # Statistics tracking
 │   │   └── stats.go                # SQLite persistence, sessions, route runs, PBs
 │   ├── route/                       # Speedrun route tracking
 │   │   ├── route.go                # Route/Checkpoint data model + JSON loader
-│   │   ├── state.go                # Run state machine (ProcessTick logic)
+│   │   ├── state.go                # Run state machine (ProcessTick → TickResult)
 │   │   └── runner.go               # Runner orchestrator (reader + stats + backup)
 │   ├── backup/                      # Save file backup
 │   │   └── backup.go               # Timestamped file copy manager
 │   └── tray/                        # System tray UI
-│       └── tray.go                 # Menu, route progress display, event handling
+│       ├── tray.go                 # Menu, route progress display, event handling
+│       └── icon_data.go            # Generated ICO icon byte data
 ├── routes/                          # Route definition files (JSON)
 │   └── ds3-glitchless-any-percent-hybrid.json
 ├── go.mod                           # Go module definition
@@ -268,15 +279,17 @@ deathcounter/
 
 ## Credits
 
-Memory addresses and pointer patterns are from the [DSDeaths project](https://github.com/quidrex/DSDeaths) by quidrex.
+- Memory addresses and pointer patterns from the [DSDeaths project](https://github.com/quidrex/DSDeaths) by quidrex
+- Event flag hierarchical algorithm ported from [SoulSplitter](https://github.com/CapitaineToinworst/SoulSplitter)
 
 This Go implementation adds:
 - Cross-game support with auto-detection
+- AOB scanning for dynamic pointer resolution (resilient to game updates)
 - Speedrun route tracking with custom JSON route definitions
+- Boss encounter detection with save file backup before fights
 - Event flag reading, IGT reading, and memory value checks
 - Split timing with personal best tracking
-- Save file backup at checkpoints
-- System tray integration
+- System tray integration with ICO icon
 - Persistent statistics database
 - Session tracking
 

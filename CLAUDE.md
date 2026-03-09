@@ -70,20 +70,27 @@ go mod tidy
    - Module base address enumeration
    - Pointer chain traversal for memory reading
    - `ReadDeathCount()`: follows pointer chain to death count value
-   - `ReadEventFlag(flagID)`: reads event flags (boss kills, bonfires, item pickups)
+   - `ReadEventFlag(flagID)`: reads event flags using DS3 hierarchical algorithm (ported from SoulSplitter)
    - `ReadIGT()`: reads in-game time in milliseconds
    - `ReadMemoryValue(path, offset, size)`: reads arbitrary values from named memory paths
-   - `GameConfig` includes `EventFlagOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`
+   - **AOB scanning** (`aob.go`): dynamically finds SprjEventFlagMan and FieldArea pointers at runtime
+     - Parses PE header to locate `.text` section, scans in 64KB chunks with overlap
+     - Resolves RIP-relative addresses from matched patterns
+     - Results cached per attach with fallback to static offsets if AOB fails
+   - `GameConfig` includes `EventFlagOffsets64`, `FieldAreaOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`, `SprjEventFlagManAOB`, `FieldAreaAOB`
    - Auto-reconnection when process starts/stops
    - Memory addresses from DSDeaths project (https://github.com/quidrex/DSDeaths)
 
 3. **internal/route**: Speedrun route tracking
    - **route.go**: Route/Checkpoint data model with JSON loading and validation
-   - **state.go**: RunState machine with `ProcessTick` (pure logic, no I/O)
+   - **state.go**: RunState machine with `ProcessTick` returning `TickResult` (pure logic, no I/O)
    - **runner.go**: Runner orchestrator connecting state machine to memreader, stats, and backup
    - Checkpoints support two condition types: event flags (`event_flag_id`) and memory value checks (`mem_check`)
+   - `BackupFlagID` on checkpoints triggers save backup on boss encounter (before the fight)
    - `MemCheck` supports `gte`, `gt`, `eq` comparisons with configurable read size (1/2/4 bytes)
    - `TickInput` struct carries flags, memory values, IGT, and death count per cycle
+   - `TickResult` contains separate `Checkpoints` and `Backups` event lists
+   - `CatchUp()` detects and logs pre-existing checkpoint completions on route start
    - Tracks split times, per-segment deaths, completion percentage
    - Automatically detects run completion when all required checkpoints are done
 
@@ -134,6 +141,57 @@ Memory Reader (500ms poll) → Detect Game/Count Change → Update Stats DB → 
                              → Trigger Save Backup → Update Route Progress UI
 ```
 
+### Route Runner Startup Flow
+
+When the app detects a matching game, the route runner starts with this sequence:
+
+1. **Game Detection** (`main.go`): Monitor loop detects game process → matches route by game name → calls `runner.Start(0)`
+2. **Route Start** (`runner.go:Start`): Creates run record in SQLite, sets state to `RunInProgress`, initializes `LastDeathCount`
+3. **CatchUp Loop** (`main.go` + `runner.go:CatchUp`): Retries each tick until event flags are readable
+   - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
+     - Scans `.text` section for SprjEventFlagMan and FieldArea AOB patterns
+     - Resolves RIP-relative addresses and caches them (one-time cost per attach)
+   - Scans all checkpoint flags — marks already-set ones as completed with `[Route] Already completed: X`
+   - Marks backup as done for already-completed bosses (prevents unnecessary backups)
+   - Returns `false` on `ErrNullPointer` (game still loading) → retries next tick
+4. **Death Count Read**: Logs initial death count after CatchUp completes
+5. **Normal Tick Loop** (`runner.go:Tick`): Every 500ms:
+   - Reads **backup flags** (boss encounter) for uncompleted checkpoints
+   - Reads **event flags** (boss kill) for uncompleted checkpoints
+   - Reads **memory values** (level, weapon upgrade) for `mem_check` checkpoints
+   - Reads **IGT** (in-game time)
+   - `ProcessTick` returns `TickResult` with checkpoint and backup events:
+     - `BackupEvent`: encounter flag newly set → triggers save file backup (before the fight)
+     - `CheckpointEvent`: kill condition met → records split in DB, updates PB
+     - If no `backup_flag_id` configured, backup triggers on kill instead
+   - When all required checkpoints are done → marks run as `RunCompleted`
+
+### DS3 Event Flag Algorithm
+
+Event flags are read using the hierarchical algorithm ported from [SoulSplitter](https://github.com/CapitaineToinworst/SoulSplitter):
+
+```
+flagID → decompose: div10M, area, block, div1K, remainder
+       → if area ≥ 90 or area+block == 0: category = 0 (global flag)
+       → else: FieldArea lookup (scan world info entries for matching area+block) → category + 1
+       → SprjEventFlagMan → [+0x218] → array[div10M * 0x18] → dereference
+       → data address = ptr + (div1K << 4) + (category * 0xa8) → dereference
+       → read uint32 at (remainder >> 5) * 4, check bit (0x1f - (remainder & 0x1f))
+```
+
+DS3 boss flag pattern: Defeated = `XXX00800` (bit 7/bitIndex 31), Encountered = `XXX00801` (bit 6/bitIndex 30).
+
+### AOB (Array of Bytes) Scanning
+
+AOB scanning dynamically finds game structures at runtime, making the tool more resilient to game updates:
+
+1. Parse PE header to locate `.text` section bounds
+2. Read `.text` in 64KB chunks with overlap (handles patterns spanning boundaries)
+3. Match byte pattern with `?` wildcards (e.g. `"48 c7 05 ? ? ? ? 00 00 00 00"`)
+4. Resolve RIP-relative address: `matchAddr + instrLen + int32_displacement`
+5. Optionally dereference the resolved address (for SprjEventFlagMan)
+6. Cache result for the lifetime of the current attach
+
 ## Important Notes
 
 ### Memory Address Configuration
@@ -143,12 +201,15 @@ Game configurations are stored in `internal/memreader/config.go` in the `support
 - `ProcessName`: Executable name without .exe
 - `Offsets32`: Pointer chain for 32-bit death count (nil if not applicable)
 - `Offsets64`: Pointer chain for 64-bit death count (nil if not applicable)
-- `EventFlagOffsets64`: Pointer chain to event flag manager (for boss kill detection)
+- `EventFlagOffsets64`: Static pointer chain to SprjEventFlagMan (fallback if AOB fails)
+- `FieldAreaOffsets64`: Static pointer chain to FieldArea (fallback if AOB fails)
 - `IGTOffsets64`: Pointer chain to in-game time value
 - `MemoryPaths`: Named pointer chains for arbitrary memory reads (e.g. `"player_stats"`)
 - `SaveFilePattern`: Glob pattern for save file location (e.g. `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`)
+- `SprjEventFlagManAOB`: AOB pattern config to dynamically find SprjEventFlagMan at runtime
+- `FieldAreaAOB`: AOB pattern config to dynamically find FieldArea at runtime
 
-**These addresses are game-version specific**. After game updates, offsets may need updating. Check the DSDeaths project for updated addresses.
+**These addresses are game-version specific**. Static offsets may break after game updates. AOB patterns are more resilient to updates since they match instruction patterns rather than fixed addresses. Check the DSDeaths project for updated addresses.
 
 ### Windows-Specific Code
 
@@ -201,22 +262,30 @@ Other games do not have anti-cheat and work normally.
 
 1. Find memory addresses using CheatEngine or similar tool
 2. Determine pointer chains for death count, event flags, IGT, and player stats
-3. Add entry to `supportedGames` in `internal/memreader/config.go`:
+3. Optionally find AOB patterns for event flag manager and field area structures
+4. Add entry to `supportedGames` in `internal/memreader/config.go`:
    ```go
    {
        Name:               "Game Name",
        ProcessName:        "processname", // without .exe
        Offsets64:          []int64{0x..., 0x...},
        EventFlagOffsets64: []int64{0x..., 0x..., 0x...},
+       FieldAreaOffsets64: []int64{0x..., 0x...},
        IGTOffsets64:       []int64{0x..., 0x...},
        MemoryPaths: map[string][]int64{
            "player_stats": {0x..., 0x..., 0x...},
        },
        SaveFilePattern: `%APPDATA%\GameName\*\save.sl2`,
+       SprjEventFlagManAOB: &AOBPointerConfig{
+           Pattern:           "48 c7 05 ? ? ? ? ...",
+           RelativeOffsetPos: 3,
+           InstrLen:          11,
+           Dereference:       true,
+       },
    }
    ```
-4. Test with the actual game
-5. Update README.md with new game
+5. Test with the actual game
+6. Update README.md with new game
 
 ### Updating Memory Addresses
 
@@ -231,9 +300,10 @@ When a game updates and addresses change:
 1. Create a JSON file in `routes/` directory
 2. Set `game` field to match a `GameConfig.Name` exactly
 3. Define checkpoints with either `event_flag_id` (for boss kills) or `mem_check` (for levels/upgrades)
-4. Optional checkpoints (`"optional": true`) don't block run completion
-5. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
-6. Validate by loading the app — invalid routes log errors on startup
+4. Add `backup_flag_id` to boss checkpoints for save backup on encounter (before the fight)
+5. Optional checkpoints (`"optional": true`) don't block run completion
+6. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
+7. Validate by loading the app — invalid routes log errors on startup
 
 ### Adding a Named Memory Path
 
