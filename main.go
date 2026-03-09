@@ -82,6 +82,7 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 	var lastCount uint32 = 0
 	var lastGame string = ""
 	var waitingForLoad bool = false
+	var routeCaughtUp bool = false
 	checkInterval := 500 * time.Millisecond
 
 	for {
@@ -119,6 +120,7 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 					log.Printf("Failed to start route run: %v", err)
 				} else {
 					log.Printf("[Route] Started route: %s", runner.GetRoute().Name)
+					routeCaughtUp = false
 				}
 			}
 		}
@@ -159,6 +161,11 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 			tracker.RecordDeath(count)
 			trayApp.UpdateCount(count)
 			lastCount = count
+		}
+
+		// Catch up on pre-existing progress (retries until flags are readable)
+		if runner != nil && runner.IsActive() && !routeCaughtUp {
+			routeCaughtUp = runner.CatchUp(reader)
 		}
 
 		// Tick route runner if active
