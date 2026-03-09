@@ -3,13 +3,13 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "3",
+  "version": "4",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
       "name": "Iudex Gundyr",
       "event_type": "boss_kill",
-      "event_flag_id": 13000800
+      "event_flag_id": 14000800
     },
     {
       "id": "vordt",
