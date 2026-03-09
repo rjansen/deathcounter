@@ -155,17 +155,17 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 			trayApp.UpdateStatus("Connected")
 		}
 
+		// Catch up on pre-existing progress (retries until flags are readable)
+		if runner != nil && runner.IsActive() && !routeCaughtUp {
+			routeCaughtUp = runner.CatchUp(reader)
+		}
+
 		// Update if count changed
 		if count != lastCount {
 			log.Printf("[%s] Death count: %d (previous: %d)", reader.GetCurrentGame(), count, lastCount)
 			tracker.RecordDeath(count)
 			trayApp.UpdateCount(count)
 			lastCount = count
-		}
-
-		// Catch up on pre-existing progress (retries until flags are readable)
-		if runner != nil && runner.IsActive() && !routeCaughtUp {
-			routeCaughtUp = runner.CatchUp(reader)
 		}
 
 		// Tick route runner if active
