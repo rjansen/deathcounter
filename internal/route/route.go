@@ -22,12 +22,13 @@ type Route struct {
 
 // Checkpoint represents a single trackable event in a route.
 type Checkpoint struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	EventType   string    `json:"event_type"`              // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
-	EventFlagID uint32    `json:"event_flag_id,omitempty"` // game memory flag ID (for flag-based checks)
-	MemCheck    *MemCheck `json:"mem_check,omitempty"`     // memory value check (for value-based checks)
-	Optional    bool      `json:"optional"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	EventType    string    `json:"event_type"`               // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
+	EventFlagID  uint32    `json:"event_flag_id,omitempty"`  // game memory flag ID (for flag-based checks)
+	BackupFlagID uint32    `json:"backup_flag_id,omitempty"` // event flag that triggers a save backup (e.g. boss encounter)
+	MemCheck     *MemCheck `json:"mem_check,omitempty"`      // memory value check (for value-based checks)
+	Optional     bool      `json:"optional"`
 }
 
 // MemCheck defines a condition based on reading an integer from game memory.

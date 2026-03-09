@@ -95,6 +95,38 @@ func (r *Runner) SplitDeaths() uint32 {
 	return r.state.SplitDeaths[cp.ID]
 }
 
+// CatchUp scans all checkpoint flags and marks any that are already set as completed.
+// Returns true when the scan completes, false if flag reading isn't ready yet (retry later).
+func (r *Runner) CatchUp(reader *memreader.GameReader) bool {
+	if !r.IsActive() {
+		return true
+	}
+
+	for _, cp := range r.route.Checkpoints {
+		if r.state.CompletedFlags[cp.ID] {
+			continue
+		}
+
+		if cp.EventFlagID != 0 {
+			flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
+			if err != nil {
+				// Not ready yet — caller should retry later
+				return false
+			}
+			if flagSet {
+				r.state.CompletedFlags[cp.ID] = true
+				log.Printf("[Route] Already completed: %s", cp.Name)
+			}
+		}
+
+		// Also mark backup as done for already-completed checkpoints
+		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
+			r.state.BackupDone[cp.ID] = true
+		}
+	}
+	return true
+}
+
 // Tick is called every poll cycle. It reads event flags and IGT from the reader,
 // processes the state machine, records splits, and triggers backups.
 func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]CheckpointEvent, error) {
@@ -110,20 +142,36 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 	}
 
 	for _, cp := range r.route.Checkpoints {
+		// Read backup flag even if checkpoint is already completed
+		if cp.BackupFlagID != 0 && !r.state.BackupDone[cp.ID] {
+			if _, exists := input.Flags[cp.BackupFlagID]; !exists {
+				flagSet, err := reader.ReadEventFlag(cp.BackupFlagID)
+				if err != nil {
+					if errors.Is(err, memreader.ErrNullPointer) {
+						return nil, nil
+					}
+					return nil, fmt.Errorf("failed to read backup flag %d: %w", cp.BackupFlagID, err)
+				}
+				input.Flags[cp.BackupFlagID] = flagSet
+			}
+		}
+
 		if r.state.CompletedFlags[cp.ID] {
 			continue
 		}
 
 		// Flag-based checkpoint
 		if cp.EventFlagID != 0 {
-			flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
-			if err != nil {
-				if errors.Is(err, memreader.ErrNullPointer) {
-					return nil, nil // transient: game still loading
+			if _, exists := input.Flags[cp.EventFlagID]; !exists {
+				flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
+				if err != nil {
+					if errors.Is(err, memreader.ErrNullPointer) {
+						return nil, nil // transient: game still loading
+					}
+					return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
 				}
-				return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
+				input.Flags[cp.EventFlagID] = flagSet
 			}
-			input.Flags[cp.EventFlagID] = flagSet
 		}
 
 		// Memory value checkpoint
@@ -154,10 +202,17 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 	input.IGT = igt
 
 	// Process tick through state machine
-	events := r.state.ProcessTick(input)
+	result := r.state.ProcessTick(input)
+
+	// Trigger save backups for encounter events (before the fight)
+	for _, bk := range result.Backups {
+		log.Printf("[Route] Backup triggered: %s (encounter)", bk.Checkpoint.Name)
+		r.triggerBackup(bk.Checkpoint.ID)
+	}
 
 	// Record each completed checkpoint
-	for _, evt := range events {
+	for _, evt := range result.Checkpoints {
+		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
 		if err := r.tracker.RecordSplit(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
 			evt.IGT, evt.SplitDuration, evt.Deaths); err != nil {
 			log.Printf("Failed to record split: %v", err)
@@ -169,18 +224,9 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 			log.Printf("Failed to update PB: %v", err)
 		}
 
-		// Trigger save backup
-		if r.backup != nil {
-			game := r.findGameConfig()
-			if game != nil && game.SaveFilePattern != "" {
-				savePath, err := r.backup.ResolveSavePath(game.SaveFilePattern)
-				if err == nil {
-					label := fmt.Sprintf("%s_%s", r.route.ID, evt.Checkpoint.ID)
-					if _, err := r.backup.Backup(savePath, label); err != nil {
-						log.Printf("Failed to backup save: %v", err)
-					}
-				}
-			}
+		// Trigger save backup on kill if no encounter backup was configured
+		if evt.Checkpoint.BackupFlagID == 0 {
+			r.triggerBackup(evt.Checkpoint.ID)
 		}
 	}
 
@@ -192,7 +238,26 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 		}
 	}
 
-	return events, nil
+	return result.Checkpoints, nil
+}
+
+func (r *Runner) triggerBackup(checkpointID string) {
+	if r.backup == nil {
+		return
+	}
+	game := r.findGameConfig()
+	if game == nil || game.SaveFilePattern == "" {
+		return
+	}
+	savePath, err := r.backup.ResolveSavePath(game.SaveFilePattern)
+	if err != nil {
+		log.Printf("Failed to resolve save path: %v", err)
+		return
+	}
+	label := fmt.Sprintf("%s_%s", r.route.ID, checkpointID)
+	if _, err := r.backup.Backup(savePath, label); err != nil {
+		log.Printf("Failed to backup save: %v", err)
+	}
 }
 
 func (r *Runner) findGameConfig() *memreader.GameConfig {

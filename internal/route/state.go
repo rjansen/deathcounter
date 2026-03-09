@@ -18,6 +18,7 @@ type RunState struct {
 	Status         RunStatus
 	StartTime      time.Time
 	CompletedFlags map[string]bool   // checkpoint ID -> done
+	BackupDone     map[string]bool   // checkpoint ID -> backup already triggered
 	SplitTimes     map[string]int64  // checkpoint ID -> IGT ms
 	SplitDeaths    map[string]uint32 // checkpoint ID -> deaths in segment
 	LastDeathCount uint32
@@ -38,6 +39,7 @@ func NewRunState(route *Route) *RunState {
 		Route:          route,
 		Status:         RunNotStarted,
 		CompletedFlags: make(map[string]bool),
+		BackupDone:     make(map[string]bool),
 		SplitTimes:     make(map[string]int64),
 		SplitDeaths:    make(map[string]uint32),
 	}
@@ -56,22 +58,41 @@ func (rs *RunState) Abandon() {
 
 // TickInput holds all memory readings for a single tick cycle.
 type TickInput struct {
-	Flags      map[uint32]bool          // event flag ID → set
-	MemValues  map[string]uint32        // checkpoint ID → current memory value (for mem_check checkpoints)
+	Flags      map[uint32]bool   // event flag ID → set
+	MemValues  map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
 	IGT        int64
 	DeathCount uint32
 }
 
+// BackupEvent is emitted when a backup flag is newly set (e.g. boss encountered).
+type BackupEvent struct {
+	Checkpoint Checkpoint
+}
+
+// TickResult holds the outputs of a single ProcessTick call.
+type TickResult struct {
+	Checkpoints []CheckpointEvent
+	Backups     []BackupEvent
+}
+
 // ProcessTick checks which checkpoint conditions are newly met and records events.
-func (rs *RunState) ProcessTick(input TickInput) []CheckpointEvent {
+func (rs *RunState) ProcessTick(input TickInput) TickResult {
 	if rs.Status != RunInProgress {
-		return nil
+		return TickResult{}
 	}
 
-	var events []CheckpointEvent
+	var result TickResult
 	segmentDeaths := input.DeathCount - rs.LastDeathCount
 
 	for _, cp := range rs.Route.Checkpoints {
+		// Check backup flag (boss encounter) independently from checkpoint completion
+		if cp.BackupFlagID != 0 && !rs.BackupDone[cp.ID] {
+			if input.Flags[cp.BackupFlagID] {
+				rs.BackupDone[cp.ID] = true
+				result.Backups = append(result.Backups, BackupEvent{Checkpoint: cp})
+			}
+		}
+
 		if rs.CompletedFlags[cp.ID] {
 			continue
 		}
@@ -91,7 +112,7 @@ func (rs *RunState) ProcessTick(input TickInput) []CheckpointEvent {
 		rs.SplitTimes[cp.ID] = input.IGT
 		rs.SplitDeaths[cp.ID] = segmentDeaths
 
-		events = append(events, CheckpointEvent{
+		result.Checkpoints = append(result.Checkpoints, CheckpointEvent{
 			Checkpoint:    cp,
 			IGT:           input.IGT,
 			SplitDuration: splitDuration,
@@ -105,11 +126,11 @@ func (rs *RunState) ProcessTick(input TickInput) []CheckpointEvent {
 	rs.LastDeathCount = input.DeathCount
 	rs.LastIGT = input.IGT
 
-	if len(events) > 0 && rs.IsComplete() {
+	if len(result.Checkpoints) > 0 && rs.IsComplete() {
 		rs.Status = RunCompleted
 	}
 
-	return events
+	return result
 }
 
 // checkCondition returns true if the checkpoint's condition is met.
