@@ -3,31 +3,35 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "4",
+  "version": "5",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
       "name": "Iudex Gundyr",
       "event_type": "boss_kill",
-      "event_flag_id": 14000800
+      "event_flag_id": 14000800,
+      "backup_flag_id": 14000801
     },
     {
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13100800
+      "event_flag_id": 13100800,
+      "backup_flag_id": 13100801
     },
     {
       "id": "abyss-watchers",
       "name": "Abyss Watchers",
       "event_type": "boss_kill",
-      "event_flag_id": 13300800
+      "event_flag_id": 13300800,
+      "backup_flag_id": 13300801
     },
     {
       "id": "wolnir",
       "name": "High Lord Wolnir",
       "event_type": "boss_kill",
-      "event_flag_id": 13800800
+      "event_flag_id": 13800800,
+      "backup_flag_id": 13800801
     },
     {
       "id": "twinblades-plus3",
@@ -47,31 +51,36 @@
       "id": "crystal-sage",
       "name": "Crystal Sage",
       "event_type": "boss_kill",
-      "event_flag_id": 13200800
+      "event_flag_id": 13200800,
+      "backup_flag_id": 13200801
     },
     {
       "id": "deacons",
       "name": "Deacons of the Deep",
       "event_type": "boss_kill",
-      "event_flag_id": 13500850
+      "event_flag_id": 13500850,
+      "backup_flag_id": 13500851
     },
     {
       "id": "yhorm",
       "name": "Yhorm the Giant",
       "event_type": "boss_kill",
-      "event_flag_id": 13900800
+      "event_flag_id": 13900800,
+      "backup_flag_id": 13900801
     },
     {
       "id": "pontiff",
       "name": "Pontiff Sulyvahn",
       "event_type": "boss_kill",
-      "event_flag_id": 13700800
+      "event_flag_id": 13700800,
+      "backup_flag_id": 13700801
     },
     {
       "id": "aldrich",
       "name": "Aldrich, Devourer of Gods",
       "event_type": "boss_kill",
-      "event_flag_id": 13701800
+      "event_flag_id": 13701800,
+      "backup_flag_id": 13701801
     },
     {
       "id": "twinblades-plus6",
@@ -91,19 +100,22 @@
       "id": "dancer",
       "name": "Dancer of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13010800
+      "event_flag_id": 13010800,
+      "backup_flag_id": 13010801
     },
     {
       "id": "dragonslayer-armour",
       "name": "Dragonslayer Armour",
       "event_type": "boss_kill",
-      "event_flag_id": 13500800
+      "event_flag_id": 13500800,
+      "backup_flag_id": 13500801
     },
     {
       "id": "twin-princes",
       "name": "Twin Princes",
       "event_type": "boss_kill",
-      "event_flag_id": 13501800
+      "event_flag_id": 13501800,
+      "backup_flag_id": 13501801
     },
     {
       "id": "dex-47",
@@ -116,7 +128,8 @@
       "id": "soul-of-cinder",
       "name": "Soul of Cinder",
       "event_type": "boss_kill",
-      "event_flag_id": 14100800
+      "event_flag_id": 14100800,
+      "backup_flag_id": 14100801
     }
   ],
   "reference_times": [95000, 225000, 480000, 630000, 680000, 690000, 870000, 1020000, 1170000, 1320000, 1470000, 1510000, 1530000, 1680000, 1830000, 2010000, 2070000, 2400000]
