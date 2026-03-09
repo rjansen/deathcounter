@@ -101,14 +101,26 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 				}
 				continue
 			}
+		}
 
-			currentGame := reader.GetCurrentGame()
+		// Detect game change (including first detection when already attached at startup)
+		currentGame := reader.GetCurrentGame()
+		if currentGame != lastGame {
 			log.Printf("Attached to: %s", currentGame)
 			trayApp.UpdateStatus("Connected")
 			trayApp.UpdateGame(currentGame)
 			lastGame = currentGame
 			lastCount = 0
 			waitingForLoad = false
+
+			// Auto-start route runner if the route matches the detected game
+			if runner != nil && !runner.IsActive() && runner.GetRoute().Game == currentGame {
+				if err := runner.Start(0); err != nil {
+					log.Printf("Failed to start route run: %v", err)
+				} else {
+					log.Printf("[Route] Started route: %s", runner.GetRoute().Name)
+				}
+			}
 		}
 
 		// Read death count
