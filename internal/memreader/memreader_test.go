@@ -128,6 +128,13 @@ func (m *mockProcessOps) setMemory32(address uintptr, value uint32) {
 	m.memory[address] = b
 }
 
+// setMemoryByte writes a single byte at the given address (padded to 8 bytes).
+func (m *mockProcessOps) setMemoryByte(address uintptr, value byte) {
+	b := make([]byte, 8)
+	b[0] = value
+	m.memory[address] = b
+}
+
 // --- State management tests ---
 
 func TestGetSupportedGames(t *testing.T) {
@@ -535,72 +542,161 @@ func attachDS3WithEventFlags(t *testing.T) (*mockProcessOps, *GameReader) {
 	return mock, reader
 }
 
-func TestReadEventFlag_FlagSet(t *testing.T) {
+// setupGlobalFlag sets up mock memory for a global event flag (area >= 90 or area+block == 0).
+// Global flags have category=0 and skip the FieldArea lookup.
+func setupGlobalFlag(mock *mockProcessOps) {
+	// EventFlagOffsets64: {0x4768E78, 0x0} → SprjEventFlagMan
+	// base(0x140000000) + 0x4768E78 = 0x144768E78
+	mock.setMemory64(0x144768E78, 0x30000000) // SprjEventFlagMan
+
+	// SprjEventFlagMan + 0x218 → array of flag region pointers
+	mock.setMemory64(0x30000218, 0x50000000) // array base
+
+	// array[1] (div10000000=1 for flag 13000800) → 0x50000000 + 1*0x18 = 0x50000018
+	mock.setMemory64(0x50000018, 0x60000000) // flag region base
+
+	// Flag data pointer: base + (div1000<<4) + category*0xa8
+	// For flag 13000800: div1000=0, category=0 → 0x60000000
+	mock.setMemory64(0x60000000, 0x70000000) // flag data
+}
+
+func TestReadEventFlag_GlobalFlag_Set(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+	setupGlobalFlag(mock)
+
+	// Flag 13000800: area=30, block=0. area+block != 0 and area < 90 → NOT global.
+	// Use flag 19000800 instead (area=90 → global, category=0)
+	// div10000000=1, area=90, div10000=0, div1000=0, remainder=800
+
+	// For area >= 90: category=0
+	// dwordIndex = (800 >> 5) * 4 = 25 * 4 = 100
+	// bitIndex = 0x1f - (800 & 0x1f) = 31 - 0 = 31
+	// mask = 1 << 31 = 0x80000000
+	mock.setMemory32(0x70000000+100, 0x80000000) // bit 31 set
+
+	set, err := reader.ReadEventFlag(19000800)
+	if err != nil {
+		t.Fatalf("ReadEventFlag: %v", err)
+	}
+	if !set {
+		t.Error("expected global flag to be set")
+	}
+}
+
+func TestReadEventFlag_GlobalFlag_NotSet(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+	setupGlobalFlag(mock)
+
+	mock.setMemory32(0x70000000+100, 0x00000000) // no bits set
+
+	set, err := reader.ReadEventFlag(19000800)
+	if err != nil {
+		t.Fatalf("ReadEventFlag: %v", err)
+	}
+	if set {
+		t.Error("expected global flag to not be set")
+	}
+}
+
+// setupAreaFlag sets up mock memory for an area-specific event flag that requires FieldArea lookup.
+func setupAreaFlag(mock *mockProcessOps, flagID uint32, category int32) {
+	area := int(flagID/100000) % 100
+	block := int(flagID/10000) % 10
+
+	// SprjEventFlagMan chain
+	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x30000218, 0x50000000)
+	div10000000 := int(flagID/10000000) % 10
+	mock.setMemory64(uintptr(0x50000000+div10000000*0x18), 0x60000000)
+
+	// FieldAreaOffsets64: {0x4768028, 0x0}
+	// base + 0x4768028 = 0x144768028 → deref → 0xA0000000 (fieldArea, last offset 0x0 not derefed)
+	mock.setMemory64(0x144768028, 0xA0000000) // fieldArea base
+
+	// lookupFieldAreaCategory: readPtr(fieldArea) → ptr1
+	mock.setMemory64(0xA0000000, 0xA0500000) // ptr1
+
+	// readPtr(ptr1 + 0x10) → worldInfoOwner
+	mock.setMemory64(0xA0500010, 0xA1000000) // worldInfoOwner
+
+	// worldInfoOwner + 0x8 = size, worldInfoOwner + 0x10 = pointer to vector
+	mock.setMemory32(0xA1000008, 1)            // 1 world info entry
+	mock.setMemory64(0xA1000010, 0xA2000000)   // vector pointer
+
+	// Entry 0 at vectorBase(0xA2000000): area byte at +0xb
+	vectorBase := uintptr(0xA2000000)
+	mock.setMemoryByte(vectorBase+0xb, byte(area))
+
+	// Block count at entry +0x20
+	mock.setMemoryByte(vectorBase+0x20, 1)
+
+	// Block vector ptr at entry +0x28
+	mock.setMemory64(vectorBase+0x28, 0xA3000000)
+
+	// Block entry 0: packed flag at +0x8 = (area << 24) | (block << 16)
+	packedFlag := int32(area<<24) | int32(block<<16)
+	mock.setMemory32(0xA3000000+0x8, uint32(packedFlag))
+
+	// Category at +0x20
+	mock.setMemory32(0xA3000000+0x20, uint32(category))
+
+	// Flag data: base + (div1000<<4) + (category+1)*0xa8
+	div1000 := int(flagID/1000) % 10
+	dataAddr := uintptr(0x60000000 + div1000*0x10 + (int(category)+1)*0xa8)
+	mock.setMemory64(dataAddr, 0x70000000) // flag data pointer
+}
+
+func TestReadEventFlag_AreaFlag_Set(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	// DS3 EventFlagOffsets64: {0x4768E78, 0x0, 0x0}
-	// base(0x140000000) + 0x4768E78 = 0x144768E78 → pointer
-	mock.setMemory64(0x144768E78, 0x30000000)
-	// 0x30000000 + 0x0 = 0x30000000 → pointer
-	mock.setMemory64(0x30000000, 0x40000000)
-	// 0x40000000 + 0x0 = 0x40000000 → event flag manager base
-	mock.setMemory64(0x40000000, 0x50000000)
+	// Flag 13000800: Iudex Gundyr
+	// area=30, block=0, div1000=0, remainder=800
+	setupAreaFlag(mock, 13000800, 5) // arbitrary category=5
 
-	// Flag ID 13000800: byteOffset = 13000800/8 = 1625100, bitPos = 13000800%8 = 0
-	flagAddr := uintptr(0x50000000 + 1625100)
-	b := make([]byte, 8)
-	b[0] = 0x01 // bit 0 set
-	mock.memory[flagAddr] = b
+	// dwordIndex = (800 >> 5) * 4 = 100
+	// bitIndex = 31
+	mock.setMemory32(0x70000000+100, 0x80000000)
 
 	set, err := reader.ReadEventFlag(13000800)
 	if err != nil {
 		t.Fatalf("ReadEventFlag: %v", err)
 	}
 	if !set {
-		t.Error("expected flag to be set")
+		t.Error("expected area flag to be set")
 	}
 }
 
-func TestReadEventFlag_FlagNotSet(t *testing.T) {
+func TestReadEventFlag_AreaFlag_NotSet(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
+	setupAreaFlag(mock, 13000800, 5)
 
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000000, 0x40000000)
-	mock.setMemory64(0x40000000, 0x50000000)
-
-	flagAddr := uintptr(0x50000000 + 1625100)
-	b := make([]byte, 8)
-	b[0] = 0x00 // bit 0 not set
-	mock.memory[flagAddr] = b
+	mock.setMemory32(0x70000000+100, 0x00000000)
 
 	set, err := reader.ReadEventFlag(13000800)
 	if err != nil {
 		t.Fatalf("ReadEventFlag: %v", err)
 	}
 	if set {
-		t.Error("expected flag to not be set")
+		t.Error("expected area flag to not be set")
 	}
 }
 
 func TestReadEventFlag_BitPosition(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
+	setupGlobalFlag(mock)
 
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000000, 0x40000000)
-	mock.setMemory64(0x40000000, 0x50000000)
+	// Flag 19000803: remainder=803
+	// dwordIndex = (803 >> 5) * 4 = 25 * 4 = 100
+	// bitIndex = 0x1f - (803 & 0x1f) = 31 - 3 = 28
+	// mask = 1 << 28 = 0x10000000
+	mock.setMemory32(0x70000000+100, 0x10000000)
 
-	// Flag ID 13000803: byteOffset = 13000803/8 = 1625100, bitPos = 13000803%8 = 3
-	flagAddr := uintptr(0x50000000 + 1625100)
-	b := make([]byte, 8)
-	b[0] = 0x08 // bit 3 set (0b00001000)
-	mock.memory[flagAddr] = b
-
-	set, err := reader.ReadEventFlag(13000803)
+	set, err := reader.ReadEventFlag(19000803)
 	if err != nil {
 		t.Fatalf("ReadEventFlag: %v", err)
 	}
 	if !set {
-		t.Error("expected flag at bit 3 to be set")
+		t.Error("expected flag at bit 28 to be set")
 	}
 }
 
@@ -617,10 +713,10 @@ func TestReadEventFlag_NotAttached(t *testing.T) {
 func TestReadEventFlag_NullPointer(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	// First read returns null
+	// SprjEventFlagMan returns null
 	mock.setMemory64(0x144768E78, 0)
 
-	_, err := reader.ReadEventFlag(13000800)
+	_, err := reader.ReadEventFlag(19000800)
 	if err == nil {
 		t.Fatal("expected error for null pointer")
 	}
