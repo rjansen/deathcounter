@@ -1,17 +1,20 @@
 package main
 
 import (
-	"errors"
+	"flag"
 	"log"
-	"time"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
+	"github.com/rjansen/deathcounter/internal/monitor"
 	"github.com/rjansen/deathcounter/internal/route"
 	"github.com/rjansen/deathcounter/internal/stats"
 	"github.com/rjansen/deathcounter/internal/tray"
 )
 
 func main() {
+	dcOnly := flag.Bool("dc", false, "Death counter only (disable route tracking)")
+	flag.Parse()
+
 	log.Println("Starting FromSoftware Death Counter...")
 	log.Println("Supported games:")
 	for _, game := range memreader.GetSupportedGames() {
@@ -35,165 +38,25 @@ func main() {
 		log.Printf("Attached to: %s", reader.GetCurrentGame())
 	}
 
-	// Initialize system tray
-	trayApp := tray.NewApp(reader, statsTracker)
-
-	// Load route runner if routes directory exists
-	var runner *route.Runner
+	// Load routes
 	routes, err := route.LoadRoutesDir("routes")
 	if err != nil {
 		log.Printf("Warning: Could not load routes: %v", err)
 	} else if len(routes) > 0 {
-		// Use the first available route for now
-		r := routes[0]
-		log.Printf("Loaded route: %s (%s)", r.Name, r.Game)
-		runner = route.NewRunner(r, statsTracker, nil)
+		log.Printf("Loaded route: %s (%s)", routes[0].Name, routes[0].Game)
 	}
 
-	// Start monitoring loop in background
-	go monitorDeathCount(reader, statsTracker, trayApp, runner)
+	// Choose monitor based on available routes and flags
+	var mon monitor.Monitor
+	if !*dcOnly && len(routes) > 0 {
+		mon = monitor.NewRouteMonitor(reader, statsTracker, routes, nil)
+	} else {
+		mon = monitor.NewDeathCounterMonitor(reader, statsTracker)
+	}
 
-	// Run system tray (blocks until quit)
+	// Run system tray (blocks until quit, owns the tick loop)
+	trayApp := tray.NewApp(mon, statsTracker)
 	if err := trayApp.Run(); err != nil {
 		log.Fatalf("System tray error: %v", err)
-	}
-}
-
-// routeAdapter adapts route.Runner to tray.RouteInfo interface.
-type routeAdapter struct {
-	runner *route.Runner
-}
-
-func (a *routeAdapter) IsActive() bool               { return a.runner.IsActive() }
-func (a *routeAdapter) GetRoute() tray.RouteData      { return tray.RouteData{Name: a.runner.GetRoute().Name} }
-func (a *routeAdapter) CompletionPercent() float64     { return a.runner.CompletionPercent() }
-func (a *routeAdapter) CompletedCount() int            { return a.runner.CompletedCount() }
-func (a *routeAdapter) TotalCount() int                { return a.runner.TotalCount() }
-func (a *routeAdapter) SplitDeaths() uint32            { return a.runner.SplitDeaths() }
-func (a *routeAdapter) CurrentCheckpointName() string {
-	cp := a.runner.CurrentCheckpoint()
-	if cp == nil {
-		return ""
-	}
-	return cp.Name
-}
-
-func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, trayApp *tray.App, runner *route.Runner) {
-	var lastCount uint32 = 0
-	var lastGame string = ""
-	var waitingForLoad bool = false
-	var routeCaughtUp bool = false
-	checkInterval := 500 * time.Millisecond
-
-	// Sync initial state if already attached at startup
-	if reader.IsAttached() {
-		lastGame = reader.GetCurrentGame()
-		trayApp.UpdateStatus("Connected")
-		trayApp.UpdateGame(lastGame)
-
-		if runner != nil && !runner.IsActive() && runner.GetRoute().Game == lastGame {
-			if err := runner.Start(0); err != nil {
-				log.Printf("Failed to start route run: %v", err)
-			} else {
-				log.Printf("[Route] Started route: %s", runner.GetRoute().Name)
-			}
-		}
-	}
-
-	for {
-		time.Sleep(checkInterval)
-
-		// Try to attach if not connected
-		if !reader.IsAttached() {
-			if err := reader.Attach(); err != nil {
-				// Update status only if game changed
-				if lastGame != "" {
-					log.Printf("[%s] Game process ended", lastGame)
-					trayApp.UpdateStatus("Waiting for game...")
-					trayApp.UpdateGame("")
-					lastGame = ""
-					lastCount = 0
-					waitingForLoad = false
-				}
-				continue
-			}
-		}
-
-		// Detect game change (including first detection when already attached at startup)
-		currentGame := reader.GetCurrentGame()
-		if currentGame != lastGame {
-			log.Printf("Attached to: %s", currentGame)
-			trayApp.UpdateStatus("Connected")
-			trayApp.UpdateGame(currentGame)
-			lastGame = currentGame
-			lastCount = 0
-			waitingForLoad = false
-
-			// Auto-start route runner if the route matches the detected game
-			if runner != nil && !runner.IsActive() && runner.GetRoute().Game == currentGame {
-				if err := runner.Start(0); err != nil {
-					log.Printf("Failed to start route run: %v", err)
-				} else {
-					log.Printf("[Route] Started route: %s", runner.GetRoute().Name)
-					routeCaughtUp = false
-				}
-			}
-		}
-
-		// Read death count
-		count, err := reader.ReadDeathCount()
-		if err != nil {
-			if errors.Is(err, memreader.ErrNullPointer) {
-				// Transient error: game is loading, don't detach
-				if !waitingForLoad {
-					log.Printf("[%s] Waiting for game to fully load...", reader.GetCurrentGame())
-					trayApp.UpdateStatus("Loading...")
-					waitingForLoad = true
-				}
-				continue
-			}
-
-			// Fatal error: process likely gone, detach
-			log.Printf("[%s] Disconnected: %v", reader.GetCurrentGame(), err)
-			reader.Detach()
-			trayApp.UpdateStatus("Disconnected")
-			trayApp.UpdateGame("")
-			lastGame = ""
-			waitingForLoad = false
-			continue
-		}
-
-		// Clear waiting state on successful read
-		if waitingForLoad {
-			log.Printf("[%s] Game loaded successfully", reader.GetCurrentGame())
-			waitingForLoad = false
-			trayApp.UpdateStatus("Connected")
-		}
-
-		// Catch up on pre-existing progress (retries until flags are readable)
-		if runner != nil && runner.IsActive() && !routeCaughtUp {
-			routeCaughtUp = runner.CatchUp(reader)
-		}
-
-		// Update if count changed
-		if count != lastCount {
-			log.Printf("[%s] Death count: %d (previous: %d)", reader.GetCurrentGame(), count, lastCount)
-			tracker.RecordDeath(count)
-			trayApp.UpdateCount(count)
-			lastCount = count
-		}
-
-		// Tick route runner if active
-		if runner != nil && runner.IsActive() {
-			events, err := runner.Tick(reader, lastCount)
-			if err != nil {
-				log.Printf("Route tracking error: %v", err)
-			}
-			for _, evt := range events {
-				log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
-					evt.Checkpoint.Name, evt.IGT, evt.Deaths)
-			}
-			trayApp.UpdateRouteProgress(&routeAdapter{runner: runner})
-		}
 	}
 }
