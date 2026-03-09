@@ -1,6 +1,7 @@
 package route
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
@@ -30,13 +31,16 @@ func NewRunner(route *Route, tracker *stats.Tracker, backupMgr *backup.Manager) 
 }
 
 // Start begins a new route run, recording it in the database.
-func (r *Runner) Start() error {
+// initialDeathCount should be the current death count so the first segment
+// only tracks deaths that occur after the run starts.
+func (r *Runner) Start(initialDeathCount uint32) error {
 	runID, err := r.tracker.StartRouteRun(r.route.ID, r.route.Game)
 	if err != nil {
 		return fmt.Errorf("failed to start route run: %w", err)
 	}
 	r.runID = runID
 	r.state.Start()
+	r.state.LastDeathCount = initialDeathCount
 	return nil
 }
 
@@ -114,6 +118,9 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 		if cp.EventFlagID != 0 {
 			flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
 			if err != nil {
+				if errors.Is(err, memreader.ErrNullPointer) {
+					return nil, nil // transient: game still loading
+				}
 				return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
 			}
 			input.Flags[cp.EventFlagID] = flagSet
@@ -127,6 +134,9 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 			}
 			val, err := reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
 			if err != nil {
+				if errors.Is(err, memreader.ErrNullPointer) {
+					return nil, nil // transient: game still loading
+				}
 				return nil, fmt.Errorf("failed to read memory value for %s: %w", cp.ID, err)
 			}
 			input.MemValues[cp.ID] = val
@@ -136,6 +146,9 @@ func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]Checkp
 	// Read IGT
 	igt, err := reader.ReadIGT()
 	if err != nil {
+		if errors.Is(err, memreader.ErrNullPointer) {
+			return nil, nil // transient: game still loading
+		}
 		return nil, fmt.Errorf("failed to read IGT: %w", err)
 	}
 	input.IGT = igt
