@@ -85,6 +85,21 @@ func monitorDeathCount(reader *memreader.GameReader, tracker *stats.Tracker, tra
 	var routeCaughtUp bool = false
 	checkInterval := 500 * time.Millisecond
 
+	// Sync initial state if already attached at startup
+	if reader.IsAttached() {
+		lastGame = reader.GetCurrentGame()
+		trayApp.UpdateStatus("Connected")
+		trayApp.UpdateGame(lastGame)
+
+		if runner != nil && !runner.IsActive() && runner.GetRoute().Game == lastGame {
+			if err := runner.Start(0); err != nil {
+				log.Printf("Failed to start route run: %v", err)
+			} else {
+				log.Printf("[Route] Started route: %s", runner.GetRoute().Name)
+			}
+		}
+	}
+
 	for {
 		time.Sleep(checkInterval)
 
