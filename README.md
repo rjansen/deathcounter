@@ -165,6 +165,10 @@ When using `"path": "player_stats"` for Dark Souls III:
 | Offset | Stat |
 |--------|------|
 | `0x68` (104) | Soul Level |
+| `0x6C` (108) | Vigor |
+| `0x70` (112) | Attunement |
+| `0x74` (116) | Endurance |
+| `0x78` (120) | Vitality |
 | `0x7C` (124) | Strength |
 | `0x80` (128) | Dexterity |
 | `0x84` (132) | Intelligence |
