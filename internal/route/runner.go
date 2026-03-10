@@ -10,6 +10,14 @@ import (
 	"github.com/rjansen/deathcounter/internal/stats"
 )
 
+// GameReader is the subset of memreader.GameReader used by the route runner.
+// Defining it locally allows testing without Windows memory internals.
+type GameReader interface {
+	ReadEventFlag(flagID uint32) (bool, error)
+	ReadMemoryValue(pathName string, extraOffset int64, size int) (uint32, error)
+	ReadIGT() (int64, error)
+}
+
 // Runner orchestrates a route run, connecting the state machine to memory reading,
 // persistence, and save backups.
 type Runner struct {
@@ -97,7 +105,7 @@ func (r *Runner) SplitDeaths() uint32 {
 
 // CatchUp scans all checkpoint flags and marks any that are already set as completed.
 // Returns true when the scan completes, false if flag reading isn't ready yet (retry later).
-func (r *Runner) CatchUp(reader *memreader.GameReader) bool {
+func (r *Runner) CatchUp(reader GameReader) bool {
 	if !r.IsActive() {
 		return true
 	}
@@ -129,7 +137,7 @@ func (r *Runner) CatchUp(reader *memreader.GameReader) bool {
 
 // Tick is called every poll cycle. It reads event flags and IGT from the reader,
 // processes the state machine, records splits, and triggers backups.
-func (r *Runner) Tick(reader *memreader.GameReader, deathCount uint32) ([]CheckpointEvent, error) {
+func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, error) {
 	if !r.IsActive() {
 		return nil, nil
 	}
