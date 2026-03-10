@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
+	"github.com/rjansen/deathcounter/internal/route"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
 
@@ -231,6 +232,83 @@ func TestRouteMonitor_NoRoute(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_MatchingRoute(t *testing.T) {
+	_, reader := setupDS3Mock(0)
+	tracker := newTestTracker(t)
+
+	routes := []*route.Route{
+		{
+			ID:   "ds3-any",
+			Name: "DS3 Any%",
+			Game: "Dark Souls III",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		routeName, _ := update.Fields["route_name"].(string)
+		if routeName != "DS3 Any%" {
+			t.Errorf("expected route name 'DS3 Any%%', got %q", routeName)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_NonMatchingRoute(t *testing.T) {
+	_, reader := setupDS3Mock(0)
+	tracker := newTestTracker(t)
+
+	routes := []*route.Route{
+		{
+			ID:   "sekiro-any",
+			Name: "Sekiro Any%",
+			Game: "Sekiro",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Genichiro", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.Fields != nil {
+			routeName, _ := update.Fields["route_name"].(string)
+			if routeName != "" {
+				t.Errorf("expected no route name, got %q", routeName)
+			}
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_countBackups(t *testing.T) {
+	_, reader := setupDS3Mock(0)
+	tracker := newTestTracker(t)
+	mon := NewRouteMonitor(reader, tracker, nil, nil)
+
+	events := []route.CheckpointEvent{
+		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagID: 101}}, // has encounter flag → NOT counted
+		{Checkpoint: route.Checkpoint{ID: "boss2", BackupFlagID: 0}},   // no encounter flag → counted (kill-based)
+		{Checkpoint: route.Checkpoint{ID: "boss3", BackupFlagID: 0}},   // no encounter flag → counted
+	}
+
+	count := mon.countBackups(events)
+	if count != 2 {
+		t.Errorf("expected 2 kill-based backups, got %d", count)
 	}
 }
 
