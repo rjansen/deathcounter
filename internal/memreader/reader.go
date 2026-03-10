@@ -119,7 +119,7 @@ func (r *GameReader) ReadDeathCount() (uint32, error) {
 		offsets = r.game.Offsets32
 	}
 
-	if offsets == nil || len(offsets) == 0 {
+	if len(offsets) == 0 {
 		return 0, fmt.Errorf("no offsets available for this game architecture")
 	}
 
@@ -364,7 +364,7 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 		return -1, ErrNullPointer
 	}
 
-	for i := int32(0); i < size; i++ {
+	for i := range size {
 		entryBase := vectorBase + int64(i)*0x38
 
 		// Read area byte at offset 0xb
@@ -392,7 +392,7 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 			continue
 		}
 
-		for j := byte(0); j < count; j++ {
+		for j := range count {
 			blockEntry := blockVectorPtr + int64(j)*0x70
 
 			flag, err := r.readInt32(blockEntry + 0x8)

@@ -51,7 +51,7 @@ func scanAOB(data []byte, pattern aobPattern) int {
 	limit := len(data) - patLen
 	for i := 0; i <= limit; i++ {
 		found := true
-		for j := 0; j < patLen; j++ {
+		for j := range patLen {
 			if pattern.mask[j] && data[i+j] != pattern.bytes[j] {
 				found = false
 				break
@@ -119,7 +119,7 @@ func (r *GameReader) findTextSection() (*textSectionInfo, error) {
 
 	// Each section header is 40 bytes
 	sectionBuf := make([]byte, 40)
-	for i := uint16(0); i < numSections; i++ {
+	for i := range numSections {
 		sectionAddr := sectionStart + int64(i)*40
 		err = r.ops.ReadProcessMemory(r.processHandle, uintptr(sectionAddr), sectionBuf)
 		if err != nil {
@@ -177,10 +177,7 @@ func (r *GameReader) ScanForPointer(pattern string, relativeOffsetPos int, instr
 	for addr := scanStart; addr < scanEnd; {
 		// Calculate how much to read
 		remaining := scanEnd - addr
-		readSize := int64(aobChunkSize + overlap)
-		if readSize > remaining {
-			readSize = remaining
-		}
+		readSize := min(int64(aobChunkSize+overlap), remaining)
 		if readSize < int64(patLen) {
 			break
 		}
