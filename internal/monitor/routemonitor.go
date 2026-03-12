@@ -48,7 +48,7 @@ func (m *RouteMonitor) Tick() {
 		return
 	}
 
-	// Catch up on pre-existing progress
+	// Catch up on pre-existing progress (only until first success)
 	if m.runner != nil && m.runner.IsActive() && !m.caughtUp {
 		m.caughtUp = m.runner.CatchUp(m.Reader)
 	}

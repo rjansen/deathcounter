@@ -419,6 +419,80 @@ func TestRunner_triggerBackup_NilManager(t *testing.T) {
 	runner.triggerBackup("boss1")
 }
 
+func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) {
+	// Regression: when a mem_check checkpoint returns ErrNullPointer,
+	// Tick must still detect event-flag checkpoints instead of aborting.
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-mixed",
+		Name: "Mixed Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100, BackupFlagID: 101},
+			{
+				ID: "level10", Name: "Level 10", EventType: "level_up", Optional: true,
+				MemCheck: &MemCheck{Path: "player_stats", Offset: 0x10, Comparison: "gte", Value: 10, Size: 4},
+			},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 200, BackupFlagID: 201},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0)
+
+	reader := newMockGameReader()
+	reader.flags[100] = true  // boss1 killed
+	reader.flags[101] = true  // boss1 encountered
+	reader.memErr = memreader.ErrNullPointer // player_stats not readable yet
+	reader.igt = 60000
+
+	events, err := runner.Tick(reader, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (boss1), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss1" {
+		t.Errorf("expected boss1 event, got %s", events[0].Checkpoint.ID)
+	}
+	// level10 should NOT be completed (mem read failed)
+	if runner.state.CompletedFlags["level10"] {
+		t.Error("level10 should not be completed when mem read fails")
+	}
+}
+
+func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
+	// When IGT returns ErrNullPointer, Tick should still detect checkpoints
+	// using the last known IGT value.
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-igt",
+		Name: "IGT Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0)
+	runner.state.LastIGT = 50000 // simulate prior tick with valid IGT
+
+	reader := newMockGameReader()
+	reader.flags[100] = true
+	reader.igtErr = memreader.ErrNullPointer
+
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].IGT != 50000 {
+		t.Errorf("expected IGT=50000 (last known), got %d", events[0].IGT)
+	}
+}
+
 func TestRunner_Tick_IGTError(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)

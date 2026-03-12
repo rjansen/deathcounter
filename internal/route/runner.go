@@ -155,12 +155,13 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 			if _, exists := input.Flags[cp.BackupFlagID]; !exists {
 				flagSet, err := reader.ReadEventFlag(cp.BackupFlagID)
 				if err != nil {
-					if errors.Is(err, memreader.ErrNullPointer) {
-						return nil, nil
+					if !errors.Is(err, memreader.ErrNullPointer) {
+						return nil, fmt.Errorf("failed to read backup flag %d: %w", cp.BackupFlagID, err)
 					}
-					return nil, fmt.Errorf("failed to read backup flag %d: %w", cp.BackupFlagID, err)
+					// ErrNullPointer: skip this backup flag for now
+				} else {
+					input.Flags[cp.BackupFlagID] = flagSet
 				}
-				input.Flags[cp.BackupFlagID] = flagSet
 			}
 		}
 
@@ -173,10 +174,11 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 			if _, exists := input.Flags[cp.EventFlagID]; !exists {
 				flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
 				if err != nil {
-					if errors.Is(err, memreader.ErrNullPointer) {
-						return nil, nil // transient: game still loading
+					if !errors.Is(err, memreader.ErrNullPointer) {
+						return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
 					}
-					return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
+					// ErrNullPointer: skip this checkpoint for now
+					continue
 				}
 				input.Flags[cp.EventFlagID] = flagSet
 			}
@@ -190,22 +192,23 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 			}
 			val, err := reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
 			if err != nil {
-				if errors.Is(err, memreader.ErrNullPointer) {
-					return nil, nil // transient: game still loading
+				if !errors.Is(err, memreader.ErrNullPointer) {
+					return nil, fmt.Errorf("failed to read memory value for %s: %w", cp.ID, err)
 				}
-				return nil, fmt.Errorf("failed to read memory value for %s: %w", cp.ID, err)
+				// ErrNullPointer: skip this checkpoint for now
+				continue
 			}
 			input.MemValues[cp.ID] = val
 		}
 	}
 
-	// Read IGT
+	// Read IGT (fall back to last known value if transient failure)
 	igt, err := reader.ReadIGT()
 	if err != nil {
-		if errors.Is(err, memreader.ErrNullPointer) {
-			return nil, nil // transient: game still loading
+		if !errors.Is(err, memreader.ErrNullPointer) {
+			return nil, fmt.Errorf("failed to read IGT: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read IGT: %w", err)
+		igt = r.state.LastIGT
 	}
 	input.IGT = igt
 
