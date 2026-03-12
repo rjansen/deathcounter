@@ -20,10 +20,10 @@ type GameReader struct {
 	currentGame   string
 	ops           ProcessOps
 
-	// AOB-resolved pointer cache
-	sprjEventFlagManAddr int64
-	fieldAreaAddr        int64
-	eventFlagInitDone    bool
+	// AOB-resolved address cache (addresses of the global pointer variables, NOT dereferenced values)
+	sprjEventFlagManAOBAddr int64
+	fieldAreaAOBAddr        int64
+	eventFlagInitDone       bool
 }
 
 // NewGameReaderWithOps creates a new GameReader with the given ProcessOps.
@@ -89,8 +89,8 @@ func (r *GameReader) Detach() {
 		r.processHandle = 0
 		r.attached = false
 		r.currentGame = ""
-		r.sprjEventFlagManAddr = 0
-		r.fieldAreaAddr = 0
+		r.sprjEventFlagManAOBAddr = 0
+		r.fieldAreaAOBAddr = 0
 		r.eventFlagInitDone = false
 	}
 }
@@ -179,18 +179,8 @@ func (r *GameReader) initEventFlagPointers() {
 		if err != nil {
 			log.Printf("[AOB] SprjEventFlagMan scan failed, using static offsets: %v", err)
 		} else {
-			if aob.Dereference {
-				ptr, err := r.readPtr(addr)
-				if err != nil {
-					log.Printf("[AOB] SprjEventFlagMan dereference failed: %v", err)
-				} else {
-					r.sprjEventFlagManAddr = ptr
-					log.Printf("[AOB] SprjEventFlagMan resolved: 0x%X", r.sprjEventFlagManAddr)
-				}
-			} else {
-				r.sprjEventFlagManAddr = addr
-				log.Printf("[AOB] SprjEventFlagMan resolved: 0x%X", r.sprjEventFlagManAddr)
-			}
+			r.sprjEventFlagManAOBAddr = addr
+			log.Printf("[AOB] SprjEventFlagMan global pointer at: 0x%X", addr)
 		}
 	}
 
@@ -201,18 +191,8 @@ func (r *GameReader) initEventFlagPointers() {
 		if err != nil {
 			log.Printf("[AOB] FieldArea scan failed, using static offsets: %v", err)
 		} else {
-			if aob.Dereference {
-				ptr, err := r.readPtr(addr)
-				if err != nil {
-					log.Printf("[AOB] FieldArea dereference failed: %v", err)
-				} else {
-					r.fieldAreaAddr = ptr
-					log.Printf("[AOB] FieldArea resolved: 0x%X", r.fieldAreaAddr)
-				}
-			} else {
-				r.fieldAreaAddr = addr
-				log.Printf("[AOB] FieldArea resolved: 0x%X", r.fieldAreaAddr)
-			}
+			r.fieldAreaAOBAddr = addr
+			log.Printf("[AOB] FieldArea global pointer at: 0x%X", addr)
 		}
 	}
 }
@@ -258,8 +238,20 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 
 	// Step 2: Follow SprjEventFlagMan pointer chain (use AOB-cached address if available)
 	var sprjBase int64
-	if r.sprjEventFlagManAddr != 0 {
-		sprjBase = r.sprjEventFlagManAddr
+	if r.sprjEventFlagManAOBAddr != 0 {
+		aob := r.game.SprjEventFlagManAOB
+		if aob.Dereference {
+			ptr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
+			if err != nil {
+				return false, fmt.Errorf("failed to read SprjEventFlagMan pointer: %w", err)
+			}
+			if ptr == 0 {
+				return false, ErrNullPointer
+			}
+			sprjBase = ptr
+		} else {
+			sprjBase = r.sprjEventFlagManAOBAddr
+		}
 	} else {
 		var err error
 		sprjBase, err = r.followPointerChain(r.game.EventFlagOffsets64)
@@ -315,8 +307,20 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 	// Use AOB-cached address if available, otherwise fall back to static offsets
 	var fieldArea int64
-	if r.fieldAreaAddr != 0 {
-		fieldArea = r.fieldAreaAddr
+	if r.fieldAreaAOBAddr != 0 {
+		aob := r.game.FieldAreaAOB
+		if aob.Dereference {
+			ptr, err := r.readPtr(r.fieldAreaAOBAddr)
+			if err != nil {
+				return -1, fmt.Errorf("failed to read FieldArea pointer: %w", err)
+			}
+			if ptr == 0 {
+				return -1, ErrNullPointer
+			}
+			fieldArea = ptr
+		} else {
+			fieldArea = r.fieldAreaAOBAddr
+		}
 	} else {
 		if r.game.FieldAreaOffsets64 == nil {
 			return -1, fmt.Errorf("FieldArea offsets not configured")
@@ -498,16 +502,39 @@ func (r *GameReader) ReadMemoryValue(pathName string, extraOffset int64, size in
 		size = 4
 	}
 
-	// Follow pointer chain
-	address := int64(r.baseAddress)
+	// Lazily initialize AOB-scanned pointers
+	r.initEventFlagPointers()
+
+	// Determine starting point: use AOB-resolved address if the chain shares
+	// the same base offset as SprjEventFlagMan.
+	address := int64(0)
+	startIdx := 0
+
+	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
+		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
+		// First offset matches SprjEventFlagMan — use AOB-resolved pointer
+		ptr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for %s: %w", pathName, err)
+		}
+		if ptr == 0 {
+			return 0, ErrNullPointer
+		}
+		address = ptr
+		startIdx = 1 // skip the first offset, already resolved via AOB
+	} else {
+		address = int64(r.baseAddress)
+	}
+
+	// Follow remaining pointer chain
 	buffer := make([]byte, 8)
 
-	for _, offset := range offsets {
+	for i := startIdx; i < len(offsets); i++ {
 		if address == 0 {
 			return 0, ErrNullPointer
 		}
 
-		address += offset
+		address += offsets[i]
 
 		err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buffer)
 		if err != nil {
@@ -558,9 +585,34 @@ func (r *GameReader) ReadIGT() (int64, error) {
 		return 0, fmt.Errorf("IGT reading not supported for this game")
 	}
 
+	// Lazily initialize AOB-scanned pointers (may already be done by ReadEventFlag)
+	r.initEventFlagPointers()
+
 	offsets := r.game.IGTOffsets64
 
-	// Follow pointer chain to IGT value
+	// If AOB resolved SprjEventFlagMan and the IGT chain shares the same base
+	// offset, use the AOB-resolved address for the first pointer dereference.
+	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
+		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
+		// Dereference the AOB-resolved global pointer to get the base object
+		basePtr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for IGT: %w", err)
+		}
+		if basePtr == 0 {
+			return 0, ErrNullPointer
+		}
+
+		// Apply the final offset and read the IGT value
+		igtAddr := basePtr + offsets[len(offsets)-1]
+		igtVal, err := r.readUint32(igtAddr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read IGT at 0x%X: %w", igtAddr, err)
+		}
+		return int64(int32(igtVal)), nil
+	}
+
+	// Fallback: follow the static pointer chain
 	address := int64(r.baseAddress)
 	buffer := make([]byte, 8)
 
