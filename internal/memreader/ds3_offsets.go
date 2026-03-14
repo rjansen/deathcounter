@@ -49,16 +49,58 @@ const (
 	DS3OffsetBlockCategory   int64 = 0x20 // Category field in block entry
 )
 
-// DS3 boss defeated event flag IDs.
+// DS3 boss defeated event flag IDs — base game.
 const (
-	DS3FlagIudexGundyr  uint32 = 14000800
-	DS3FlagVordt        uint32 = 13100800
-	DS3FlagAbyssWatcher uint32 = 13300800
-	DS3FlagWolnir       uint32 = 13800800
-	DS3FlagPontiff      uint32 = 13500850
-	DS3FlagAldrich      uint32 = 13900800
-	DS3FlagDancer       uint32 = 13010800
-	DS3FlagSoulOfCinder uint32 = 14100800
+	DS3FlagIudexGundyr      uint32 = 14000800
+	DS3FlagVordt            uint32 = 13000800
+	DS3FlagGreatwood        uint32 = 13100800
+	DS3FlagCrystalSage      uint32 = 13300850
+	DS3FlagAbyssWatcher     uint32 = 13300800
+	DS3FlagDeacons          uint32 = 13500800
+	DS3FlagWolnir           uint32 = 13800800
+	DS3FlagOldDemonKing     uint32 = 13800830
+	DS3FlagPontiff          uint32 = 13700850
+	DS3FlagAldrich          uint32 = 13700800
+	DS3FlagYhorm            uint32 = 13900800
+	DS3FlagDancer           uint32 = 13000890
+	DS3FlagOceiros          uint32 = 13000830
+	DS3FlagChampionGundyr   uint32 = 14000830
+	DS3FlagAncientWyvern    uint32 = 13200800
+	DS3FlagNamelessKing     uint32 = 13200850
+	DS3FlagDragonslayer     uint32 = 13010800
+	DS3FlagTwinPrinces      uint32 = 13410830
+	DS3FlagSoulOfCinder     uint32 = 14100800
+)
+
+// DS3 boss defeated event flag IDs — DLC.
+const (
+	DS3FlagChampionGravetender uint32 = 14500800
+	DS3FlagFriede              uint32 = 14500860
+	DS3FlagDemonPrince         uint32 = 15000800
+	DS3FlagHalflight           uint32 = 15100800
+	DS3FlagMidir               uint32 = 15100850
+	DS3FlagGael                uint32 = 15110800
+)
+
+// DS3 boss encountered event flag IDs (backup/encounter flags).
+const (
+	DS3FlagIudexGundyrEnc      uint32 = 14000801
+	DS3FlagVordtEnc            uint32 = 13000801
+	DS3FlagGreatwoodEnc        uint32 = 13100801
+	DS3FlagCrystalSageEnc      uint32 = 13300852
+	DS3FlagAbyssWatcherEnc     uint32 = 13300801
+	DS3FlagDeaconsEnc          uint32 = 13500801
+	DS3FlagWolnirEnc           uint32 = 13800801
+	DS3FlagYhormEnc            uint32 = 13900801
+	DS3FlagOceirosEnc          uint32 = 13000831
+	DS3FlagChampionGundyrEnc   uint32 = 14000831
+	DS3FlagTwinPrincesEnc      uint32 = 13410831
+	DS3FlagSoulOfCinderEnc     uint32 = 14100801
+	DS3FlagChampionGravetenderEnc uint32 = 14500801
+	DS3FlagFriedeEnc           uint32 = 14500861
+	DS3FlagHalflightEnc        uint32 = 15100801
+	DS3FlagMidirEnc            uint32 = 15100851
+	DS3FlagGaelEnc             uint32 = 15110801
 )
 
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).
