@@ -26,6 +26,7 @@ type App struct {
 	menuRouteName     *systray.MenuItem
 	menuRouteProgress *systray.MenuItem
 	menuRouteCurrent  *systray.MenuItem
+	menuHollowing     *systray.MenuItem
 	menuRouteSplitD   *systray.MenuItem
 }
 
@@ -63,6 +64,9 @@ func (a *App) onReady() {
 
 	a.menuCharacter = systray.AddMenuItem("Character: -", "Current character")
 	a.menuCharacter.Disable()
+
+	a.menuHollowing = systray.AddMenuItem("Hollowing: -", "Current hollowing level")
+	a.menuHollowing.Disable()
 
 	systray.AddSeparator()
 
@@ -178,6 +182,15 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 			a.menuCharacter.SetTitle(fmt.Sprintf("Character: %s (Slot %d)", update.CharacterName, update.SaveSlotIndex))
 		} else {
 			a.menuCharacter.SetTitle("Character: -")
+		}
+	}
+
+	// Hollowing
+	if a.menuHollowing != nil {
+		if update.GameName != "" {
+			a.menuHollowing.SetTitle(fmt.Sprintf("Hollowing: %d", update.Hollowing))
+		} else {
+			a.menuHollowing.SetTitle("Hollowing: -")
 		}
 	}
 
