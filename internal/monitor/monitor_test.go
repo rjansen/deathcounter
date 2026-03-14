@@ -118,6 +118,11 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	binary.LittleEndian.PutUint32(slotBytes, 0) // slot 0
 	mock.memory[uintptr(gameManPtr+0xA60)] = slotBytes
 
+	// Hollowing at GameMan + 0x204E
+	hollowBytes := make([]byte, 8)
+	hollowBytes[0] = 15 // hollowing level 15
+	mock.memory[uintptr(gameManPtr+0x204E)] = hollowBytes
+
 	// PlayerGameData: GameDataMan + 0x10 -> PlayerGameData object
 	playerGameDataPtr := uint64(0x400000000)
 	pgdBytes := make([]byte, 8)
@@ -198,6 +203,9 @@ func TestDeathCounterMonitor_AttachAndRead(t *testing.T) {
 		}
 		if update.DeathCount != 42 {
 			t.Errorf("expected death count 42, got %d", update.DeathCount)
+		}
+		if update.Hollowing != 15 {
+			t.Errorf("expected hollowing 15, got %d", update.Hollowing)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -402,6 +410,9 @@ func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
 		}
 		if update.SaveSlotIndex != 0 {
 			t.Errorf("expected slot 0, got %d", update.SaveSlotIndex)
+		}
+		if update.Hollowing != 15 {
+			t.Errorf("expected hollowing 15, got %d", update.Hollowing)
 		}
 	default:
 		t.Fatal("expected a display update")

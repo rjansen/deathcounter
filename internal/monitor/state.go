@@ -7,6 +7,7 @@ type DeathCounterState struct {
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
+	Hollowing     uint32
 }
 
 // ToDisplayUpdate converts to a DisplayUpdate.
@@ -17,6 +18,7 @@ func (s DeathCounterState) ToDisplayUpdate() DisplayUpdate {
 		DeathCount:    s.DeathCount,
 		CharacterName: s.CharacterName,
 		SaveSlotIndex: s.SaveSlotIndex,
+		Hollowing:     s.Hollowing,
 	}
 }
 
@@ -27,6 +29,7 @@ type RouteMonitorState struct {
 	DeathCount        uint32
 	CharacterName     string
 	SaveSlotIndex     int
+	Hollowing         uint32
 	RouteName         string
 	CompletedCount    int
 	TotalCount        int
@@ -45,6 +48,7 @@ func (s RouteMonitorState) ToDisplayUpdate() DisplayUpdate {
 		DeathCount:    s.DeathCount,
 		CharacterName: s.CharacterName,
 		SaveSlotIndex: s.SaveSlotIndex,
+		Hollowing:     s.Hollowing,
 		Fields: map[string]any{
 			"route_name":         s.RouteName,
 			"completion_percent": s.CompletionPercent,

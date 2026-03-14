@@ -66,6 +66,7 @@ func (m *RouteMonitor) Tick() {
 	}
 
 	m.RecordDeathIfChanged(count)
+	m.ReadHollowing()
 
 	// Tick route runner if active
 	if m.runner != nil && m.runner.IsActive() {
@@ -120,6 +121,7 @@ func (m *RouteMonitor) publishRouteState() {
 		DeathCount:    m.LastCount,
 		CharacterName: m.CurrentCharName,
 		SaveSlotIndex: m.CurrentSlotIdx,
+		Hollowing:     m.CurrentHollowing,
 	}
 
 	if m.runner != nil && m.runner.IsActive() {

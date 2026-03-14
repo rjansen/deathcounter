@@ -9,6 +9,7 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 		DeathCount:    42,
 		CharacterName: "Knight",
 		SaveSlotIndex: 2,
+		Hollowing:     15,
 	}
 
 	update := s.ToDisplayUpdate()
@@ -28,6 +29,9 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	if update.SaveSlotIndex != 2 {
 		t.Errorf("expected SaveSlotIndex=2, got %d", update.SaveSlotIndex)
 	}
+	if update.Hollowing != 15 {
+		t.Errorf("expected Hollowing=15, got %d", update.Hollowing)
+	}
 	if update.Fields != nil {
 		t.Errorf("expected nil Fields, got %v", update.Fields)
 	}
@@ -40,6 +44,7 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 		DeathCount:        10,
 		CharacterName:     "Knight",
 		SaveSlotIndex:     1,
+		Hollowing:         99,
 		RouteName:         "Any% Glitchless",
 		CompletedCount:    3,
 		TotalCount:        10,
@@ -65,6 +70,9 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	}
 	if update.SaveSlotIndex != 1 {
 		t.Errorf("expected SaveSlotIndex=1, got %d", update.SaveSlotIndex)
+	}
+	if update.Hollowing != 99 {
+		t.Errorf("expected Hollowing=99, got %d", update.Hollowing)
 	}
 	if update.Fields == nil {
 		t.Fatal("expected Fields to be non-nil")

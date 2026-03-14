@@ -43,6 +43,7 @@ func (m *DeathCounterMonitor) Tick() {
 	}
 
 	m.RecordDeathIfChanged(count)
+	m.ReadHollowing()
 
 	m.PublishState(DeathCounterState{
 		GameName:      m.GameName(),
@@ -50,5 +51,6 @@ func (m *DeathCounterMonitor) Tick() {
 		DeathCount:    count,
 		CharacterName: m.CurrentCharName,
 		SaveSlotIndex: m.CurrentSlotIdx,
+		Hollowing:     m.CurrentHollowing,
 	})
 }

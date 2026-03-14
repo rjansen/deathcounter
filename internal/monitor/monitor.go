@@ -25,6 +25,7 @@ type DisplayUpdate struct {
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
+	Hollowing     uint32
 	Fields        map[string]any
 }
 
@@ -49,10 +50,11 @@ type GameMonitor[S Displayable] struct {
 	Status         string
 
 	// Save slot tracking
-	CurrentSaveID   int64
-	CurrentSlotIdx  int
-	CurrentCharName string
-	SaveDetected    bool
+	CurrentSaveID    int64
+	CurrentSlotIdx   int
+	CurrentCharName  string
+	SaveDetected     bool
+	CurrentHollowing uint32
 }
 
 // InitGameMonitor initializes a GameMonitor with buffered channels.
@@ -210,6 +212,16 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 	}
 
 	return false, true
+}
+
+// ReadHollowing reads the hollowing level, returning 0 on any error.
+func (m *GameMonitor[S]) ReadHollowing() {
+	val, err := m.Reader.ReadHollowing()
+	if err != nil {
+		m.CurrentHollowing = 0
+		return
+	}
+	m.CurrentHollowing = val
 }
 
 // RecordDeathIfChanged checks if the death count changed and records it.
