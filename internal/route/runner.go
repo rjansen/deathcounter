@@ -41,8 +41,9 @@ func NewRunner(route *Route, tracker *stats.Tracker, backupMgr *backup.Manager) 
 // Start begins a new route run, recording it in the database.
 // initialDeathCount should be the current death count so the first segment
 // only tracks deaths that occur after the run starts.
-func (r *Runner) Start(initialDeathCount uint32) error {
-	runID, err := r.tracker.StartRouteRun(r.route.ID, r.route.Game)
+// saveID links the run to a character save slot (0 means no save tracking).
+func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
+	runID, err := r.tracker.StartRouteRun(r.route.ID, r.route.Game, saveID)
 	if err != nil {
 		return fmt.Errorf("failed to start route run: %w", err)
 	}

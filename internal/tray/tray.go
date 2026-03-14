@@ -18,6 +18,7 @@ type App struct {
 	stopCh            chan struct{}
 	menuTitle         *systray.MenuItem
 	menuGame          *systray.MenuItem
+	menuCharacter     *systray.MenuItem
 	menuCount         *systray.MenuItem
 	menuSession       *systray.MenuItem
 	menuTotal         *systray.MenuItem
@@ -59,6 +60,9 @@ func (a *App) onReady() {
 
 	a.menuGame = systray.AddMenuItem("Game: None", "Currently monitored game")
 	a.menuGame.Disable()
+
+	a.menuCharacter = systray.AddMenuItem("Character: -", "Current character")
+	a.menuCharacter.Disable()
 
 	systray.AddSeparator()
 
@@ -165,6 +169,15 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 			a.menuGame.SetTitle("Game: None")
 		} else {
 			a.menuGame.SetTitle(fmt.Sprintf("Game: %s", update.GameName))
+		}
+	}
+
+	// Character
+	if a.menuCharacter != nil {
+		if update.CharacterName != "" {
+			a.menuCharacter.SetTitle(fmt.Sprintf("Character: %s (Slot %d)", update.CharacterName, update.SaveSlotIndex))
+		} else {
+			a.menuCharacter.SetTitle("Character: -")
 		}
 	}
 

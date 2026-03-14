@@ -101,7 +101,7 @@ func TestRunner_Start(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
 
-	if err := runner.Start(42); err != nil {
+	if err := runner.Start(42, 0); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
@@ -119,7 +119,7 @@ func TestRunner_Start(t *testing.T) {
 func TestRunner_Abandon(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	if err := runner.Abandon(); err != nil {
 		t.Fatalf("Abandon failed: %v", err)
@@ -133,7 +133,7 @@ func TestRunner_Accessors(t *testing.T) {
 	tracker := newTestTracker(t)
 	r := testRunnerRoute()
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	if runner.GetRoute() != r {
 		t.Error("GetRoute returned wrong route")
@@ -160,7 +160,7 @@ func TestRunner_Accessors(t *testing.T) {
 func TestRunner_CatchUp_AllNew(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	// No flags set
@@ -184,7 +184,7 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 		},
 	}
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flags[100] = true // boss1 already killed
@@ -206,7 +206,7 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 func TestRunner_CatchUp_ReadError(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flagErr = errors.New("not ready")
@@ -245,7 +245,7 @@ func TestRunner_Tick_NotActive(t *testing.T) {
 func TestRunner_Tick_Checkpoint(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flags[100] = true // boss1 killed
@@ -275,7 +275,7 @@ func TestRunner_Tick_Checkpoint(t *testing.T) {
 func TestRunner_Tick_NullPointer(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flagErr = memreader.ErrNullPointer
@@ -292,7 +292,7 @@ func TestRunner_Tick_NullPointer(t *testing.T) {
 func TestRunner_Tick_FatalError(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flagErr = errors.New("process gone")
@@ -317,7 +317,7 @@ func TestRunner_Tick_MemCheck(t *testing.T) {
 		},
 	}
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.memValues["player_stats"] = 10
@@ -346,7 +346,7 @@ func TestRunner_Tick_RunCompletion(t *testing.T) {
 		},
 	}
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flags[100] = true
@@ -376,7 +376,7 @@ func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
 		},
 	}
 	runner := NewRunner(r, tracker, nil) // nil backup manager
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flags[100] = true
@@ -437,7 +437,7 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 		},
 	}
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	reader.flags[100] = true  // boss1 killed
@@ -474,7 +474,7 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 		},
 	}
 	runner := NewRunner(r, tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 	runner.state.LastIGT = 50000 // simulate prior tick with valid IGT
 
 	reader := newMockGameReader()
@@ -496,7 +496,7 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 func TestRunner_Tick_IGTError(t *testing.T) {
 	tracker := newTestTracker(t)
 	runner := NewRunner(testRunnerRoute(), tracker, nil)
-	_ = runner.Start(0)
+	_ = runner.Start(0, 0)
 
 	reader := newMockGameReader()
 	// No flags set, so event flag reads succeed but return false
