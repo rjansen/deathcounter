@@ -1,12 +1,20 @@
-.PHONY: build run clean test test-e2e help
+.PHONY: build run clean test test-e2e help manifest tools
+
+# Embed manifest resource (required by lxn/walk)
+manifest:
+	rsrc -manifest deathcounter.manifest -o rsrc.syso
+
+# Install build tools
+tools:
+	go install github.com/akavel/rsrc@latest
 
 # Build the application
-build:
+build: manifest
 	@echo "Building deathcounter..."
 	go build -o deathcounter.exe -ldflags="-H windowsgui" .
 
 # Build without hiding console (useful for debugging)
-build-console:
+build-console: manifest
 	@echo "Building deathcounter with console..."
 	go build -o deathcounter.exe .
 
@@ -24,7 +32,7 @@ test-e2e:
 
 # Clean build artifacts
 clean:
-	rm -f deathcounter.exe deathcounter.db
+	rm -f deathcounter.exe deathcounter.db rsrc.syso
 
 # Format code
 fmt:
@@ -56,3 +64,5 @@ help:
 	@echo "  make vet           - Run go vet"
 	@echo "  make lint          - Run linter"
 	@echo "  make deps          - Download and tidy dependencies"
+	@echo "  make manifest      - Embed Windows manifest resource"
+	@echo "  make tools         - Install build tools (rsrc)"
