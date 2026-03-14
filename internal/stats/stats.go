@@ -21,6 +21,16 @@ type Session struct {
 	Deaths    uint32
 }
 
+// Save represents a character save slot identity.
+type Save struct {
+	ID            int64
+	Game          string
+	SlotIndex     int
+	CharacterName string
+	CreatedAt     time.Time
+	LastSeenAt    time.Time
+}
+
 // NewTracker creates a new statistics tracker with SQLite backend
 func NewTracker(dbPath string) (*Tracker, error) {
 	db, err := sql.Open("sqlite", dbPath)
@@ -33,6 +43,11 @@ func NewTracker(dbPath string) (*Tracker, error) {
 	if err := tracker.initDB(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	if err := tracker.migrateDB(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	return tracker, nil
@@ -90,9 +105,126 @@ func (t *Tracker) initDB() error {
 		best_split_ms INTEGER NOT NULL,
 		UNIQUE(route_id, checkpoint_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS saves (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		game TEXT NOT NULL,
+		slot_index INTEGER NOT NULL,
+		character_name TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		last_seen_at DATETIME NOT NULL,
+		UNIQUE(game, slot_index, character_name)
+	);
 	`
 
 	_, err := t.db.Exec(schema)
+	return err
+}
+
+// migrateDB adds new columns to existing tables.
+func (t *Tracker) migrateDB() error {
+	// Add save_id to sessions if missing
+	if !t.columnExists("sessions", "save_id") {
+		if _, err := t.db.Exec("ALTER TABLE sessions ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
+			return fmt.Errorf("failed to add save_id to sessions: %w", err)
+		}
+	}
+	// Add save_id to route_runs if missing
+	if !t.columnExists("route_runs", "save_id") {
+		if _, err := t.db.Exec("ALTER TABLE route_runs ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
+			return fmt.Errorf("failed to add save_id to route_runs: %w", err)
+		}
+	}
+	return nil
+}
+
+// columnExists checks if a column exists in a table.
+func (t *Tracker) columnExists(table, column string) bool {
+	rows, err := t.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull int
+		var dfltValue *string
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		if name == column {
+			return true
+		}
+	}
+	return false
+}
+
+// FindOrCreateSave returns the ID of a save slot, creating it if necessary.
+func (t *Tracker) FindOrCreateSave(game string, slotIndex int, charName string) (int64, error) {
+	now := time.Now()
+	_, err := t.db.Exec(`
+		INSERT INTO saves (game, slot_index, character_name, created_at, last_seen_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(game, slot_index, character_name) DO UPDATE SET last_seen_at = ?`,
+		game, slotIndex, charName, now, now, now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to upsert save: %w", err)
+	}
+
+	var id int64
+	err = t.db.QueryRow(
+		"SELECT id FROM saves WHERE game = ? AND slot_index = ? AND character_name = ?",
+		game, slotIndex, charName,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query save id: %w", err)
+	}
+	return id, nil
+}
+
+// GetOrCreateSessionForSave finds an open session for the given save, or creates one.
+func (t *Tracker) GetOrCreateSessionForSave(saveID int64) (int64, error) {
+	var sessionID int64
+	err := t.db.QueryRow(
+		"SELECT id FROM sessions WHERE end_time IS NULL AND save_id = ? ORDER BY start_time DESC LIMIT 1",
+		saveID,
+	).Scan(&sessionID)
+
+	if err == sql.ErrNoRows {
+		result, err := t.db.Exec(
+			"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, ?)",
+			time.Now(), saveID,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create session for save: %w", err)
+		}
+		return result.LastInsertId()
+	}
+	if err != nil {
+		return 0, err
+	}
+	return sessionID, nil
+}
+
+// RecordDeathForSave records a death count update linked to a save slot.
+func (t *Tracker) RecordDeathForSave(count uint32, saveID int64) error {
+	sessionID, err := t.GetOrCreateSessionForSave(saveID)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.db.Exec(
+		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
+		sessionID, count, time.Now(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to record death: %w", err)
+	}
+
+	_, err = t.db.Exec("UPDATE sessions SET deaths = ? WHERE id = ?", count, sessionID)
 	return err
 }
 
@@ -242,11 +374,21 @@ type RouteSplit struct {
 }
 
 // StartRouteRun creates a new route run record and returns its ID.
-func (t *Tracker) StartRouteRun(routeID, game string) (int64, error) {
-	result, err := t.db.Exec(
-		"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?)",
-		routeID, game, time.Now(),
-	)
+// If saveID is non-zero, it is stored as a foreign key to the saves table.
+func (t *Tracker) StartRouteRun(routeID, game string, saveID int64) (int64, error) {
+	var result sql.Result
+	var err error
+	if saveID > 0 {
+		result, err = t.db.Exec(
+			"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES (?, ?, 'in_progress', ?, ?)",
+			routeID, game, time.Now(), saveID,
+		)
+	} else {
+		result, err = t.db.Exec(
+			"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?)",
+			routeID, game, time.Now(),
+		)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("failed to start route run: %w", err)
 	}

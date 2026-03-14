@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newTestTracker(t *testing.T) *Tracker {
@@ -280,7 +281,7 @@ func TestGetSessionHistory_OpenSession(t *testing.T) {
 func TestStartRouteRun(t *testing.T) {
 	tracker := newTestTracker(t)
 
-	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
@@ -292,7 +293,7 @@ func TestStartRouteRun(t *testing.T) {
 func TestRecordSplit(t *testing.T) {
 	tracker := newTestTracker(t)
 
-	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
@@ -314,7 +315,7 @@ func TestRecordSplit(t *testing.T) {
 func TestEndRouteRun(t *testing.T) {
 	tracker := newTestTracker(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III")
+	runID, _ := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	tracker.RecordSplit(runID, "boss1", "Boss 1", 95000, 95000, 2)
 
 	if err := tracker.EndRouteRun(runID, "completed", 10, 400000); err != nil {
@@ -408,7 +409,7 @@ func TestRouteRunLifecycle(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	// Start run
-	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III")
+	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
@@ -473,5 +474,141 @@ func TestClose(t *testing.T) {
 	}
 	if total != 5 {
 		t.Errorf("got %d total deaths after reopen, want 5", total)
+	}
+}
+
+// --- Save slot tests ---
+
+func TestFindOrCreateSave_New(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	id, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err != nil {
+		t.Fatalf("FindOrCreateSave: %v", err)
+	}
+	if id <= 0 {
+		t.Errorf("expected id > 0, got %d", id)
+	}
+}
+
+func TestFindOrCreateSave_Existing(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	id1, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+
+	id2, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	if id1 != id2 {
+		t.Errorf("expected same ID, got %d and %d", id1, id2)
+	}
+}
+
+func TestFindOrCreateSave_DifferentSlot(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	id1, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id2, _ := tracker.FindOrCreateSave("Dark Souls III", 1, "Knight")
+
+	if id1 == id2 {
+		t.Error("different slots should produce different IDs")
+	}
+}
+
+func TestFindOrCreateSave_DifferentName(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	id1, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id2, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Pyromancer")
+
+	if id1 == id2 {
+		t.Error("different names on same slot should produce different IDs")
+	}
+}
+
+func TestStartRouteRun_WithSaveID(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III", saveID)
+	if err != nil {
+		t.Fatalf("StartRouteRun: %v", err)
+	}
+
+	var storedSaveID int64
+	err = tracker.db.QueryRow("SELECT save_id FROM route_runs WHERE id = ?", runID).Scan(&storedSaveID)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if storedSaveID != saveID {
+		t.Errorf("expected save_id %d, got %d", saveID, storedSaveID)
+	}
+}
+
+func TestRecordDeathForSave(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err := tracker.RecordDeathForSave(5, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
+	}
+
+	// Verify session was created with save_id
+	var sessionSaveID int64
+	err := tracker.db.QueryRow(
+		"SELECT save_id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
+	).Scan(&sessionSaveID)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if sessionSaveID != saveID {
+		t.Errorf("expected session save_id %d, got %d", saveID, sessionSaveID)
+	}
+}
+
+func TestGetOrCreateSessionForSave(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+
+	// First call creates a session
+	sid1, err := tracker.GetOrCreateSessionForSave(saveID)
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if sid1 <= 0 {
+		t.Errorf("expected session id > 0, got %d", sid1)
+	}
+
+	// Second call reuses the same session
+	sid2, err := tracker.GetOrCreateSessionForSave(saveID)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if sid1 != sid2 {
+		t.Errorf("expected same session ID, got %d and %d", sid1, sid2)
+	}
+}
+
+func TestMigration(t *testing.T) {
+	// Verify that creating a tracker runs migration without error
+	tracker := newTestTracker(t)
+
+	// Check sessions has save_id column
+	// Verify by trying to insert with save_id
+	_, err := tracker.db.Exec(
+		"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, NULL)", time.Now())
+	if err != nil {
+		t.Errorf("sessions should accept save_id column: %v", err)
+	}
+	_, err = tracker.db.Exec(
+		"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES ('test', 'test', 'in_progress', ?, NULL)", time.Now())
+	if err != nil {
+		t.Errorf("route_runs should accept save_id column: %v", err)
 	}
 }
