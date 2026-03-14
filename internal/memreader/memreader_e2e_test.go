@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+// DS3 boss defeated event flag IDs.
+// Verified against ds3-glitchless-any-percent-hybrid.json route file.
+const (
+	flagIudexGundyr  = 14000800
+	flagVordt        = 13100800
+	flagAbyssWatcher = 13300800
+	flagWolnir       = 13800800
+	flagPontiff      = 13500850
+	flagAldrich      = 13900800
+	flagDancer       = 13010800
+	flagSoulOfCinder = 14100800
+)
+
 // skipIfNoGameRunning creates a real GameReader and skips the test if no game is running.
 func skipIfNoGameRunning(t *testing.T) *GameReader {
 	t.Helper()
@@ -160,9 +173,8 @@ func TestE2E_ReadEventFlag(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// Flag 13000800 = Iudex Gundyr defeated (first boss, almost always set on any save).
-	// This is a safe flag to check because any DS3 save past the tutorial has it set.
-	flagID := uint32(13000800)
+	// Iudex Gundyr defeated — first boss, almost always set on any save.
+	flagID := uint32(flagIudexGundyr)
 
 	set, err := reader.ReadEventFlag(flagID)
 	if err != nil {
@@ -179,9 +191,9 @@ func TestE2E_ReadEventFlag_GlobalFlag(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// Global flags have area >= 90. Flag 90000000 region — read should succeed
-	// even if the flag is not set. This exercises the category=0 (global) path.
-	flagID := uint32(90000000)
+	// Global flags have area >= 90. Flag 19000000 uses div10M=1 (same array
+	// entry as boss flags) with area=90, exercising the category=0 (global) path.
+	flagID := uint32(19000000)
 
 	_, err := reader.ReadEventFlag(flagID)
 	if err != nil {
@@ -195,7 +207,7 @@ func TestE2E_ReadEventFlag_Stable(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	flagID := uint32(13000800) // Iudex Gundyr defeated
+	flagID := uint32(flagIudexGundyr)
 	first, err := reader.ReadEventFlag(flagID)
 	if err != nil {
 		t.Fatalf("initial ReadEventFlag failed: %v", err)
@@ -226,13 +238,13 @@ func TestE2E_ReadEventFlag_MultipleBosses(t *testing.T) {
 		flagID uint32
 		name   string
 	}{
-		{13000800, "Iudex Gundyr"},
-		{13100800, "Vordt of the Boreal Valley"},
-		{13300850, "Crystal Sage"},
-		{13900800, "Abyss Watchers"},
-		{14000800, "High Lord Wolnir"},
-		{15100800, "Pontiff Sulyvahn"},
-		{15000800, "Aldrich, Devourer of Gods"},
+		{flagIudexGundyr, "Iudex Gundyr"},
+		{flagVordt, "Vordt of the Boreal Valley"},
+		{flagAbyssWatcher, "Abyss Watchers"},
+		{flagWolnir, "High Lord Wolnir"},
+		{flagPontiff, "Pontiff Sulyvahn"},
+		{flagAldrich, "Aldrich, Devourer of Gods"},
+		{flagDancer, "Dancer of the Boreal Valley"},
 	}
 
 	for _, boss := range bosses {
@@ -302,10 +314,10 @@ func TestE2E_ReadMemoryValue_SoulLevel(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// player_stats + 0x68 = SoulLevel (uint32), per config.go comments
-	level, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
+	// player_stats + 0x44 = SoulLevel (uint32) — inline on PlayerGameData
+	level, err := reader.ReadMemoryValue("player_stats", 0x44, 4)
 	if err != nil {
-		t.Fatalf("ReadMemoryValue(player_stats, 0x68) failed: %v", err)
+		t.Fatalf("ReadMemoryValue(player_stats, 0x44) failed: %v", err)
 	}
 
 	t.Logf("[DS3] Soul Level: %d", level)
@@ -322,22 +334,23 @@ func TestE2E_ReadMemoryValue_Stats(t *testing.T) {
 	requireDS3(t, reader)
 
 	// Read several stat fields to verify pointer chain works for different offsets.
+	// Stats are inline on PlayerGameData (verified via Assassin class memory probe).
 	stats := []struct {
 		offset int64
 		name   string
 		min    uint32
 		max    uint32
 	}{
-		{0x68, "SoulLevel", 1, 900},
-		{0x6C, "Vigor", 1, 99},
-		{0x70, "Attunement", 1, 99},
-		{0x74, "Endurance", 1, 99},
-		{0x78, "Vitality", 1, 99},
-		{0x7C, "Strength", 1, 99},
-		{0x80, "Dexterity", 1, 99},
-		{0x84, "Intelligence", 1, 99},
-		{0x88, "Faith", 1, 99},
-		{0x8C, "Luck", 1, 99},
+		{0x44, "SoulLevel", 1, 900},
+		{0x50, "Vigor", 1, 99},
+		{0x48, "Attunement", 1, 99},
+		{0x4C, "Endurance", 1, 99},
+		{0x70, "Vitality", 1, 99},
+		{0x6C, "Strength", 1, 99},
+		{0x54, "Dexterity", 1, 99},
+		{0x58, "Intelligence", 1, 99},
+		{0x5C, "Faith", 1, 99},
+		{0x60, "Luck", 1, 99},
 	}
 
 	for _, s := range stats {
@@ -428,7 +441,7 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 	requireDS3(t, reader)
 
 	// First ReadEventFlag call triggers lazy AOB init
-	_, err := reader.ReadEventFlag(13000800)
+	_, err := reader.ReadEventFlag(flagIudexGundyr)
 	if err != nil {
 		t.Fatalf("first ReadEventFlag failed: %v", err)
 	}
@@ -445,7 +458,7 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 	cachedField := reader.fieldAreaAOBAddr
 
 	// Second call should reuse cached addresses (no re-scan)
-	_, err = reader.ReadEventFlag(13000800)
+	_, err = reader.ReadEventFlag(flagIudexGundyr)
 	if err != nil {
 		t.Fatalf("second ReadEventFlag failed: %v", err)
 	}
@@ -474,12 +487,12 @@ func TestE2E_FullRouteTick(t *testing.T) {
 		t.Fatalf("ReadDeathCount failed: %v", err)
 	}
 
-	iudexFlag, err := reader.ReadEventFlag(13000800) // Iudex Gundyr
+	iudexFlag, err := reader.ReadEventFlag(flagIudexGundyr) // Iudex Gundyr
 	if err != nil {
 		t.Fatalf("ReadEventFlag failed: %v", err)
 	}
 
-	level, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
+	level, err := reader.ReadMemoryValue("player_stats", 0x44, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(SoulLevel) failed: %v", err)
 	}
@@ -505,11 +518,11 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tick %d: ReadDeathCount failed: %v", i, err)
 		}
-		_, err = reader.ReadEventFlag(13000800)
+		_, err = reader.ReadEventFlag(flagIudexGundyr)
 		if err != nil {
 			t.Fatalf("tick %d: ReadEventFlag failed: %v", i, err)
 		}
-		_, err = reader.ReadMemoryValue("player_stats", 0x68, 4)
+		_, err = reader.ReadMemoryValue("player_stats", 0x44, 4)
 		if err != nil {
 			t.Fatalf("tick %d: ReadMemoryValue failed: %v", i, err)
 		}
@@ -729,7 +742,7 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
 	}
 
-	iudex, err := reader.ReadEventFlag(13000800)
+	iudex, err := reader.ReadEventFlag(flagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag(Iudex) failed: %v", err)
 	}
@@ -745,12 +758,205 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 	t.Logf("  IGT: %d ms (%.1f seconds)", igt, float64(igt)/1000.0)
 }
 
+// --- Comprehensive Read Test (DS3 only) ---
+
+func TestE2E_ReadAllImportantData(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// 1. Save slot index
+	slot, err := reader.ReadSaveSlotIndex()
+	if err != nil {
+		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
+	}
+	if slot < 0 || slot > 9 {
+		t.Errorf("save slot %d outside range [0, 9]", slot)
+	}
+	t.Logf("Save Slot: %d", slot)
+
+	// 2. Character name
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName failed: %v", err)
+	}
+	if name == "" {
+		t.Error("character name is empty")
+	}
+	t.Logf("Character Name: %q", name)
+
+	// 3. Player stats via player_game_data path
+	// Stats are inline on PlayerGameData at these offsets (verified via Assassin class):
+	//   +0x44 = SoulLevel, +0x48 = Attunement, +0x4C = Endurance, +0x50 = Vigor,
+	//   +0x54 = Dexterity, +0x58 = Intelligence, +0x5C = Faith, +0x60 = Luck,
+	//   +0x6C = Strength, +0x70 = Vitality
+	stats := []struct {
+		offset int64
+		name   string
+		min    uint32
+		max    uint32
+	}{
+		{0x44, "SoulLevel", 1, 900},
+		{0x50, "Vigor", 1, 99},
+		{0x4C, "Endurance", 1, 99},
+		{0x54, "Dexterity", 1, 99},
+	}
+
+	t.Log("Player Stats:")
+	for _, s := range stats {
+		val, err := reader.ReadMemoryValue("player_game_data", s.offset, 4)
+		if err != nil {
+			t.Errorf("ReadMemoryValue(player_game_data, 0x%X) %s failed: %v", s.offset, s.name, err)
+			continue
+		}
+		t.Logf("  %s: %d", s.name, val)
+		if val < s.min || val > s.max {
+			t.Errorf("%s=%d outside expected range [%d, %d]", s.name, val, s.min, s.max)
+		}
+	}
+
+	// 4. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +0xB3, Byte)
+	reinforceLv, err := reader.ReadMemoryValue("player_game_data", 0xB3, 1)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(player_game_data, 0xB3) ReinforceLv failed: %v", err)
+	}
+	if reinforceLv > 10 {
+		t.Errorf("ReinforceLv=%d outside expected range [0, 10]", reinforceLv)
+	}
+	t.Logf("ReinforceLv: +%d", reinforceLv)
+
+	// 5. Last Bonfire (TGA CT: GameMan → +0xACC, 4 Bytes signed)
+	// Bonfire IDs from TGA CT v3.4.0 dropdown list.
+	bonfireNames := map[uint32]string{
+		4002950: "Firelink Shrine",
+		4002959: "Ashen Grave",
+		4002951: "Cemetery of Ash",
+		4002952: "Iudex Gundyr",
+		4002953: "Untended Graves",
+		4002954: "Champion Gundyr",
+		3002950: "High Wall of Lothric",
+		3002955: "Tower on the Wall",
+		3002952: "Vordt of the Boreal Valley",
+		3002954: "Dancer of the Boreal Valley",
+		3002951: "Oceiros, the Consumed King",
+		3102954: "Foot of the High Wall",
+		3102950: "Undead Settlement",
+		3102952: "Cliff Underside",
+		3102953: "Dilapidated Bridge",
+		3102951: "Pit of Hollows",
+		3302956: "Road of Sacrifices",
+		3302950: "Halfway Fortress",
+		3302957: "Crucifixion Woods",
+		3302952: "Crystal Sage",
+		3302953: "Farron Keep",
+		3302954: "Keep Ruins",
+		3302958: "Farron Keep Perimeter",
+		3302955: "Old Wolf of Farron",
+		3302951: "Abyss Watchers",
+		3502953: "Cathedral of the Deep",
+		3502950: "Cleansing Chapel",
+		3502951: "Deacons of the Deep",
+		3502952: "Rosaria's Bed Chamber",
+		3802956: "Catacombs of Carthus",
+		3802950: "High Lord Wolnir",
+		3802951: "Abandoned Tomb",
+		3802952: "Old King's Antechamber",
+		3802953: "Demon Ruins",
+		3802954: "Old Demon King",
+		3702957: "Irithyll of the Boreal Valley",
+		3702954: "Central Irithyll",
+		3702950: "Church of Yorshka",
+		3702955: "Distant Manor",
+		3702951: "Pontiff Sulyvahn",
+		3702956: "Water Reserve",
+		3702953: "Anor Londo",
+		3702958: "Prison Tower",
+		3702952: "Aldrich, Devourer of Gods",
+		3902950: "Irithyll Dungeon",
+		3902952: "Profaned Capital",
+		3902951: "Yhorm The Giant",
+		3012950: "Lothric Castle",
+		3012952: "Dragon Barracks",
+		3012951: "Dragonslayer Armour",
+		3412951: "Grand Archives",
+		3412950: "Twin Princes",
+		3202950: "Archdragon Peak",
+		3202953: "Dragon-Kin Mausoleum",
+		3202952: "Great Belfry",
+		3202951: "Nameless King",
+		4102950: "Flameless Shrine",
+		4102951: "Kiln of the First Flame",
+		4102952: "The First Flame",
+	}
+
+	lastBonfire, err := reader.ReadMemoryValue("game_man", 0xACC, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(game_man, 0xACC) Last Bonfire failed: %v", err)
+	}
+	bonfireName := "Unknown"
+	if name, ok := bonfireNames[lastBonfire]; ok {
+		bonfireName = name
+	}
+	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
+
+	// 6. Completed checkpoints (boss event flags)
+	checkpoints := []struct {
+		flagID uint32
+		name   string
+	}{
+		{flagIudexGundyr, "Iudex Gundyr"},
+		{flagVordt, "Vordt of the Boreal Valley"},
+		{flagAbyssWatcher, "Abyss Watchers"},
+		{flagWolnir, "High Lord Wolnir"},
+		{flagPontiff, "Pontiff Sulyvahn"},
+		{flagAldrich, "Aldrich, Devourer of Gods"},
+		{flagDancer, "Dancer of the Boreal Valley"},
+		{flagSoulOfCinder, "Soul of Cinder"},
+	}
+
+	t.Log("Completed Checkpoints:")
+	completed := 0
+	for _, cp := range checkpoints {
+		set, err := reader.ReadEventFlag(cp.flagID)
+		if err != nil {
+			t.Errorf("ReadEventFlag(%d) %s failed: %v", cp.flagID, cp.name, err)
+			continue
+		}
+		status := "[ ]"
+		if set {
+			status = "[x]"
+			completed++
+		}
+		t.Logf("  %s %s", status, cp.name)
+	}
+	t.Logf("Progress: %d/%d bosses defeated", completed, len(checkpoints))
+}
+
+// --- Stat Offset Probe (DS3 only) ---
+
+func TestE2E_ProbePlayerStatOffsets(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Dump all uint32 values from player_game_data in the stat region.
+	t.Log("Probing player_game_data offsets 0x40..0x98 (all values):")
+	for offset := int64(0x40); offset <= 0x98; offset += 4 {
+		val, err := reader.ReadMemoryValue("player_game_data", offset, 4)
+		if err != nil {
+			t.Logf("  +0x%02X = ERROR: %v", offset, err)
+			continue
+		}
+		t.Logf("  +0x%02X = %d (0x%X)", offset, val, val)
+	}
+}
+
 func TestE2E_DetachClearsAOBCache(t *testing.T) {
 	reader := skipIfNoGameRunning(t)
 	requireDS3(t, reader)
 
 	// Trigger AOB init
-	_, err := reader.ReadEventFlag(13000800)
+	_, err := reader.ReadEventFlag(flagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag failed: %v", err)
 	}
@@ -771,7 +977,7 @@ func TestE2E_DetachClearsAOBCache(t *testing.T) {
 	defer reader.Detach()
 
 	// Reading should still work after reattach regardless of cache state
-	_, err = reader.ReadEventFlag(13000800)
+	_, err = reader.ReadEventFlag(flagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag after reattach failed: %v", err)
 	}

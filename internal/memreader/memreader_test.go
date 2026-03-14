@@ -769,16 +769,16 @@ func TestReadIGT_NotAttached(t *testing.T) {
 
 // --- ReadMemoryValue tests ---
 
-// setupGameDataManChain sets up a GameDataMan → PlayerGameData → Stats chain
-// via AOB-resolved addresses. Returns the stats struct base address.
+// setupGameDataManChain sets up a GameDataMan → PlayerGameData chain
+// via AOB-resolved addresses. Returns the PlayerGameData base address
+// (stats are inline on PlayerGameData).
 func setupGameDataManChain(mock *mockProcessOps, reader *GameReader) uintptr {
 	// GameDataMan global pointer at AOB-resolved address
 	gameDataManGlobal := uintptr(0x800000000)
 	mock.setMemory64(gameDataManGlobal, 0x30000000) // GameDataMan object
 	mock.setMemory64(0x30000010, 0x40000000)         // PlayerGameData
-	mock.setMemory64(0x40000010, 0x50000000)         // Stats struct
 	reader.SetTestAOBAddresses(int64(gameDataManGlobal), 0)
-	return 0x50000000
+	return 0x40000000
 }
 
 func TestReadMemoryValue_4Byte(t *testing.T) {
