@@ -42,6 +42,21 @@ func (m *RouteMonitor) Tick() {
 		m.startMatchingRoute()
 	}
 
+	// Save slot detection (between attach and death-count reading)
+	saveChanged, saveOK := m.TryDetectSave()
+	if !saveOK {
+		m.publishRouteState()
+		return
+	}
+	if saveChanged {
+		// Save identity changed: abandon active run and restart
+		if m.runner != nil && m.runner.IsActive() {
+			m.runner.Abandon()
+		}
+		m.Tracker.EndCurrentSession()
+		m.startMatchingRoute()
+	}
+
 	count, ok := m.ReadDeathCount()
 	if !ok {
 		m.publishRouteState()
@@ -75,7 +90,7 @@ func (m *RouteMonitor) startMatchingRoute() {
 	for _, r := range m.routes {
 		if r.Game == m.GameName() {
 			m.runner = route.NewRunner(r, m.Tracker, m.backupMgr)
-			if err := m.runner.Start(0); err != nil {
+			if err := m.runner.Start(0, m.CurrentSaveID); err != nil {
 				log.Printf("Failed to start route run: %v", err)
 				m.runner = nil
 			} else {
@@ -103,9 +118,11 @@ func (m *RouteMonitor) countBackups(events []route.CheckpointEvent) int {
 
 func (m *RouteMonitor) publishRouteState() {
 	state := RouteMonitorState{
-		GameName:   m.GameName(),
-		Status:     m.StatusText(),
-		DeathCount: m.LastCount,
+		GameName:      m.GameName(),
+		Status:        m.StatusText(),
+		DeathCount:    m.LastCount,
+		CharacterName: m.CurrentCharName,
+		SaveSlotIndex: m.CurrentSlotIdx,
 	}
 
 	if m.runner != nil && m.runner.IsActive() {

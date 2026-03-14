@@ -28,11 +28,25 @@ func (m *DeathCounterMonitor) Tick() {
 		return
 	}
 
+	// Save slot detection
+	_, saveOK := m.TryDetectSave()
+	if !saveOK {
+		m.PublishState(DeathCounterState{
+			GameName:      m.GameName(),
+			Status:        m.StatusText(),
+			CharacterName: m.CurrentCharName,
+			SaveSlotIndex: m.CurrentSlotIdx,
+		})
+		return
+	}
+
 	count, ok := m.ReadDeathCount()
 	if !ok {
 		m.PublishState(DeathCounterState{
-			GameName: m.GameName(),
-			Status:   m.StatusText(),
+			GameName:      m.GameName(),
+			Status:        m.StatusText(),
+			CharacterName: m.CurrentCharName,
+			SaveSlotIndex: m.CurrentSlotIdx,
 		})
 		return
 	}
@@ -40,8 +54,10 @@ func (m *DeathCounterMonitor) Tick() {
 	m.RecordDeathIfChanged(count)
 
 	m.PublishState(DeathCounterState{
-		GameName:   m.GameName(),
-		Status:     m.StatusText(),
-		DeathCount: count,
+		GameName:      m.GameName(),
+		Status:        m.StatusText(),
+		DeathCount:    count,
+		CharacterName: m.CurrentCharName,
+		SaveSlotIndex: m.CurrentSlotIdx,
 	})
 }

@@ -20,10 +20,12 @@ type Monitor interface {
 // Fields holds domain-specific key-value data (e.g. route progress fields)
 // so the struct stays generic without needing typed sub-structs.
 type DisplayUpdate struct {
-	GameName   string
-	Status     string
-	DeathCount uint32
-	Fields     map[string]any
+	GameName      string
+	Status        string
+	DeathCount    uint32
+	CharacterName string
+	SaveSlotIndex int
+	Fields        map[string]any
 }
 
 // Displayable is the constraint for State types — they must know
@@ -45,6 +47,12 @@ type GameMonitor[S Displayable] struct {
 	LastGame       string
 	WaitingForLoad bool
 	Status         string
+
+	// Save slot tracking
+	CurrentSaveID   int64
+	CurrentSlotIdx  int
+	CurrentCharName string
+	SaveDetected    bool
 }
 
 // InitGameMonitor initializes a GameMonitor with buffered channels.
@@ -106,6 +114,10 @@ func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
 		m.LastGame = currentGame
 		m.LastCount = 0
 		m.WaitingForLoad = false
+		m.CurrentSaveID = 0
+		m.CurrentSlotIdx = 0
+		m.CurrentCharName = ""
+		m.SaveDetected = false
 		return true
 	}
 	return false
@@ -143,16 +155,91 @@ func (m *GameMonitor[S]) ReadDeathCount() (uint32, bool) {
 	return count, true
 }
 
+// TryDetectSave attempts to read the save slot identity from game memory.
+// Returns (changed, ok): changed is true if the save identity changed from a
+// previously detected save; ok is true if save detection succeeded or is not
+// supported (transparent pass-through for non-DS3 games).
+func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
+	charName, nameErr := m.Reader.ReadCharacterName()
+	slotIdx, slotErr := m.Reader.ReadSaveSlotIndex()
+
+	// If character name is not supported, skip save detection entirely
+	// (save slot alone is not enough to identify a character)
+	if isUnsupportedErr(nameErr) {
+		m.SaveDetected = true
+		return false, true
+	}
+
+	// Null pointer means game is still loading
+	if errors.Is(nameErr, memreader.ErrNullPointer) {
+		m.SaveDetected = false
+		m.Status = "Waiting for save..."
+		return false, false
+	}
+
+	// Fatal error on character name
+	if nameErr != nil {
+		log.Printf("[%s] Character name read error: %v", m.Reader.GetCurrentGame(), nameErr)
+		m.Reader.Detach()
+		m.Status = "Disconnected"
+		m.LastGame = ""
+		m.WaitingForLoad = false
+		return false, false
+	}
+
+	// Save slot is optional — use 0 if unsupported or transiently unavailable
+	if isUnsupportedErr(slotErr) || errors.Is(slotErr, memreader.ErrNullPointer) {
+		slotIdx = 0
+	} else if slotErr != nil {
+		log.Printf("[%s] Save slot read error: %v", m.Reader.GetCurrentGame(), slotErr)
+		m.Reader.Detach()
+		m.Status = "Disconnected"
+		m.LastGame = ""
+		m.WaitingForLoad = false
+		return false, false
+	}
+
+	// Check if save identity changed
+	previouslyHadSave := m.SaveDetected
+	if slotIdx != m.CurrentSlotIdx || charName != m.CurrentCharName {
+		saveID, err := m.Tracker.FindOrCreateSave(m.Reader.GetCurrentGame(), slotIdx, charName)
+		if err != nil {
+			log.Printf("[%s] Failed to create save record: %v", m.Reader.GetCurrentGame(), err)
+			return false, false
+		}
+		m.CurrentSaveID = saveID
+		m.CurrentSlotIdx = slotIdx
+		m.CurrentCharName = charName
+		m.SaveDetected = true
+		log.Printf("[%s] Save detected: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
+		return previouslyHadSave, true
+	}
+
+	return false, true
+}
+
 // RecordDeathIfChanged checks if the death count changed and records it.
 // Returns true if the count changed.
 func (m *GameMonitor[S]) RecordDeathIfChanged(count uint32) bool {
 	if count != m.LastCount {
 		log.Printf("[%s] Death count: %d (previous: %d)", m.Reader.GetCurrentGame(), count, m.LastCount)
-		m.Tracker.RecordDeath(count)
+		if m.CurrentSaveID > 0 {
+			m.Tracker.RecordDeathForSave(count, m.CurrentSaveID)
+		} else {
+			m.Tracker.RecordDeath(count)
+		}
 		m.LastCount = count
 		return true
 	}
 	return false
+}
+
+// isUnsupportedErr checks if an error indicates the feature is not supported.
+func isUnsupportedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, memreader.ErrNotSupported)
 }
 
 // PublishState sends state on both the typed and display channels.

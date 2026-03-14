@@ -4,9 +4,11 @@ import "testing"
 
 func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	s := DeathCounterState{
-		GameName:   "Dark Souls III",
-		Status:     "Connected",
-		DeathCount: 42,
+		GameName:      "Dark Souls III",
+		Status:        "Connected",
+		DeathCount:    42,
+		CharacterName: "Knight",
+		SaveSlotIndex: 2,
 	}
 
 	update := s.ToDisplayUpdate()
@@ -20,6 +22,12 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	if update.DeathCount != 42 {
 		t.Errorf("expected DeathCount=42, got %d", update.DeathCount)
 	}
+	if update.CharacterName != "Knight" {
+		t.Errorf("expected CharacterName='Knight', got %q", update.CharacterName)
+	}
+	if update.SaveSlotIndex != 2 {
+		t.Errorf("expected SaveSlotIndex=2, got %d", update.SaveSlotIndex)
+	}
 	if update.Fields != nil {
 		t.Errorf("expected nil Fields, got %v", update.Fields)
 	}
@@ -30,6 +38,8 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 		GameName:          "Dark Souls III",
 		Status:            "Connected",
 		DeathCount:        10,
+		CharacterName:     "Knight",
+		SaveSlotIndex:     1,
 		RouteName:         "Any% Glitchless",
 		CompletedCount:    3,
 		TotalCount:        10,
@@ -49,6 +59,12 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	}
 	if update.DeathCount != 10 {
 		t.Errorf("expected DeathCount=10, got %d", update.DeathCount)
+	}
+	if update.CharacterName != "Knight" {
+		t.Errorf("expected CharacterName='Knight', got %q", update.CharacterName)
+	}
+	if update.SaveSlotIndex != 1 {
+		t.Errorf("expected SaveSlotIndex=1, got %d", update.SaveSlotIndex)
 	}
 	if update.Fields == nil {
 		t.Fatal("expected Fields to be non-nil")

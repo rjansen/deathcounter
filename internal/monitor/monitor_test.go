@@ -76,6 +76,8 @@ func (m *mockProcessOps) CloseHandle(handle memreader.ProcessHandle) error {
 }
 
 // setupDS3Mock sets up a mock with Dark Souls III process and a death count value.
+// It also sets up the save slot and character name memory chains so that
+// TryDetectSave works correctly.
 func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	mock := newMockProcessOps()
 
@@ -97,8 +99,46 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	binary.LittleEndian.PutUint32(valueBytes, deathCount)
 	mock.memory[valueAddr] = valueBytes
 
+	// GameDataMan pointer: base + 0x4768E78 -> GameDataMan object
+	gameDataManAddr := uintptr(0x140000000 + 0x4768E78)
+	gameDataManPtr := uint64(0x300000000)
+	gameDataManBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(gameDataManBytes, gameDataManPtr)
+	mock.memory[gameDataManAddr] = gameDataManBytes
+
+	// Save slot index at GameDataMan + 0x14
+	slotBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(slotBytes, 0) // slot 0
+	mock.memory[uintptr(gameDataManPtr+0x14)] = slotBytes
+
+	// PlayerGameData: GameDataMan + 0x10 -> PlayerGameData object
+	playerGameDataPtr := uint64(0x400000000)
+	pgdBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(pgdBytes, playerGameDataPtr)
+	mock.memory[uintptr(gameDataManPtr+0x10)] = pgdBytes
+
+	// Character name at PlayerGameData + 0x88 (UTF-16LE "Knight")
+	charName := encodeUTF16LE("Knight")
+	mock.memory[uintptr(playerGameDataPtr+0x88)] = charName
+
 	reader := memreader.NewGameReaderWithOps(mock)
 	return mock, reader
+}
+
+// encodeUTF16LE encodes a string as UTF-16LE bytes, padded to at least 32 bytes.
+func encodeUTF16LE(s string) []byte {
+	runes := []rune(s)
+	size := (len(runes) + 1) * 2 // +1 for null terminator
+	if size < 32 {
+		size = 32
+	}
+	buf := make([]byte, size)
+	for i, r := range runes {
+		buf[i*2] = byte(r)
+		buf[i*2+1] = byte(r >> 8)
+	}
+	// null terminator already zero from make
+	return buf
 }
 
 func newTestTracker(t *testing.T) *stats.Tracker {
@@ -335,4 +375,171 @@ func TestGameMonitor_PublishState_NonBlocking(t *testing.T) {
 	default:
 		t.Fatal("expected a display update")
 	}
+}
+
+// --- Save detection tests ---
+
+func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
+	_, reader := setupDS3Mock(5)
+	tracker := newTestTracker(t)
+
+	mon := NewDeathCounterMonitor(reader, tracker)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.CharacterName != "Knight" {
+			t.Errorf("expected 'Knight', got %q", update.CharacterName)
+		}
+		if update.SaveSlotIndex != 0 {
+			t.Errorf("expected slot 0, got %d", update.SaveSlotIndex)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_DetectsSave(t *testing.T) {
+	_, reader := setupDS3Mock(0)
+	tracker := newTestTracker(t)
+
+	routes := []*route.Route{
+		{
+			ID:   "ds3-any",
+			Name: "DS3 Any%",
+			Game: "Dark Souls III",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.CharacterName != "Knight" {
+			t.Errorf("expected 'Knight', got %q", update.CharacterName)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_WaitsForSave(t *testing.T) {
+	mock := newMockProcessOps()
+
+	// DS3 process
+	mock.processes["DarkSoulsIII.exe"] = 1234
+	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
+	mock.architectures[1234] = true
+
+	// Death count chain set up
+	ptrBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(ptrBytes, 0x200000000)
+	mock.memory[uintptr(0x140000000+0x47572B8)] = ptrBytes
+	valueBytes := make([]byte, 8)
+	mock.memory[uintptr(0x200000098)] = valueBytes
+
+	// GameDataMan returns null (game loading)
+	gameDataManBytes := make([]byte, 8)
+	// All zeros = null pointer
+	mock.memory[uintptr(0x140000000+0x4768E78)] = gameDataManBytes
+
+	reader := memreader.NewGameReaderWithOps(mock)
+	tracker := newTestTracker(t)
+
+	mon := NewRouteMonitor(reader, tracker, nil, nil)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.Status != "Waiting for save..." {
+			t.Errorf("expected 'Waiting for save...', got %q", update.Status)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
+	mock, reader := setupDS3Mock(0)
+	tracker := newTestTracker(t)
+
+	routes := []*route.Route{
+		{
+			ID:   "ds3-any",
+			Name: "DS3 Any%",
+			Game: "Dark Souls III",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
+
+	// First tick: attach, detect save, start route
+	mon.Tick()
+	<-mon.DisplayUpdates()
+
+	// Change character name to simulate save switch
+	setCharacterName(mock, "Pyromancer")
+
+	// Second tick: save changed → abandon + restart
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.CharacterName != "Pyromancer" {
+			t.Errorf("expected 'Pyromancer', got %q", update.CharacterName)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_NonDS3_SkipsSaveDetection(t *testing.T) {
+	mock := newMockProcessOps()
+
+	// Elden Ring process (no save slot support)
+	mock.processes["eldenring.exe"] = 9999
+	mock.modules["9999:eldenring.exe"] = 0x140000000
+	mock.architectures[9999] = true
+
+	// Set up death count chain for Elden Ring: {0x3D5DF38, 0x94}
+	ptrBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(ptrBytes, 0x200000000)
+	mock.memory[uintptr(0x140000000+0x3D5DF38)] = ptrBytes
+	valueBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(valueBytes, 7)
+	mock.memory[uintptr(0x200000094)] = valueBytes
+
+	reader := memreader.NewGameReaderWithOps(mock)
+	tracker := newTestTracker(t)
+
+	mon := NewDeathCounterMonitor(reader, tracker)
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.GameName != "Elden Ring" {
+			t.Errorf("expected 'Elden Ring', got %q", update.GameName)
+		}
+		if update.DeathCount != 7 {
+			t.Errorf("expected death count 7, got %d", update.DeathCount)
+		}
+		// No character name for unsupported game
+		if update.CharacterName != "" {
+			t.Errorf("expected empty character name, got %q", update.CharacterName)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+// setCharacterName updates the character name in mock memory (PlayerGameData + 0x88).
+func setCharacterName(mock *mockProcessOps, name string) {
+	mock.memory[uintptr(0x400000088)] = encodeUTF16LE(name)
 }
