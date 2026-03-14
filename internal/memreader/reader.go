@@ -28,6 +28,7 @@ type GameReader struct {
 	sprjEventFlagManAOBAddr int64
 	fieldAreaAOBAddr        int64
 	gameManAOBAddr          int64
+	gameDataManAOBAddr      int64
 	eventFlagInitDone       bool
 }
 
@@ -35,6 +36,14 @@ type GameReader struct {
 // This is primarily used for testing with mock implementations.
 func NewGameReaderWithOps(ops ProcessOps) *GameReader {
 	return &GameReader{ops: ops}
+}
+
+// SetTestAOBAddresses injects AOB-resolved addresses for testing, bypassing
+// the actual AOB scanning which requires a real PE .text section.
+func (r *GameReader) SetTestAOBAddresses(gameDataMan, gameMan int64) {
+	r.gameDataManAOBAddr = gameDataMan
+	r.gameManAOBAddr = gameMan
+	r.eventFlagInitDone = true
 }
 
 // Attach finds and attaches to any supported FromSoftware game process.
@@ -202,10 +211,20 @@ func (r *GameReader) initEventFlagPointers() {
 		}
 	}
 
+	// Try AOB scan for GameDataMan
+	if r.game.GameDataManAOB != nil {
+		addr, err := r.scanWithFallbacks(r.game.GameDataManAOB, "GameDataMan")
+		if err != nil {
+			log.Printf("[AOB] GameDataMan scan failed: %v", err)
+		} else {
+			r.gameDataManAOBAddr = addr
+			log.Printf("[AOB] GameDataMan global pointer at: 0x%X", addr)
+		}
+	}
+
 	// Try AOB scan for GameMan
 	if r.game.GameManAOB != nil {
-		aob := r.game.GameManAOB
-		addr, err := r.ScanForPointer(aob.Pattern, aob.RelativeOffsetPos, aob.InstrLen)
+		addr, err := r.scanWithFallbacks(r.game.GameManAOB, "GameMan")
 		if err != nil {
 			log.Printf("[AOB] GameMan scan failed: %v", err)
 		} else {
@@ -213,6 +232,29 @@ func (r *GameReader) initEventFlagPointers() {
 			log.Printf("[AOB] GameMan global pointer at: 0x%X", addr)
 		}
 	}
+}
+
+// scanWithFallbacks tries the primary AOB pattern and then each fallback pattern
+// until one succeeds. Returns the resolved pointer address or the last error.
+func (r *GameReader) scanWithFallbacks(cfg *AOBPointerConfig, name string) (int64, error) {
+	// Try primary pattern
+	addr, err := r.ScanForPointer(cfg.Pattern, cfg.RelativeOffsetPos, cfg.InstrLen)
+	if err == nil {
+		return addr, nil
+	}
+	log.Printf("[AOB] %s primary pattern failed: %v", name, err)
+
+	// Try each fallback pattern with the same offsets
+	for i, pattern := range cfg.FallbackPatterns {
+		addr, err = r.ScanForPointer(pattern, cfg.RelativeOffsetPos, cfg.InstrLen)
+		if err == nil {
+			log.Printf("[AOB] %s fallback pattern #%d matched", name, i+1)
+			return addr, nil
+		}
+		log.Printf("[AOB] %s fallback pattern #%d failed: %v", name, i+1, err)
+	}
+
+	return 0, fmt.Errorf("all %d patterns failed for %s", 1+len(cfg.FallbackPatterns), name)
 }
 
 // ReadEventFlag checks if a game event flag is set (boss killed, bonfire lit, etc.).
@@ -523,31 +565,26 @@ func (r *GameReader) ReadMemoryValue(pathName string, extraOffset int64, size in
 	// Lazily initialize AOB-scanned pointers
 	r.initEventFlagPointers()
 
-	// Determine starting point: use AOB-resolved address if the chain shares
-	// the same base offset as SprjEventFlagMan.
+	// Determine starting address: either from a named base path (AOB-resolved)
+	// or from the module base address.
 	address := int64(0)
-	startIdx := 0
-
-	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
-		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
-		// First offset matches SprjEventFlagMan — use AOB-resolved pointer
-		ptr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for %s: %w", pathName, err)
+	if r.game.PathBases != nil {
+		if baseName, ok := r.game.PathBases[pathName]; ok {
+			base, err := r.resolveAOBPath(baseName)
+			if err != nil {
+				return 0, fmt.Errorf("failed to resolve base %q for path %q: %w", baseName, pathName, err)
+			}
+			address = base
 		}
-		if ptr == 0 {
-			return 0, ErrNullPointer
-		}
-		address = ptr
-		startIdx = 1 // skip the first offset, already resolved via AOB
-	} else {
+	}
+	if address == 0 {
 		address = int64(r.baseAddress)
 	}
 
-	// Follow remaining pointer chain
+	// Follow pointer chain
 	buffer := make([]byte, 8)
 
-	for i := startIdx; i < len(offsets); i++ {
+	for i := 0; i < len(offsets); i++ {
 		if address == 0 {
 			return 0, ErrNullPointer
 		}
@@ -682,46 +719,29 @@ func (r *GameReader) resolvePathAddress(pathName string) (int64, error) {
 
 	r.initEventFlagPointers()
 
-	// GameMan AOB shortcut — zero-length path means resolved entirely via AOB
-	if len(offsets) == 0 && r.game.GameManAOB != nil {
-		if r.gameManAOBAddr == 0 {
-			// AOB scan didn't find GameMan — path is unresolvable without AOB
-			return 0, ErrNullPointer
-		}
-		aob := r.game.GameManAOB
-		if aob.Dereference {
-			ptr, err := r.readPtr(r.gameManAOBAddr)
-			if err != nil {
-				return 0, fmt.Errorf("failed to read GameMan pointer: %w", err)
-			}
-			if ptr == 0 {
-				return 0, ErrNullPointer
-			}
-			return ptr, nil
-		}
-		return r.gameManAOBAddr, nil
+	// Zero-length path: resolved entirely via AOB
+	if len(offsets) == 0 {
+		return r.resolveAOBPath(pathName)
 	}
 
+	// Determine starting address: either from a named base path (AOB-resolved)
+	// or from the module base address.
 	address := int64(0)
-	startIdx := 0
-
-	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
-		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
-		ptr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for %s: %w", pathName, err)
+	if r.game.PathBases != nil {
+		if baseName, ok := r.game.PathBases[pathName]; ok {
+			base, err := r.resolveAOBPath(baseName)
+			if err != nil {
+				return 0, fmt.Errorf("failed to resolve base %q for path %q: %w", baseName, pathName, err)
+			}
+			address = base
 		}
-		if ptr == 0 {
-			return 0, ErrNullPointer
-		}
-		address = ptr
-		startIdx = 1
-	} else {
+	}
+	if address == 0 {
 		address = int64(r.baseAddress)
 	}
 
 	buffer := make([]byte, 8)
-	for i := startIdx; i < len(offsets); i++ {
+	for i := 0; i < len(offsets); i++ {
 		if address == 0 {
 			return 0, ErrNullPointer
 		}
@@ -745,6 +765,38 @@ func (r *GameReader) resolvePathAddress(pathName string) (int64, error) {
 	}
 
 	return address, nil
+}
+
+// resolveAOBPath resolves a zero-length path via its matching AOB config.
+func (r *GameReader) resolveAOBPath(pathName string) (int64, error) {
+	var aobAddr int64
+	var aobCfg *AOBPointerConfig
+
+	switch pathName {
+	case "game_man":
+		aobAddr, aobCfg = r.gameManAOBAddr, r.game.GameManAOB
+	case "game_data_man":
+		aobAddr, aobCfg = r.gameDataManAOBAddr, r.game.GameDataManAOB
+	}
+
+	if aobCfg == nil {
+		return 0, fmt.Errorf("no AOB config for path %q", pathName)
+	}
+	if aobAddr == 0 {
+		return 0, ErrNullPointer
+	}
+
+	if aobCfg.Dereference {
+		ptr, err := r.readPtr(aobAddr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read %s pointer: %w", pathName, err)
+		}
+		if ptr == 0 {
+			return 0, ErrNullPointer
+		}
+		return ptr, nil
+	}
+	return aobAddr, nil
 }
 
 // readUTF16 reads a UTF-16LE encoded string from the given address.

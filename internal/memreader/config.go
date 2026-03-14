@@ -2,10 +2,11 @@ package memreader
 
 // AOBPointerConfig describes how to find a pointer via AOB (Array of Bytes) scanning.
 type AOBPointerConfig struct {
-	Pattern           string // Hex byte pattern with ? wildcards, e.g. "48 c7 05 ? ? ? ?"
-	RelativeOffsetPos int    // Position within pattern where the int32 RIP-relative offset lives
-	InstrLen          int    // Total instruction length for RIP-relative calculation
-	Dereference       bool   // If true, dereference the resolved address to get the final pointer
+	Pattern           string   // Primary hex byte pattern with ? wildcards, e.g. "48 c7 05 ? ? ? ?"
+	FallbackPatterns  []string // Additional patterns to try if the primary fails
+	RelativeOffsetPos int      // Position within pattern where the int32 RIP-relative offset lives
+	InstrLen          int      // Total instruction length for RIP-relative calculation
+	Dereference       bool     // If true, dereference the resolved address to get the final pointer
 }
 
 // GameConfig holds the configuration for a specific FromSoftware game
@@ -22,6 +23,8 @@ type GameConfig struct {
 	SprjEventFlagManAOB *AOBPointerConfig  // AOB pattern to find SprjEventFlagMan (overrides EventFlagOffsets64)
 	FieldAreaAOB        *AOBPointerConfig  // AOB pattern to find FieldArea (overrides FieldAreaOffsets64)
 	GameManAOB          *AOBPointerConfig  // AOB pattern to find GameMan (for save slot index)
+	GameDataManAOB      *AOBPointerConfig  // AOB pattern to find GameDataMan (for player data paths)
+	PathBases           map[string]string  // Optional: path name → base path name (resolved first, then offsets applied)
 	CharNamePathKey     string             // MemoryPaths key for character name base (e.g. "player_game_data")
 	CharNameOffset      int64              // Extra offset from resolved path to UTF-16LE character name
 	CharNameMaxLen      int                // Max characters to read (e.g. 16 for DS3)
@@ -51,18 +54,24 @@ var supportedGames = []GameConfig{
 		FieldAreaOffsets64: []int64{0x4768028, 0x0},
 		IGTOffsets64:       []int64{0x4768E78, 0xA4},
 		MemoryPaths: map[string][]int64{
+			// GameDataMan — resolved via GameDataManAOB; static offset 0x4768E78 is stale
+			"game_data_man": {},
 			// GameDataMan → PlayerGameData → player stats struct
 			// Final address is base of stats; use offset in MemCheck for specific fields:
 			//   +0x68 = SoulLevel (uint32)
 			//   +0x6C = Vigor, +0x70 = Attunement, +0x74 = Endurance, +0x78 = Vitality
 			//   +0x7C = Strength, +0x80 = Dexterity, +0x84 = Intelligence, +0x88 = Faith, +0x8C = Luck
-			"player_stats": {0x4768E78, 0x10, 0x10},
+			"player_stats": {0x10, 0x10},
 			// GameDataMan → PlayerGameData (for character name)
 			// Character name is UTF-16LE at PlayerGameData + 0x88
 			// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 (Unicode, 48 bytes)
-			"player_game_data": {0x4768E78, 0x10},
+			"player_game_data": {0x10},
 			// GameMan — resolved entirely via GameManAOB, no static chain
 			"game_man": {},
+		},
+		PathBases: map[string]string{
+			"player_stats":     "game_data_man",
+			"player_game_data": "game_data_man",
 		},
 		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 = character name (UTF-16LE)
 		CharNamePathKey: "player_game_data",
@@ -87,6 +96,27 @@ var supportedGames = []GameConfig{
 		},
 		GameManAOB: &AOBPointerConfig{
 			Pattern:           "48 8B ?? ?? ?? ?? 04 89 48 28 C3",
+			RelativeOffsetPos: 3,
+			InstrLen:          7,
+			Dereference:       true,
+		},
+		// GameDataMan AOB: multiple candidate patterns that reference the GameDataMan global.
+		// All use mov reg,[rip+disp32] (REX.W 8B /r) so RelativeOffsetPos=3, InstrLen=7.
+		GameDataManAOB: &AOBPointerConfig{
+			// Primary: mov rax,[rip+?]; test rax,rax; jz ?; cmp byte [rax+?]
+			Pattern: "48 8B 05 ? ? ? ? 48 85 C0 ? ? 80 B8",
+			FallbackPatterns: []string{
+				// mov rbx,[rip+?]; mov rdi,rcx; test rbx,rbx (SoulSplitter-style)
+				"48 8B 1D ? ? ? ? 48 8B F9 48 85 DB",
+				// mov rax,[rip+?]; test rax,rax; jz short ?; mov rax,[rax+10h]
+				"48 8B 05 ? ? ? ? 48 85 C0 74 ? 48 8B 40 10",
+				// mov rcx,[rip+?]; test rcx,rcx; jz ?; mov rcx,[rcx+10h]
+				"48 8B 0D ? ? ? ? 48 85 C9 74 ? 48 8B 49 10",
+				// mov rax,[rip+?]; test rax,rax; jnz (short jump over)
+				"48 8B 05 ? ? ? ? 48 85 C0 75",
+				// mov rax,[rip+?]; mov rcx (broader match)
+				"48 8B 05 ? ? ? ? 48 89 ? ? ? 8B 40",
+			},
 			RelativeOffsetPos: 3,
 			InstrLen:          7,
 			Dereference:       true,

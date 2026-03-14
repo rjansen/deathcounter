@@ -769,16 +769,24 @@ func TestReadIGT_NotAttached(t *testing.T) {
 
 // --- ReadMemoryValue tests ---
 
+// setupGameDataManChain sets up a GameDataMan → PlayerGameData → Stats chain
+// via AOB-resolved addresses. Returns the stats struct base address.
+func setupGameDataManChain(mock *mockProcessOps, reader *GameReader) uintptr {
+	// GameDataMan global pointer at AOB-resolved address
+	gameDataManGlobal := uintptr(0x800000000)
+	mock.setMemory64(gameDataManGlobal, 0x30000000) // GameDataMan object
+	mock.setMemory64(0x30000010, 0x40000000)         // PlayerGameData
+	mock.setMemory64(0x40000010, 0x50000000)         // Stats struct
+	reader.SetTestAOBAddresses(int64(gameDataManGlobal), 0)
+	return 0x50000000
+}
+
 func TestReadMemoryValue_4Byte(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
-
-	// DS3 player_stats path: {0x4768E78, 0x10, 0x10}
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000010, 0x40000000)
-	mock.setMemory64(0x40000010, 0x50000000)
+	statsBase := setupGameDataManChain(mock, reader)
 
 	// SoulLevel at offset 0x68 = 120
-	mock.setMemory32(0x50000068, 120)
+	mock.setMemory32(statsBase+0x68, 120)
 
 	val, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
 	if err != nil {
@@ -791,16 +799,13 @@ func TestReadMemoryValue_4Byte(t *testing.T) {
 
 func TestReadMemoryValue_2Byte(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
-
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000010, 0x40000000)
-	mock.setMemory64(0x40000010, 0x50000000)
+	statsBase := setupGameDataManChain(mock, reader)
 
 	// 2-byte value at offset 0x100 = 500
 	b := make([]byte, 8)
 	b[0] = 0xF4 // 500 = 0x01F4
 	b[1] = 0x01
-	mock.memory[0x50000100] = b
+	mock.memory[statsBase+0x100] = b
 
 	val, err := reader.ReadMemoryValue("player_stats", 0x100, 2)
 	if err != nil {
@@ -813,14 +818,11 @@ func TestReadMemoryValue_2Byte(t *testing.T) {
 
 func TestReadMemoryValue_1Byte(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
-
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000010, 0x40000000)
-	mock.setMemory64(0x40000010, 0x50000000)
+	statsBase := setupGameDataManChain(mock, reader)
 
 	b := make([]byte, 8)
 	b[0] = 7 // weapon upgrade level
-	mock.memory[0x50000200] = b
+	mock.memory[statsBase+0x200] = b
 
 	val, err := reader.ReadMemoryValue("player_stats", 0x200, 1)
 	if err != nil {
@@ -833,11 +835,8 @@ func TestReadMemoryValue_1Byte(t *testing.T) {
 
 func TestReadMemoryValue_DefaultSize(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
-
-	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000010, 0x40000000)
-	mock.setMemory64(0x40000010, 0x50000000)
-	mock.setMemory32(0x50000068, 42)
+	statsBase := setupGameDataManChain(mock, reader)
+	mock.setMemory32(statsBase+0x68, 42)
 
 	// size=0 should default to 4
 	val, err := reader.ReadMemoryValue("player_stats", 0x68, 0)
@@ -871,7 +870,10 @@ func TestReadMemoryValue_NotAttached(t *testing.T) {
 func TestReadMemoryValue_NullPointer(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	mock.setMemory64(0x144768E78, 0)
+	// GameDataMan global pointer resolves to null (game loading)
+	gameDataManGlobal := uintptr(0x800000000)
+	mock.setMemory64(gameDataManGlobal, 0) // null
+	reader.SetTestAOBAddresses(int64(gameDataManGlobal), 0)
 
 	_, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
 	if err == nil {
@@ -896,12 +898,14 @@ func setupDS3WithGameDataMan(t *testing.T) (*mockProcessOps, *GameReader) {
 	t.Helper()
 	mock, reader := attachDS3WithEventFlags(t)
 
-	// GameDataMan: base + 0x4768E78 -> GameDataMan object at 0x300000000
-	mock.setMemory64(0x144768E78, 0x300000000)
+	// GameDataMan via AOB-resolved global pointer
+	gameDataManGlobal := uintptr(0x800000000)
+	mock.setMemory64(gameDataManGlobal, 0x300000000) // GameDataMan object
 
 	// PlayerGameData: GameDataMan + 0x10 -> 0x400000000
 	mock.setMemory64(0x300000010, 0x400000000)
 
+	reader.SetTestAOBAddresses(int64(gameDataManGlobal), 0)
 	return mock, reader
 }
 
