@@ -97,9 +97,9 @@ Place a JSON file in the `routes/` directory. Each checkpoint uses either an eve
   "category": "Any%",
   "version": "1",
   "checkpoints": [
-    {"id": "vordt", "name": "Vordt", "event_type": "boss_kill", "event_flag_id": 13100800},
+    {"id": "vordt", "name": "Vordt", "event_type": "boss_kill", "event_flag_id": 13000800},
     {"id": "dex-30", "name": "DEX 30", "event_type": "level_up", "optional": true,
-     "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 30, "size": 4}}
+     "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 30, "size": 4}}
   ],
   "reference_times": [225000, 500000]
 }

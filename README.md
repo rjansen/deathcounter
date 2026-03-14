@@ -100,8 +100,8 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 
 ### Included Routes
 
-- **DS3 Glitchless Any% - Hybrid Route** (`routes/ds3-glitchless-any-percent-hybrid.json`)
-  - 13 required boss checkpoints in hybrid route order
+- **DS3 Glitchless Any% - Hybrid Route v6** (`routes/ds3-glitchless-any-percent-hybrid.json`)
+  - 18 checkpoints total: 13 required boss kills in hybrid route order
   - 5 optional milestones: DEX 33/38/47 and Sellsword Twinblades +3/+6
 
 ### Creating Custom Routes
@@ -120,8 +120,8 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13100800,
-      "backup_flag_id": 13100801
+      "event_flag_id": 13000800,
+      "backup_flag_id": 13000801
     },
     {
       "id": "level-30",
@@ -129,7 +129,7 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
       "event_type": "level_up",
       "mem_check": {
         "path": "player_stats",
-        "offset": 104,
+        "offset": 68,
         "comparison": "gte",
         "value": 30,
         "size": 4
@@ -165,17 +165,17 @@ When using `"path": "player_stats"` for Dark Souls III:
 
 | Offset | Stat |
 |--------|------|
-| `0x68` (104) | Soul Level |
-| `0x6C` (108) | Vigor |
-| `0x70` (112) | Attunement |
-| `0x74` (116) | Endurance |
-| `0x78` (120) | Vitality |
-| `0x7C` (124) | Strength |
-| `0x80` (128) | Dexterity |
-| `0x84` (132) | Intelligence |
-| `0x88` (136) | Faith |
-| `0x8C` (140) | Luck |
-| `0xA2` (162) | Max Weapon Reinforcement Level (1 byte) |
+| `0x44` (68) | Soul Level |
+| `0x48` (72) | Attunement |
+| `0x4C` (76) | Endurance |
+| `0x50` (80) | Vigor |
+| `0x54` (84) | Dexterity |
+| `0x58` (88) | Intelligence |
+| `0x5C` (92) | Faith |
+| `0x60` (96) | Luck |
+| `0x6C` (108) | Strength |
+| `0x70` (112) | Vitality |
+| `0xB3` (179) | Max Weapon Reinforcement Level (1 byte) |
 
 ## How It Works
 
@@ -237,6 +237,7 @@ deathcounter/
 │   │   ├── config.go               # Game configurations, offsets, AOB patterns
 │   │   ├── reader.go               # Death count, event flag, IGT, and memory value reading
 │   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
+│   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, bonfire names
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
 │   ├── monitor/                     # Game monitoring lifecycle

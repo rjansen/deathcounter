@@ -203,7 +203,7 @@ flagID → decompose: div10M, area, block, div1K, remainder
        → read uint32 at (remainder >> 5) * 4, check bit (0x1f - (remainder & 0x1f))
 ```
 
-DS3 boss flag pattern: Defeated = `XXX00800` (bit 7/bitIndex 31), Encountered = `XXX00801` (bit 6/bitIndex 30).
+DS3 boss flag patterns: Defeated flags use suffixes `800`, `830`, `850`, `860`, or `890` (e.g. `13000800`, `13300850`, `13000890`). Encountered flags are typically defeated+1 (e.g. `13000801`), except for `XXX50` variants which use defeated+2 (e.g. `13300852`). 8 of 25 bosses have no known encounter flag (Pontiff, Aldrich, Dancer, Ancient Wyvern, Nameless King, Dragonslayer Armour, Demon Prince, no pattern — omit `backup_flag_id` for these).
 
 ### AOB (Array of Bytes) Scanning
 
@@ -280,7 +280,10 @@ Other games do not have anti-cheat and work normally.
 - **Stats tests** (`internal/stats/`): SQLite-based, platform-independent
 - **Backup tests** (`internal/backup/`): File operations, platform-independent
 - **Memory reader tests** (`internal/memreader/`): Use `mockProcessOps` to simulate Windows API without a running game
+  - `ds3_offsets_test.go`: Flag constant validation (counts, uniqueness, bit patterns, pinned CT values)
+- **Route integration tests** (`internal/route/`): `route_integration_test.go` validates route file flag IDs against exported `memreader` constants
 - **Monitor tests** (`internal/monitor/`): Uses mock ProcessOps, tests save detection gate, save change handling, display updates
+- **E2e tests** (`internal/memreader/`): Cover all 25 DS3 boss defeated flags and 17 encountered flags
 - Manual testing with actual games recommended for end-to-end validation
 
 ## Code Conventions
