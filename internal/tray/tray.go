@@ -1,3 +1,5 @@
+//go:build windows
+
 package tray
 
 import (
@@ -5,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"fyne.io/systray"
+	"github.com/lxn/walk"
 	"github.com/rjansen/deathcounter/internal/monitor"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
@@ -16,17 +18,19 @@ type App struct {
 	tracker           *stats.Tracker
 	ticker            *time.Ticker
 	stopCh            chan struct{}
-	menuTitle         *systray.MenuItem
-	menuGame          *systray.MenuItem
-	menuCharacter     *systray.MenuItem
-	menuCount         *systray.MenuItem
-	menuSession       *systray.MenuItem
-	menuTotal         *systray.MenuItem
-	menuStatus        *systray.MenuItem
-	menuRouteName     *systray.MenuItem
-	menuRouteProgress *systray.MenuItem
-	menuRouteCurrent  *systray.MenuItem
-	menuRouteSplitD   *systray.MenuItem
+	mainWindow        *walk.MainWindow
+	ni                *walk.NotifyIcon
+	menuTitle         *walk.Action
+	menuGame          *walk.Action
+	menuCharacter     *walk.Action
+	menuCount         *walk.Action
+	menuSession       *walk.Action
+	menuTotal         *walk.Action
+	menuStatus        *walk.Action
+	menuRouteName     *walk.Action
+	menuRouteProgress *walk.Action
+	menuRouteCurrent  *walk.Action
+	menuRouteSplitD   *walk.Action
 }
 
 // NewApp creates a new system tray application
@@ -39,67 +43,47 @@ func NewApp(mon monitor.Monitor, tracker *stats.Tracker) *App {
 
 // Run starts the system tray application
 func (a *App) Run() error {
-	systray.Run(a.onReady, a.onExit)
-	return nil
-}
+	var err error
 
-// onReady is called when the system tray is ready
-func (a *App) onReady() {
-	systray.SetIcon(getIcon())
-	systray.SetTitle("Death Counter")
-	systray.SetTooltip("FromSoftware Death Counter")
+	// Create hidden main window (required by walk for message pump)
+	a.mainWindow, err = walk.NewMainWindow()
+	if err != nil {
+		return fmt.Errorf("failed to create main window: %w", err)
+	}
 
-	// Menu items
-	a.menuTitle = systray.AddMenuItem("FromSoftware Death Counter", "Death statistics for all games")
-	a.menuTitle.Disable()
+	// Create notify icon
+	a.ni, err = walk.NewNotifyIcon(a.mainWindow)
+	if err != nil {
+		return fmt.Errorf("failed to create notify icon: %w", err)
+	}
+	defer a.ni.Dispose()
 
-	systray.AddSeparator()
+	// Set icon
+	icon, err := loadIcon()
+	if err != nil {
+		log.Printf("Warning: could not load icon: %v", err)
+	} else {
+		if err := a.ni.SetIcon(icon); err != nil {
+			log.Printf("Warning: could not set icon: %v", err)
+		}
+	}
 
-	a.menuStatus = systray.AddMenuItem("Status: Starting...", "Connection status")
-	a.menuStatus.Disable()
+	// Set tooltip
+	if err := a.ni.SetToolTip("FromSoftware Death Counter"); err != nil {
+		log.Printf("Warning: could not set tooltip: %v", err)
+	}
 
-	a.menuGame = systray.AddMenuItem("Game: None", "Currently monitored game")
-	a.menuGame.Disable()
+	// Build context menu
+	if err := a.buildMenu(); err != nil {
+		return fmt.Errorf("failed to build menu: %w", err)
+	}
 
-	a.menuCharacter = systray.AddMenuItem("Character: -", "Current character")
-	a.menuCharacter.Disable()
+	// Show notify icon
+	if err := a.ni.SetVisible(true); err != nil {
+		return fmt.Errorf("failed to show notify icon: %w", err)
+	}
 
-	systray.AddSeparator()
-
-	a.menuCount = systray.AddMenuItem("Current: 0", "Deaths in current session")
-	a.menuCount.Disable()
-
-	a.menuSession = systray.AddMenuItem("Session: 0", "Deaths this session")
-	a.menuSession.Disable()
-
-	a.menuTotal = systray.AddMenuItem("Total: 0", "Total deaths across all sessions")
-	a.menuTotal.Disable()
-
-	systray.AddSeparator()
-
-	// Route section
-	systray.AddSeparator()
-	a.menuRouteName = systray.AddMenuItem("Route: None", "Active speedrun route")
-	a.menuRouteName.Disable()
-	a.menuRouteProgress = systray.AddMenuItem("Progress: -", "Route completion progress")
-	a.menuRouteProgress.Disable()
-	a.menuRouteCurrent = systray.AddMenuItem("Current: -", "Current checkpoint")
-	a.menuRouteCurrent.Disable()
-	a.menuRouteSplitD = systray.AddMenuItem("Split Deaths: 0", "Deaths in current segment")
-	a.menuRouteSplitD.Disable()
-
-	systray.AddSeparator()
-
-	// Stats submenu
-	mStats := systray.AddMenuItem("View Statistics", "Show detailed statistics")
-	mStatsSession := mStats.AddSubMenuItem("Current Session", "Show current session stats")
-	mStatsHistory := mStats.AddSubMenuItem("Session History", "Show session history")
-
-	systray.AddSeparator()
-
-	mQuit := systray.AddMenuItem("Quit", "Quit the application")
-
-	// Start tick loop and listen for display updates
+	// Start tick loop
 	a.ticker = time.NewTicker(500 * time.Millisecond)
 	a.stopCh = make(chan struct{})
 	go func() {
@@ -112,6 +96,8 @@ func (a *App) onReady() {
 			}
 		}
 	}()
+
+	// Listen for display updates
 	go func() {
 		for {
 			select {
@@ -119,23 +105,10 @@ func (a *App) onReady() {
 				if !ok {
 					return
 				}
-				a.refreshDisplay(update)
+				a.mainWindow.Synchronize(func() {
+					a.refreshDisplay(update)
+				})
 			case <-a.stopCh:
-				return
-			}
-		}
-	}()
-
-	// Handle menu clicks
-	go func() {
-		for {
-			select {
-			case <-mStatsSession.ClickedCh:
-				a.showCurrentSessionStats()
-			case <-mStatsHistory.ClickedCh:
-				a.showSessionHistory()
-			case <-mQuit.ClickedCh:
-				systray.Quit()
 				return
 			}
 		}
@@ -143,9 +116,130 @@ func (a *App) onReady() {
 
 	// Update total deaths on start
 	a.updateTotalDeaths()
+
+	// Run message pump (blocks until window is closed)
+	a.mainWindow.Run()
+
+	// Cleanup
+	a.onExit()
+	return nil
 }
 
-// onExit is called when the system tray is exiting
+// buildMenu creates the context menu for the notify icon.
+func (a *App) buildMenu() error {
+	menu := a.ni.ContextMenu()
+
+	// Title
+	a.menuTitle = walk.NewAction()
+	a.menuTitle.SetText("FromSoftware Death Counter")
+	a.menuTitle.SetEnabled(false)
+	menu.Actions().Add(a.menuTitle)
+
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	// Status
+	a.menuStatus = walk.NewAction()
+	a.menuStatus.SetText("Status: Starting...")
+	a.menuStatus.SetEnabled(false)
+	menu.Actions().Add(a.menuStatus)
+
+	// Game
+	a.menuGame = walk.NewAction()
+	a.menuGame.SetText("Game: None")
+	a.menuGame.SetEnabled(false)
+	menu.Actions().Add(a.menuGame)
+
+	// Character
+	a.menuCharacter = walk.NewAction()
+	a.menuCharacter.SetText("Character: -")
+	a.menuCharacter.SetEnabled(false)
+	menu.Actions().Add(a.menuCharacter)
+
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	// Death counts
+	a.menuCount = walk.NewAction()
+	a.menuCount.SetText("Current: 0")
+	a.menuCount.SetEnabled(false)
+	menu.Actions().Add(a.menuCount)
+
+	a.menuSession = walk.NewAction()
+	a.menuSession.SetText("Session: 0")
+	a.menuSession.SetEnabled(false)
+	menu.Actions().Add(a.menuSession)
+
+	a.menuTotal = walk.NewAction()
+	a.menuTotal.SetText("Total: 0")
+	a.menuTotal.SetEnabled(false)
+	menu.Actions().Add(a.menuTotal)
+
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	// Route section
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	a.menuRouteName = walk.NewAction()
+	a.menuRouteName.SetText("Route: None")
+	a.menuRouteName.SetEnabled(false)
+	menu.Actions().Add(a.menuRouteName)
+
+	a.menuRouteProgress = walk.NewAction()
+	a.menuRouteProgress.SetText("Progress: -")
+	a.menuRouteProgress.SetEnabled(false)
+	menu.Actions().Add(a.menuRouteProgress)
+
+	a.menuRouteCurrent = walk.NewAction()
+	a.menuRouteCurrent.SetText("Current: -")
+	a.menuRouteCurrent.SetEnabled(false)
+	menu.Actions().Add(a.menuRouteCurrent)
+
+	a.menuRouteSplitD = walk.NewAction()
+	a.menuRouteSplitD.SetText("Split Deaths: 0")
+	a.menuRouteSplitD.SetEnabled(false)
+	menu.Actions().Add(a.menuRouteSplitD)
+
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	// Stats submenu
+	statsMenu, err := walk.NewMenu()
+	if err != nil {
+		return err
+	}
+	statsAction, err := menu.Actions().AddMenu(statsMenu)
+	if err != nil {
+		return err
+	}
+	statsAction.SetText("View Statistics")
+
+	mStatsSession := walk.NewAction()
+	mStatsSession.SetText("Current Session")
+	mStatsSession.Triggered().Attach(func() {
+		a.showCurrentSessionStats()
+	})
+	statsMenu.Actions().Add(mStatsSession)
+
+	mStatsHistory := walk.NewAction()
+	mStatsHistory.SetText("Session History")
+	mStatsHistory.Triggered().Attach(func() {
+		a.showSessionHistory()
+	})
+	statsMenu.Actions().Add(mStatsHistory)
+
+	menu.Actions().Add(walk.NewSeparatorAction())
+
+	// Quit
+	mQuit := walk.NewAction()
+	mQuit.SetText("Quit")
+	mQuit.Triggered().Attach(func() {
+		a.ni.Dispose()
+		a.mainWindow.Close()
+	})
+	menu.Actions().Add(mQuit)
+
+	return nil
+}
+
+// onExit is called when the application is shutting down.
 func (a *App) onExit() {
 	log.Println("Shutting down...")
 	if a.ticker != nil {
@@ -158,102 +252,43 @@ func (a *App) onExit() {
 
 // refreshDisplay updates all tray menu items from a DisplayUpdate.
 func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
-	// Status
 	if a.menuStatus != nil {
-		a.menuStatus.SetTitle(fmt.Sprintf("Status: %s", update.Status))
+		a.menuStatus.SetText(formatStatusText(update.Status))
 	}
-
-	// Game
 	if a.menuGame != nil {
-		if update.GameName == "" {
-			a.menuGame.SetTitle("Game: None")
-		} else {
-			a.menuGame.SetTitle(fmt.Sprintf("Game: %s", update.GameName))
-		}
+		a.menuGame.SetText(formatGameText(update.GameName))
 	}
-
-	// Character
 	if a.menuCharacter != nil {
-		if update.CharacterName != "" {
-			a.menuCharacter.SetTitle(fmt.Sprintf("Character: %s (Slot %d)", update.CharacterName, update.SaveSlotIndex))
-		} else {
-			a.menuCharacter.SetTitle("Character: -")
-		}
+		a.menuCharacter.SetText(formatCharacterText(update.CharacterName, update.SaveSlotIndex))
 	}
 
-	// Tooltip
-	if update.Status == "Connected" && update.GameName != "" {
-		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", update.GameName))
-	} else if update.GameName != "" {
-		systray.SetTooltip(fmt.Sprintf("Death Counter - %s", update.GameName))
-	} else {
-		systray.SetTooltip("Death Counter - " + update.Status)
-	}
+	a.ni.SetToolTip(formatTooltip(update.Status, update.GameName))
 
-	// Death count
 	if a.menuCount != nil {
-		a.menuCount.SetTitle(fmt.Sprintf("Current: %d", update.DeathCount))
+		a.menuCount.SetText(formatDeathCountText("Current", update.DeathCount))
 	}
 	if a.menuSession != nil {
-		a.menuSession.SetTitle(fmt.Sprintf("Session: %d", update.DeathCount))
+		a.menuSession.SetText(formatDeathCountText("Session", update.DeathCount))
 	}
 	a.updateTotalDeaths()
 
-	// Route fields
 	a.refreshRouteDisplay(update.Fields)
 }
 
 // refreshRouteDisplay updates route-specific menu items from Fields map.
 func (a *App) refreshRouteDisplay(fields map[string]any) {
-	if fields == nil {
-		// No route data — show defaults
-		a.setRouteDefaults()
-		return
-	}
-
-	routeName, _ := fields["route_name"].(string)
-	if routeName == "" {
-		a.setRouteDefaults()
-		return
-	}
-
+	texts := resolveRouteTexts(fields)
 	if a.menuRouteName != nil {
-		a.menuRouteName.SetTitle(fmt.Sprintf("Route: %s", routeName))
-	}
-
-	if a.menuRouteProgress != nil {
-		completed, _ := fields["completed_count"].(int)
-		total, _ := fields["total_count"].(int)
-		percent, _ := fields["completion_percent"].(float64)
-		a.menuRouteProgress.SetTitle(fmt.Sprintf("Progress: %d/%d (%.0f%%)", completed, total, percent))
-	}
-
-	if a.menuRouteCurrent != nil {
-		cp, _ := fields["current_checkpoint"].(string)
-		if cp == "" {
-			cp = "Complete!"
-		}
-		a.menuRouteCurrent.SetTitle(fmt.Sprintf("Current: %s", cp))
-	}
-
-	if a.menuRouteSplitD != nil {
-		deaths, _ := fields["split_deaths"].(uint32)
-		a.menuRouteSplitD.SetTitle(fmt.Sprintf("Split Deaths: %d", deaths))
-	}
-}
-
-func (a *App) setRouteDefaults() {
-	if a.menuRouteName != nil {
-		a.menuRouteName.SetTitle("Route: None")
+		a.menuRouteName.SetText(texts.name)
 	}
 	if a.menuRouteProgress != nil {
-		a.menuRouteProgress.SetTitle("Progress: -")
+		a.menuRouteProgress.SetText(texts.progress)
 	}
 	if a.menuRouteCurrent != nil {
-		a.menuRouteCurrent.SetTitle("Current: -")
+		a.menuRouteCurrent.SetText(texts.current)
 	}
 	if a.menuRouteSplitD != nil {
-		a.menuRouteSplitD.SetTitle("Split Deaths: 0")
+		a.menuRouteSplitD.SetText(texts.splitD)
 	}
 }
 
@@ -266,7 +301,7 @@ func (a *App) updateTotalDeaths() {
 	}
 
 	if a.menuTotal != nil {
-		a.menuTotal.SetTitle(fmt.Sprintf("Total: %d", total))
+		a.menuTotal.SetText(formatTotalDeathsText(total))
 	}
 }
 
@@ -304,9 +339,4 @@ func (a *App) showSessionHistory() {
 		)
 	}
 	// TODO: Show in a proper dialog
-}
-
-// getIcon returns the icon data for the system tray.
-func getIcon() []byte {
-	return iconData
 }
