@@ -434,15 +434,15 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 	}
 
 	// Verify cached addresses are set
-	if reader.sprjEventFlagManAddr == 0 && reader.game.EventFlagOffsets64 == nil {
-		t.Error("expected sprjEventFlagManAddr to be cached after first ReadEventFlag")
+	if reader.sprjEventFlagManAOBAddr == 0 && reader.game.EventFlagOffsets64 == nil {
+		t.Error("expected sprjEventFlagManAOBAddr to be cached after first ReadEventFlag")
 	}
 	if !reader.eventFlagInitDone {
 		t.Error("expected eventFlagInitDone to be true after first ReadEventFlag")
 	}
 
-	cachedSprj := reader.sprjEventFlagManAddr
-	cachedField := reader.fieldAreaAddr
+	cachedSprj := reader.sprjEventFlagManAOBAddr
+	cachedField := reader.fieldAreaAOBAddr
 
 	// Second call should reuse cached addresses (no re-scan)
 	_, err = reader.ReadEventFlag(13000800)
@@ -450,11 +450,11 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 		t.Fatalf("second ReadEventFlag failed: %v", err)
 	}
 
-	if reader.sprjEventFlagManAddr != cachedSprj {
-		t.Errorf("SprjEventFlagMan addr changed: 0x%X → 0x%X", cachedSprj, reader.sprjEventFlagManAddr)
+	if reader.sprjEventFlagManAOBAddr != cachedSprj {
+		t.Errorf("SprjEventFlagMan addr changed: 0x%X → 0x%X", cachedSprj, reader.sprjEventFlagManAOBAddr)
 	}
-	if reader.fieldAreaAddr != cachedField {
-		t.Errorf("FieldArea addr changed: 0x%X → 0x%X", cachedField, reader.fieldAreaAddr)
+	if reader.fieldAreaAOBAddr != cachedField {
+		t.Errorf("FieldArea addr changed: 0x%X → 0x%X", cachedField, reader.fieldAreaAOBAddr)
 	}
 	t.Logf("[DS3] AOB cache verified: SprjEventFlagMan=0x%X FieldArea=0x%X", cachedSprj, cachedField)
 }
@@ -523,6 +523,226 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 		}
 	}
 	t.Log("[DS3] 10 consecutive full ticks completed successfully")
+}
+
+// --- Save Identity E2E Tests (DS3 only) ---
+
+func TestE2E_AOBScan_GameDataMan(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	cfg := reader.game
+	if cfg.GameDataManAOB == nil {
+		t.Skip("No GameDataMan AOB pattern configured")
+	}
+
+	addr, err := reader.scanWithFallbacks(cfg.GameDataManAOB, "GameDataMan")
+	if err != nil {
+		t.Fatalf("GameDataMan AOB scan failed: %v", err)
+	}
+
+	if addr == 0 {
+		t.Fatal("GameDataMan scan returned zero address")
+	}
+	t.Logf("[DS3] GameDataMan AOB resolved: 0x%X", addr)
+
+	// Dereference to verify the pointer is valid
+	if cfg.GameDataManAOB.Dereference {
+		ptr, err := reader.readPtr(addr)
+		if err != nil {
+			t.Fatalf("Dereference of GameDataMan failed: %v", err)
+		}
+		if ptr == 0 {
+			t.Error("GameDataMan dereference returned null — game data may not be loaded yet")
+		} else {
+			t.Logf("[DS3] GameDataMan dereferenced: 0x%X", ptr)
+		}
+	}
+}
+
+func TestE2E_AOBScan_GameMan(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	cfg := reader.game
+	if cfg.GameManAOB == nil {
+		t.Skip("No GameMan AOB pattern configured")
+	}
+
+	addr, err := reader.scanWithFallbacks(cfg.GameManAOB, "GameMan")
+	if err != nil {
+		t.Fatalf("GameMan AOB scan failed: %v", err)
+	}
+
+	if addr == 0 {
+		t.Fatal("GameMan scan returned zero address")
+	}
+	t.Logf("[DS3] GameMan AOB resolved: 0x%X", addr)
+
+	if cfg.GameManAOB.Dereference {
+		ptr, err := reader.readPtr(addr)
+		if err != nil {
+			t.Fatalf("Dereference of GameMan failed: %v", err)
+		}
+		if ptr == 0 {
+			t.Error("GameMan dereference returned null — game data may not be loaded yet")
+		} else {
+			t.Logf("[DS3] GameMan dereferenced: 0x%X", ptr)
+		}
+	}
+}
+
+func TestE2E_ReadCharacterName(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName failed: %v", err)
+	}
+
+	if name == "" {
+		t.Error("character name is empty — save may not be loaded")
+	}
+
+	t.Logf("[DS3] Character name: %q", name)
+
+	// Basic sanity: name should be printable and reasonable length
+	if len(name) > 16 {
+		t.Errorf("character name too long (%d chars), expected max 16", len(name))
+	}
+}
+
+func TestE2E_ReadCharacterName_Stable(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	first, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("initial ReadCharacterName failed: %v", err)
+	}
+
+	// Read 5 times to verify stability
+	for i := 0; i < 5; i++ {
+		time.Sleep(200 * time.Millisecond)
+		name, err := reader.ReadCharacterName()
+		if err != nil {
+			t.Fatalf("ReadCharacterName iteration %d failed: %v", i, err)
+		}
+		if name != first {
+			t.Errorf("character name changed from %q to %q at iteration %d", first, name, i)
+		}
+	}
+	t.Logf("[DS3] Character name stable at %q over 5 reads", first)
+}
+
+func TestE2E_ReadSaveSlotIndex(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	slot, err := reader.ReadSaveSlotIndex()
+	if err != nil {
+		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
+	}
+
+	t.Logf("[DS3] Save slot index: %d", slot)
+
+	// DS3 has 10 save slots (0-9)
+	if slot < 0 || slot > 9 {
+		t.Errorf("save slot index %d outside expected range [0, 9]", slot)
+	}
+}
+
+func TestE2E_ReadSaveSlotIndex_Stable(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	first, err := reader.ReadSaveSlotIndex()
+	if err != nil {
+		t.Fatalf("initial ReadSaveSlotIndex failed: %v", err)
+	}
+
+	// Read 5 times to verify stability
+	for i := 0; i < 5; i++ {
+		time.Sleep(200 * time.Millisecond)
+		slot, err := reader.ReadSaveSlotIndex()
+		if err != nil {
+			t.Fatalf("ReadSaveSlotIndex iteration %d failed: %v", i, err)
+		}
+		if slot != first {
+			t.Errorf("save slot changed from %d to %d at iteration %d", first, slot, i)
+		}
+	}
+	t.Logf("[DS3] Save slot index stable at %d over 5 reads", first)
+}
+
+func TestE2E_SaveIdentity_Combined(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Read both save identity fields together, as the monitor does
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName failed: %v", err)
+	}
+
+	slot, err := reader.ReadSaveSlotIndex()
+	if err != nil {
+		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
+	}
+
+	t.Logf("[DS3] Save identity: %q (Slot %d)", name, slot)
+
+	if name == "" {
+		t.Error("character name is empty")
+	}
+	if slot < 0 || slot > 9 {
+		t.Errorf("save slot %d outside expected range [0, 9]", slot)
+	}
+}
+
+func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Simulate the full monitor tick: death count + save identity + event flags + IGT
+	deaths, err := reader.ReadDeathCount()
+	if err != nil {
+		t.Fatalf("ReadDeathCount failed: %v", err)
+	}
+
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName failed: %v", err)
+	}
+
+	slot, err := reader.ReadSaveSlotIndex()
+	if err != nil {
+		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
+	}
+
+	iudex, err := reader.ReadEventFlag(13000800)
+	if err != nil {
+		t.Fatalf("ReadEventFlag(Iudex) failed: %v", err)
+	}
+
+	igt, err := reader.ReadIGT()
+	if err != nil {
+		t.Fatalf("ReadIGT failed: %v", err)
+	}
+
+	t.Logf("[DS3] Full tick with save identity:")
+	t.Logf("  Character: %q (Slot %d)", name, slot)
+	t.Logf("  Deaths: %d, Iudex defeated: %v", deaths, iudex)
+	t.Logf("  IGT: %d ms (%.1f seconds)", igt, float64(igt)/1000.0)
 }
 
 func TestE2E_DetachClearsAOBCache(t *testing.T) {
