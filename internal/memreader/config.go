@@ -21,6 +21,11 @@ type GameConfig struct {
 	SaveFilePattern     string             // Glob pattern for save file, e.g. "%APPDATA%\\DarkSoulsIII\\*\\DS30000.sl2"
 	SprjEventFlagManAOB *AOBPointerConfig  // AOB pattern to find SprjEventFlagMan (overrides EventFlagOffsets64)
 	FieldAreaAOB        *AOBPointerConfig  // AOB pattern to find FieldArea (overrides FieldAreaOffsets64)
+	CharNamePathKey     string             // MemoryPaths key for character name base (e.g. "player_game_data")
+	CharNameOffset      int64              // Extra offset from resolved path to UTF-16LE character name
+	CharNameMaxLen      int                // Max characters to read (e.g. 16 for DS3)
+	SaveSlotPathKey     string             // MemoryPaths key for save slot index base (e.g. "game_data_man")
+	SaveSlotOffset      int64              // Extra offset from resolved path to save slot index (uint32)
 }
 
 var supportedGames = []GameConfig{
@@ -51,7 +56,21 @@ var supportedGames = []GameConfig{
 			//   +0x6C = Vigor, +0x70 = Attunement, +0x74 = Endurance, +0x78 = Vitality
 			//   +0x7C = Strength, +0x80 = Dexterity, +0x84 = Intelligence, +0x88 = Faith, +0x8C = Luck
 			"player_stats": {0x4768E78, 0x10, 0x10},
+			// GameDataMan → PlayerGameData (for character name)
+			// Character name is UTF-16LE at PlayerGameData + 0x88
+			// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 (Unicode, 48 bytes)
+			"player_game_data": {0x4768E78, 0x10},
 		},
+		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 = character name (UTF-16LE)
+		CharNamePathKey: "player_game_data",
+		CharNameOffset:  0x88,
+		CharNameMaxLen:  16,
+		// Save slot index lives on GameMan (separate base pointer, AOB: "48 8B ?? ?? ?? ?? 04 89 48 28 C3")
+		// at offset +0xA60 (Byte). Since we don't have a static fallback offset for GameMan,
+		// save slot reading is not yet supported. The character name alone is used
+		// for save identity. SaveSlotPathKey is left empty to disable slot reading.
+		SaveSlotPathKey: "",
+		SaveSlotOffset:  0,
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
 			Pattern:           "48 c7 05 ? ? ? ? 00 00 00 00 48 8b 7c 24 38 c7 46 54 ff ff ff ff 48 83 c4 20 5e c3",

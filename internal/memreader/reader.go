@@ -4,11 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"unicode/utf16"
 )
 
 // ErrNullPointer is returned when a null pointer is encountered in the chain.
 // This typically means the game is still loading and player data isn't available yet.
 var ErrNullPointer = errors.New("null pointer in chain")
+
+// ErrNotSupported is returned when a feature is not supported for the current game.
+var ErrNotSupported = errors.New("not supported for this game")
 
 // GameReader handles reading memory from FromSoftware games.
 type GameReader struct {
@@ -648,4 +652,125 @@ func (r *GameReader) ReadIGT() (int64, error) {
 		uint32(buffer[3])<<24))
 
 	return igtMs, nil
+}
+
+// resolvePathAddress follows a named memory path's pointer chain and returns
+// the resolved address. This is the AOB-aware logic extracted from ReadMemoryValue.
+func (r *GameReader) resolvePathAddress(pathName string) (int64, error) {
+	if !r.is64Bit || r.game.MemoryPaths == nil {
+		return 0, fmt.Errorf("memory path reading not supported for this game")
+	}
+
+	offsets, ok := r.game.MemoryPaths[pathName]
+	if !ok {
+		return 0, fmt.Errorf("unknown memory path %q", pathName)
+	}
+
+	r.initEventFlagPointers()
+
+	address := int64(0)
+	startIdx := 0
+
+	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
+		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
+		ptr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for %s: %w", pathName, err)
+		}
+		if ptr == 0 {
+			return 0, ErrNullPointer
+		}
+		address = ptr
+		startIdx = 1
+	} else {
+		address = int64(r.baseAddress)
+	}
+
+	buffer := make([]byte, 8)
+	for i := startIdx; i < len(offsets); i++ {
+		if address == 0 {
+			return 0, ErrNullPointer
+		}
+		address += offsets[i]
+		err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buffer)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read memory at 0x%X: %w", address, err)
+		}
+		address = int64(uint64(buffer[0]) |
+			uint64(buffer[1])<<8 |
+			uint64(buffer[2])<<16 |
+			uint64(buffer[3])<<24 |
+			uint64(buffer[4])<<32 |
+			uint64(buffer[5])<<40 |
+			uint64(buffer[6])<<48 |
+			uint64(buffer[7])<<56)
+	}
+
+	if address == 0 {
+		return 0, ErrNullPointer
+	}
+
+	return address, nil
+}
+
+// readUTF16 reads a UTF-16LE encoded string from the given address.
+func (r *GameReader) readUTF16(address int64, maxChars int) (string, error) {
+	buf := make([]byte, maxChars*2)
+	err := r.ops.ReadProcessMemory(r.processHandle, uintptr(address), buf)
+	if err != nil {
+		return "", fmt.Errorf("failed to read UTF-16 string at 0x%X: %w", address, err)
+	}
+
+	// Decode UTF-16LE pairs, stopping at null terminator
+	u16 := make([]uint16, maxChars)
+	for i := 0; i < maxChars; i++ {
+		u16[i] = uint16(buf[i*2]) | uint16(buf[i*2+1])<<8
+		if u16[i] == 0 {
+			u16 = u16[:i]
+			break
+		}
+	}
+
+	return string(utf16.Decode(u16)), nil
+}
+
+// ReadCharacterName reads the active character's name from game memory.
+func (r *GameReader) ReadCharacterName() (string, error) {
+	if !r.attached {
+		return "", fmt.Errorf("not attached to process")
+	}
+
+	if r.game.CharNamePathKey == "" {
+		return "", ErrNotSupported
+	}
+
+	resolved, err := r.resolvePathAddress(r.game.CharNamePathKey)
+	if err != nil {
+		return "", err
+	}
+
+	return r.readUTF16(resolved+r.game.CharNameOffset, r.game.CharNameMaxLen)
+}
+
+// ReadSaveSlotIndex reads the active save slot index from game memory.
+func (r *GameReader) ReadSaveSlotIndex() (int, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	if r.game.SaveSlotPathKey == "" {
+		return 0, ErrNotSupported
+	}
+
+	resolved, err := r.resolvePathAddress(r.game.SaveSlotPathKey)
+	if err != nil {
+		return 0, err
+	}
+
+	val, err := r.readUint32(resolved + r.game.SaveSlotOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read save slot index at 0x%X: %w", resolved+r.game.SaveSlotOffset, err)
+	}
+
+	return int(val), nil
 }

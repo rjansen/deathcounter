@@ -889,3 +889,120 @@ func TestReadIGT_NullPointer(t *testing.T) {
 		t.Fatal("expected error for null pointer")
 	}
 }
+
+// --- readUTF16 tests ---
+
+func setupDS3WithGameDataMan(t *testing.T) (*mockProcessOps, *GameReader) {
+	t.Helper()
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// GameDataMan: base + 0x4768E78 -> GameDataMan object at 0x300000000
+	mock.setMemory64(0x144768E78, 0x300000000)
+
+	// PlayerGameData: GameDataMan + 0x10 -> 0x400000000
+	mock.setMemory64(0x300000010, 0x400000000)
+
+	return mock, reader
+}
+
+func setCharacterName(mock *mockProcessOps, name string) {
+	runes := []rune(name)
+	size := (len(runes) + 1) * 2
+	if size < 32 {
+		size = 32
+	}
+	buf := make([]byte, size)
+	for i, r := range runes {
+		buf[i*2] = byte(r)
+		buf[i*2+1] = byte(r >> 8)
+	}
+	mock.memory[0x400000088] = buf
+}
+
+func TestReadUTF16_BasicASCII(t *testing.T) {
+	mock, reader := setupDS3WithGameDataMan(t)
+	setCharacterName(mock, "Knight")
+
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName: %v", err)
+	}
+	if name != "Knight" {
+		t.Errorf("expected 'Knight', got %q", name)
+	}
+}
+
+func TestReadUTF16_Empty(t *testing.T) {
+	mock, reader := setupDS3WithGameDataMan(t)
+	// Empty name (null first char)
+	buf := make([]byte, 32)
+	mock.memory[0x400000088] = buf
+
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName: %v", err)
+	}
+	if name != "" {
+		t.Errorf("expected empty string, got %q", name)
+	}
+}
+
+func TestReadUTF16_MaxLength(t *testing.T) {
+	mock, reader := setupDS3WithGameDataMan(t)
+	setCharacterName(mock, "AbcdefghijklmnO") // 15 chars
+
+	name, err := reader.ReadCharacterName()
+	if err != nil {
+		t.Fatalf("ReadCharacterName: %v", err)
+	}
+	if name != "AbcdefghijklmnO" {
+		t.Errorf("expected 'AbcdefghijklmnO', got %q", name)
+	}
+}
+
+func TestReadCharacterName_NullPointer(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+
+	// GameDataMan returns null
+	mock.setMemory64(0x144768E78, 0)
+
+	_, err := reader.ReadCharacterName()
+	if err == nil {
+		t.Fatal("expected error for null pointer")
+	}
+}
+
+func TestReadCharacterName_Unsupported(t *testing.T) {
+	// Elden Ring has no CharNamePathKey set
+	mock := newMockProcessOps()
+	mock.processes["eldenring.exe"] = 9999
+	mock.modules["9999:eldenring.exe"] = 0x140000000
+	mock.architectures[9999] = true
+
+	reader := NewGameReaderWithOps(mock)
+	if err := reader.Attach(); err != nil {
+		t.Fatalf("attach failed: %v", err)
+	}
+
+	_, err := reader.ReadCharacterName()
+	if err == nil {
+		t.Fatal("expected error for unsupported game")
+	}
+	if err != ErrNotSupported {
+		t.Errorf("expected ErrNotSupported, got %v", err)
+	}
+}
+
+func TestReadSaveSlotIndex_DS3_Unsupported(t *testing.T) {
+	// DS3 save slot lives on GameMan (separate base pointer), not GameDataMan.
+	// SaveSlotPathKey is empty, so ReadSaveSlotIndex returns ErrNotSupported.
+	_, reader := setupDS3WithGameDataMan(t)
+
+	_, err := reader.ReadSaveSlotIndex()
+	if err == nil {
+		t.Fatal("expected error for unsupported save slot")
+	}
+	if err != ErrNotSupported {
+		t.Errorf("expected ErrNotSupported, got %v", err)
+	}
+}
