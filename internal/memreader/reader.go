@@ -27,6 +27,7 @@ type GameReader struct {
 	// AOB-resolved address cache (addresses of the global pointer variables, NOT dereferenced values)
 	sprjEventFlagManAOBAddr int64
 	fieldAreaAOBAddr        int64
+	gameManAOBAddr          int64
 	eventFlagInitDone       bool
 }
 
@@ -95,6 +96,7 @@ func (r *GameReader) Detach() {
 		r.currentGame = ""
 		r.sprjEventFlagManAOBAddr = 0
 		r.fieldAreaAOBAddr = 0
+		r.gameManAOBAddr = 0
 		r.eventFlagInitDone = false
 	}
 }
@@ -197,6 +199,18 @@ func (r *GameReader) initEventFlagPointers() {
 		} else {
 			r.fieldAreaAOBAddr = addr
 			log.Printf("[AOB] FieldArea global pointer at: 0x%X", addr)
+		}
+	}
+
+	// Try AOB scan for GameMan
+	if r.game.GameManAOB != nil {
+		aob := r.game.GameManAOB
+		addr, err := r.ScanForPointer(aob.Pattern, aob.RelativeOffsetPos, aob.InstrLen)
+		if err != nil {
+			log.Printf("[AOB] GameMan scan failed: %v", err)
+		} else {
+			r.gameManAOBAddr = addr
+			log.Printf("[AOB] GameMan global pointer at: 0x%X", addr)
 		}
 	}
 }
@@ -668,6 +682,26 @@ func (r *GameReader) resolvePathAddress(pathName string) (int64, error) {
 
 	r.initEventFlagPointers()
 
+	// GameMan AOB shortcut — zero-length path means resolved entirely via AOB
+	if len(offsets) == 0 && r.game.GameManAOB != nil {
+		if r.gameManAOBAddr == 0 {
+			// AOB scan didn't find GameMan — path is unresolvable without AOB
+			return 0, ErrNullPointer
+		}
+		aob := r.game.GameManAOB
+		if aob.Dereference {
+			ptr, err := r.readPtr(r.gameManAOBAddr)
+			if err != nil {
+				return 0, fmt.Errorf("failed to read GameMan pointer: %w", err)
+			}
+			if ptr == 0 {
+				return 0, ErrNullPointer
+			}
+			return ptr, nil
+		}
+		return r.gameManAOBAddr, nil
+	}
+
 	address := int64(0)
 	startIdx := 0
 
@@ -767,7 +801,7 @@ func (r *GameReader) ReadSaveSlotIndex() (int, error) {
 		return 0, err
 	}
 
-	val, err := r.readUint32(resolved + r.game.SaveSlotOffset)
+	val, err := r.readByte(resolved + r.game.SaveSlotOffset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read save slot index at 0x%X: %w", resolved+r.game.SaveSlotOffset, err)
 	}

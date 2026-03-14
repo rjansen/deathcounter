@@ -21,6 +21,7 @@ type GameConfig struct {
 	SaveFilePattern     string             // Glob pattern for save file, e.g. "%APPDATA%\\DarkSoulsIII\\*\\DS30000.sl2"
 	SprjEventFlagManAOB *AOBPointerConfig  // AOB pattern to find SprjEventFlagMan (overrides EventFlagOffsets64)
 	FieldAreaAOB        *AOBPointerConfig  // AOB pattern to find FieldArea (overrides FieldAreaOffsets64)
+	GameManAOB          *AOBPointerConfig  // AOB pattern to find GameMan (for save slot index)
 	CharNamePathKey     string             // MemoryPaths key for character name base (e.g. "player_game_data")
 	CharNameOffset      int64              // Extra offset from resolved path to UTF-16LE character name
 	CharNameMaxLen      int                // Max characters to read (e.g. 16 for DS3)
@@ -60,17 +61,17 @@ var supportedGames = []GameConfig{
 			// Character name is UTF-16LE at PlayerGameData + 0x88
 			// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 (Unicode, 48 bytes)
 			"player_game_data": {0x4768E78, 0x10},
+			// GameMan — resolved entirely via GameManAOB, no static chain
+			"game_man": {},
 		},
 		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 = character name (UTF-16LE)
 		CharNamePathKey: "player_game_data",
 		CharNameOffset:  0x88,
 		CharNameMaxLen:  16,
-		// Save slot index lives on GameMan (separate base pointer, AOB: "48 8B ?? ?? ?? ?? 04 89 48 28 C3")
-		// at offset +0xA60 (Byte). Since we don't have a static fallback offset for GameMan,
-		// save slot reading is not yet supported. The character name alone is used
-		// for save identity. SaveSlotPathKey is left empty to disable slot reading.
-		SaveSlotPathKey: "",
-		SaveSlotOffset:  0,
+		// Save slot index lives on GameMan (separate base pointer)
+		// at offset +0xA60 (Byte). Resolved entirely via GameManAOB; no static chain.
+		SaveSlotPathKey: "game_man",
+		SaveSlotOffset:  0xA60,
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
 			Pattern:           "48 c7 05 ? ? ? ? 00 00 00 00 48 8b 7c 24 38 c7 46 54 ff ff ff ff 48 83 c4 20 5e c3",
@@ -83,6 +84,12 @@ var supportedGames = []GameConfig{
 			RelativeOffsetPos: 3,
 			InstrLen:          7,
 			Dereference:       false,
+		},
+		GameManAOB: &AOBPointerConfig{
+			Pattern:           "48 8B ?? ?? ?? ?? 04 89 48 28 C3",
+			RelativeOffsetPos: 3,
+			InstrLen:          7,
+			Dereference:       true,
 		},
 	},
 	{
