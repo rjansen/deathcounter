@@ -7,18 +7,6 @@ import (
 	"time"
 )
 
-// DS3 boss flag aliases for test readability (see ds3_offsets.go for exported constants).
-const (
-	flagIudexGundyr  = DS3FlagIudexGundyr
-	flagVordt        = DS3FlagVordt
-	flagAbyssWatcher = DS3FlagAbyssWatcher
-	flagWolnir       = DS3FlagWolnir
-	flagPontiff      = DS3FlagPontiff
-	flagAldrich      = DS3FlagAldrich
-	flagDancer       = DS3FlagDancer
-	flagSoulOfCinder = DS3FlagSoulOfCinder
-)
-
 // skipIfNoGameRunning creates a real GameReader and skips the test if no game is running.
 func skipIfNoGameRunning(t *testing.T) *GameReader {
 	t.Helper()
@@ -173,7 +161,7 @@ func TestE2E_ReadEventFlag(t *testing.T) {
 	requireDS3(t, reader)
 
 	// Iudex Gundyr defeated — first boss, almost always set on any save.
-	flagID := uint32(flagIudexGundyr)
+	flagID := uint32(DS3FlagIudexGundyr)
 
 	set, err := reader.ReadEventFlag(flagID)
 	if err != nil {
@@ -206,7 +194,7 @@ func TestE2E_ReadEventFlag_Stable(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	flagID := uint32(flagIudexGundyr)
+	flagID := uint32(DS3FlagIudexGundyr)
 	first, err := reader.ReadEventFlag(flagID)
 	if err != nil {
 		t.Fatalf("initial ReadEventFlag failed: %v", err)
@@ -231,19 +219,39 @@ func TestE2E_ReadEventFlag_MultipleBosses(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// Read several boss kill flags to exercise different flag decompositions.
+	// Read all 25 boss kill flags to exercise different flag decompositions.
 	// The exact set/unset state depends on the player's save, but all reads should succeed.
 	bosses := []struct {
 		flagID uint32
 		name   string
 	}{
-		{flagIudexGundyr, "Iudex Gundyr"},
-		{flagVordt, "Vordt of the Boreal Valley"},
-		{flagAbyssWatcher, "Abyss Watchers"},
-		{flagWolnir, "High Lord Wolnir"},
-		{flagPontiff, "Pontiff Sulyvahn"},
-		{flagAldrich, "Aldrich, Devourer of Gods"},
-		{flagDancer, "Dancer of the Boreal Valley"},
+		// Base game
+		{DS3FlagIudexGundyr, "Iudex Gundyr"},
+		{DS3FlagVordt, "Vordt of the Boreal Valley"},
+		{DS3FlagGreatwood, "Curse-Rotted Greatwood"},
+		{DS3FlagCrystalSage, "Crystal Sage"},
+		{DS3FlagAbyssWatcher, "Abyss Watchers"},
+		{DS3FlagDeacons, "Deacons of the Deep"},
+		{DS3FlagWolnir, "High Lord Wolnir"},
+		{DS3FlagOldDemonKing, "Old Demon King"},
+		{DS3FlagPontiff, "Pontiff Sulyvahn"},
+		{DS3FlagAldrich, "Aldrich, Devourer of Gods"},
+		{DS3FlagYhorm, "Yhorm the Giant"},
+		{DS3FlagDancer, "Dancer of the Boreal Valley"},
+		{DS3FlagOceiros, "Oceiros, the Consumed King"},
+		{DS3FlagChampionGundyr, "Champion Gundyr"},
+		{DS3FlagAncientWyvern, "Ancient Wyvern"},
+		{DS3FlagNamelessKing, "Nameless King"},
+		{DS3FlagDragonslayer, "Dragonslayer Armour"},
+		{DS3FlagTwinPrinces, "Twin Princes"},
+		{DS3FlagSoulOfCinder, "Soul of Cinder"},
+		// DLC
+		{DS3FlagChampionGravetender, "Champion's Gravetender"},
+		{DS3FlagFriede, "Sister Friede"},
+		{DS3FlagDemonPrince, "Demon Prince"},
+		{DS3FlagHalflight, "Halflight, Spear of the Church"},
+		{DS3FlagMidir, "Darkeater Midir"},
+		{DS3FlagGael, "Slave Knight Gael"},
 	}
 
 	for _, boss := range bosses {
@@ -253,6 +261,91 @@ func TestE2E_ReadEventFlag_MultipleBosses(t *testing.T) {
 			continue
 		}
 		t.Logf("[DS3] %s (%d): defeated=%v", boss.name, boss.flagID, set)
+	}
+}
+
+func TestE2E_ReadEventFlag_AllEncountered(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Read all 17 encountered flags. All reads should succeed regardless of state.
+	encountered := []struct {
+		flagID uint32
+		name   string
+	}{
+		{DS3FlagIudexGundyrEnc, "Iudex Gundyr Enc"},
+		{DS3FlagVordtEnc, "Vordt Enc"},
+		{DS3FlagGreatwoodEnc, "Greatwood Enc"},
+		{DS3FlagCrystalSageEnc, "Crystal Sage Enc"},
+		{DS3FlagAbyssWatcherEnc, "Abyss Watchers Enc"},
+		{DS3FlagDeaconsEnc, "Deacons Enc"},
+		{DS3FlagWolnirEnc, "Wolnir Enc"},
+		{DS3FlagYhormEnc, "Yhorm Enc"},
+		{DS3FlagOceirosEnc, "Oceiros Enc"},
+		{DS3FlagChampionGundyrEnc, "Champion Gundyr Enc"},
+		{DS3FlagTwinPrincesEnc, "Twin Princes Enc"},
+		{DS3FlagSoulOfCinderEnc, "Soul of Cinder Enc"},
+		{DS3FlagChampionGravetenderEnc, "Champion Gravetender Enc"},
+		{DS3FlagFriedeEnc, "Friede Enc"},
+		{DS3FlagHalflightEnc, "Halflight Enc"},
+		{DS3FlagMidirEnc, "Midir Enc"},
+		{DS3FlagGaelEnc, "Gael Enc"},
+	}
+
+	for _, enc := range encountered {
+		set, err := reader.ReadEventFlag(enc.flagID)
+		if err != nil {
+			t.Errorf("ReadEventFlag(%d) %s failed: %v", enc.flagID, enc.name, err)
+			continue
+		}
+		t.Logf("[DS3] %s (%d): %v", enc.name, enc.flagID, set)
+	}
+}
+
+func TestE2E_ReadEventFlag_DefeatedImpliesEncountered(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// For bosses with both defeated and encountered flags, if defeated is set
+	// then encountered must also be set (you can't kill a boss without encountering it).
+	pairs := []struct {
+		name        string
+		defeatedID  uint32
+		encounteredID uint32
+	}{
+		{"Iudex Gundyr", DS3FlagIudexGundyr, DS3FlagIudexGundyrEnc},
+		{"Vordt", DS3FlagVordt, DS3FlagVordtEnc},
+		{"Greatwood", DS3FlagGreatwood, DS3FlagGreatwoodEnc},
+		{"Crystal Sage", DS3FlagCrystalSage, DS3FlagCrystalSageEnc},
+		{"Abyss Watchers", DS3FlagAbyssWatcher, DS3FlagAbyssWatcherEnc},
+		{"Deacons", DS3FlagDeacons, DS3FlagDeaconsEnc},
+		{"Wolnir", DS3FlagWolnir, DS3FlagWolnirEnc},
+		{"Yhorm", DS3FlagYhorm, DS3FlagYhormEnc},
+		{"Oceiros", DS3FlagOceiros, DS3FlagOceirosEnc},
+		{"Champion Gundyr", DS3FlagChampionGundyr, DS3FlagChampionGundyrEnc},
+		{"Twin Princes", DS3FlagTwinPrinces, DS3FlagTwinPrincesEnc},
+		{"Soul of Cinder", DS3FlagSoulOfCinder, DS3FlagSoulOfCinderEnc},
+	}
+
+	for _, p := range pairs {
+		defeated, err := reader.ReadEventFlag(p.defeatedID)
+		if err != nil {
+			t.Errorf("%s: ReadEventFlag(defeated=%d) failed: %v", p.name, p.defeatedID, err)
+			continue
+		}
+		encountered, err := reader.ReadEventFlag(p.encounteredID)
+		if err != nil {
+			t.Errorf("%s: ReadEventFlag(encountered=%d) failed: %v", p.name, p.encounteredID, err)
+			continue
+		}
+
+		if defeated && !encountered {
+			t.Errorf("%s: defeated=%v but encountered=%v — inconsistent (defeated implies encountered)",
+				p.name, defeated, encountered)
+		}
+		t.Logf("[DS3] %s: defeated=%v, encountered=%v", p.name, defeated, encountered)
 	}
 }
 
@@ -482,7 +575,7 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 	requireDS3(t, reader)
 
 	// First ReadEventFlag call triggers lazy AOB init
-	_, err := reader.ReadEventFlag(flagIudexGundyr)
+	_, err := reader.ReadEventFlag(DS3FlagIudexGundyr)
 	if err != nil {
 		t.Fatalf("first ReadEventFlag failed: %v", err)
 	}
@@ -499,7 +592,7 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 	cachedField := reader.fieldAreaAOBAddr
 
 	// Second call should reuse cached addresses (no re-scan)
-	_, err = reader.ReadEventFlag(flagIudexGundyr)
+	_, err = reader.ReadEventFlag(DS3FlagIudexGundyr)
 	if err != nil {
 		t.Fatalf("second ReadEventFlag failed: %v", err)
 	}
@@ -528,7 +621,7 @@ func TestE2E_FullRouteTick(t *testing.T) {
 		t.Fatalf("ReadDeathCount failed: %v", err)
 	}
 
-	iudexFlag, err := reader.ReadEventFlag(flagIudexGundyr) // Iudex Gundyr
+	iudexFlag, err := reader.ReadEventFlag(DS3FlagIudexGundyr) // Iudex Gundyr
 	if err != nil {
 		t.Fatalf("ReadEventFlag failed: %v", err)
 	}
@@ -564,7 +657,7 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tick %d: ReadDeathCount failed: %v", i, err)
 		}
-		_, err = reader.ReadEventFlag(flagIudexGundyr)
+		_, err = reader.ReadEventFlag(DS3FlagIudexGundyr)
 		if err != nil {
 			t.Fatalf("tick %d: ReadEventFlag failed: %v", i, err)
 		}
@@ -792,7 +885,7 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 		t.Fatalf("ReadSaveSlotIndex failed: %v", err)
 	}
 
-	iudex, err := reader.ReadEventFlag(flagIudexGundyr)
+	iudex, err := reader.ReadEventFlag(DS3FlagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag(Iudex) failed: %v", err)
 	}
@@ -899,19 +992,38 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
 
-	// 7. Completed checkpoints (boss event flags)
+	// 7. Completed checkpoints (all 25 boss event flags)
 	checkpoints := []struct {
 		flagID uint32
 		name   string
 	}{
-		{flagIudexGundyr, "Iudex Gundyr"},
-		{flagVordt, "Vordt of the Boreal Valley"},
-		{flagAbyssWatcher, "Abyss Watchers"},
-		{flagWolnir, "High Lord Wolnir"},
-		{flagPontiff, "Pontiff Sulyvahn"},
-		{flagAldrich, "Aldrich, Devourer of Gods"},
-		{flagDancer, "Dancer of the Boreal Valley"},
-		{flagSoulOfCinder, "Soul of Cinder"},
+		// Base game
+		{DS3FlagIudexGundyr, "Iudex Gundyr"},
+		{DS3FlagVordt, "Vordt of the Boreal Valley"},
+		{DS3FlagGreatwood, "Curse-Rotted Greatwood"},
+		{DS3FlagCrystalSage, "Crystal Sage"},
+		{DS3FlagAbyssWatcher, "Abyss Watchers"},
+		{DS3FlagDeacons, "Deacons of the Deep"},
+		{DS3FlagWolnir, "High Lord Wolnir"},
+		{DS3FlagOldDemonKing, "Old Demon King"},
+		{DS3FlagPontiff, "Pontiff Sulyvahn"},
+		{DS3FlagAldrich, "Aldrich, Devourer of Gods"},
+		{DS3FlagYhorm, "Yhorm the Giant"},
+		{DS3FlagDancer, "Dancer of the Boreal Valley"},
+		{DS3FlagOceiros, "Oceiros, the Consumed King"},
+		{DS3FlagChampionGundyr, "Champion Gundyr"},
+		{DS3FlagAncientWyvern, "Ancient Wyvern"},
+		{DS3FlagNamelessKing, "Nameless King"},
+		{DS3FlagDragonslayer, "Dragonslayer Armour"},
+		{DS3FlagTwinPrinces, "Twin Princes"},
+		{DS3FlagSoulOfCinder, "Soul of Cinder"},
+		// DLC
+		{DS3FlagChampionGravetender, "Champion's Gravetender"},
+		{DS3FlagFriede, "Sister Friede"},
+		{DS3FlagDemonPrince, "Demon Prince"},
+		{DS3FlagHalflight, "Halflight, Spear of the Church"},
+		{DS3FlagMidir, "Darkeater Midir"},
+		{DS3FlagGael, "Slave Knight Gael"},
 	}
 
 	t.Log("Completed Checkpoints:")
@@ -956,7 +1068,7 @@ func TestE2E_DetachClearsAOBCache(t *testing.T) {
 	requireDS3(t, reader)
 
 	// Trigger AOB init
-	_, err := reader.ReadEventFlag(flagIudexGundyr)
+	_, err := reader.ReadEventFlag(DS3FlagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag failed: %v", err)
 	}
@@ -977,7 +1089,7 @@ func TestE2E_DetachClearsAOBCache(t *testing.T) {
 	defer reader.Detach()
 
 	// Reading should still work after reattach regardless of cache state
-	_, err = reader.ReadEventFlag(flagIudexGundyr)
+	_, err = reader.ReadEventFlag(DS3FlagIudexGundyr)
 	if err != nil {
 		t.Fatalf("ReadEventFlag after reattach failed: %v", err)
 	}
