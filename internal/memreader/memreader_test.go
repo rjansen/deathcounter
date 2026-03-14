@@ -549,13 +549,13 @@ func setupGlobalFlag(mock *mockProcessOps) {
 	// base(0x140000000) + 0x4768E78 = 0x144768E78
 	mock.setMemory64(0x144768E78, 0x30000000) // SprjEventFlagMan
 
-	// SprjEventFlagMan + 0x218 → array of flag region pointers
-	mock.setMemory64(0x30000218, 0x50000000) // array base
+	// SprjEventFlagMan + DS3OffsetFlagArray → array of flag region pointers
+	mock.setMemory64(uintptr(0x30000000+DS3OffsetFlagArray), 0x50000000) // array base
 
-	// array[1] (div10000000=1 for flag 13000800) → 0x50000000 + 1*0x18 = 0x50000018
-	mock.setMemory64(0x50000018, 0x60000000) // flag region base
+	// array[1] (div10000000=1 for flag 13000800) → 0x50000000 + 1*DS3FlagArrayEntryStride
+	mock.setMemory64(uintptr(0x50000000+DS3FlagArrayEntryStride), 0x60000000) // flag region base
 
-	// Flag data pointer: base + (div1000<<4) + category*0xa8
+	// Flag data pointer: base + (div1000<<4) + category*DS3FlagCategoryStride
 	// For flag 13000800: div1000=0, category=0 → 0x60000000
 	mock.setMemory64(0x60000000, 0x70000000) // flag data
 }
@@ -605,9 +605,9 @@ func setupAreaFlag(mock *mockProcessOps, flagID uint32, category int32) {
 
 	// SprjEventFlagMan chain
 	mock.setMemory64(0x144768E78, 0x30000000)
-	mock.setMemory64(0x30000218, 0x50000000)
+	mock.setMemory64(uintptr(0x30000000+DS3OffsetFlagArray), 0x50000000)
 	div10000000 := int(flagID/10000000) % 10
-	mock.setMemory64(uintptr(0x50000000+div10000000*0x18), 0x60000000)
+	mock.setMemory64(uintptr(int64(0x50000000)+int64(div10000000)*DS3FlagArrayEntryStride), 0x60000000)
 
 	// FieldAreaOffsets64: {0x4768028, 0x0}
 	// base + 0x4768028 = 0x144768028 → deref → 0xA0000000 (fieldArea, last offset 0x0 not derefed)
@@ -616,33 +616,33 @@ func setupAreaFlag(mock *mockProcessOps, flagID uint32, category int32) {
 	// lookupFieldAreaCategory: readPtr(fieldArea) → ptr1
 	mock.setMemory64(0xA0000000, 0xA0500000) // ptr1
 
-	// readPtr(ptr1 + 0x10) → worldInfoOwner
-	mock.setMemory64(0xA0500010, 0xA1000000) // worldInfoOwner
+	// readPtr(ptr1 + DS3OffsetFieldAreaPtr) → worldInfoOwner
+	mock.setMemory64(uintptr(0xA0500000+DS3OffsetFieldAreaPtr), 0xA1000000) // worldInfoOwner
 
-	// worldInfoOwner + 0x8 = size, worldInfoOwner + 0x10 = pointer to vector
-	mock.setMemory32(0xA1000008, 1)            // 1 world info entry
-	mock.setMemory64(0xA1000010, 0xA2000000)   // vector pointer
+	// worldInfoOwner + DS3OffsetWorldInfoSize = size, + DS3OffsetWorldInfoVector = pointer to vector
+	mock.setMemory32(uintptr(0xA1000000+DS3OffsetWorldInfoSize), 1)          // 1 world info entry
+	mock.setMemory64(uintptr(0xA1000000+DS3OffsetWorldInfoVector), 0xA2000000) // vector pointer
 
-	// Entry 0 at vectorBase(0xA2000000): area byte at +0xb
+	// Entry 0 at vectorBase(0xA2000000): area byte at +DS3OffsetWorldInfoArea
 	vectorBase := uintptr(0xA2000000)
-	mock.setMemoryByte(vectorBase+0xb, byte(area))
+	mock.setMemoryByte(vectorBase+uintptr(DS3OffsetWorldInfoArea), byte(area))
 
-	// Block count at entry +0x20
-	mock.setMemoryByte(vectorBase+0x20, 1)
+	// Block count at entry +DS3OffsetBlockCount
+	mock.setMemoryByte(vectorBase+uintptr(DS3OffsetBlockCount), 1)
 
-	// Block vector ptr at entry +0x28
-	mock.setMemory64(vectorBase+0x28, 0xA3000000)
+	// Block vector ptr at entry +DS3OffsetBlockVector
+	mock.setMemory64(vectorBase+uintptr(DS3OffsetBlockVector), 0xA3000000)
 
-	// Block entry 0: packed flag at +0x8 = (area << 24) | (block << 16)
+	// Block entry 0: packed flag at +DS3OffsetBlockFlag = (area << 24) | (block << 16)
 	packedFlag := int32(area<<24) | int32(block<<16)
-	mock.setMemory32(0xA3000000+0x8, uint32(packedFlag))
+	mock.setMemory32(uintptr(int64(0xA3000000)+DS3OffsetBlockFlag), uint32(packedFlag))
 
-	// Category at +0x20
-	mock.setMemory32(0xA3000000+0x20, uint32(category))
+	// Category at +DS3OffsetBlockCategory
+	mock.setMemory32(uintptr(int64(0xA3000000)+DS3OffsetBlockCategory), uint32(category))
 
-	// Flag data: base + (div1000<<4) + (category+1)*0xa8
+	// Flag data: base + (div1000<<4) + (category+1)*DS3FlagCategoryStride
 	div1000 := int(flagID/1000) % 10
-	dataAddr := uintptr(0x60000000 + div1000*0x10 + (int(category)+1)*0xa8)
+	dataAddr := uintptr(int64(0x60000000) + int64(div1000*0x10) + int64(int(category)+1)*DS3FlagCategoryStride)
 	mock.setMemory64(dataAddr, 0x70000000) // flag data pointer
 }
 
@@ -920,7 +920,8 @@ func setCharacterName(mock *mockProcessOps, name string) {
 		buf[i*2] = byte(r)
 		buf[i*2+1] = byte(r >> 8)
 	}
-	mock.memory[0x400000088] = buf
+	// PlayerGameData base (0x400000000) + DS3OffsetCharName
+	mock.memory[uintptr(0x400000000+DS3OffsetCharName)] = buf
 }
 
 func TestReadUTF16_BasicASCII(t *testing.T) {
@@ -1010,10 +1011,10 @@ func TestReadSaveSlotIndex_DS3_GameManAOB(t *testing.T) {
 	binary.LittleEndian.PutUint64(b, uint64(gameManObj))
 	reader.ops.(*mockProcessOps).memory[uintptr(gameManGlobalPtr)] = b
 
-	// Write save slot byte (3) at GameMan + 0xA60
+	// Write save slot byte (3) at GameMan + DS3OffsetSaveSlot
 	slotBuf := make([]byte, 8)
 	slotBuf[0] = 3
-	reader.ops.(*mockProcessOps).memory[uintptr(gameManObj+0xA60)] = slotBuf
+	reader.ops.(*mockProcessOps).memory[uintptr(gameManObj+DS3OffsetSaveSlot)] = slotBuf
 
 	slot, err := reader.ReadSaveSlotIndex()
 	if err != nil {

@@ -75,14 +75,14 @@ var supportedGames = []GameConfig{
 			"game_data_man":    "game_data_man",
 			"game_man":         "game_man",
 		},
-		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 = character name (UTF-16LE)
+		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +DS3OffsetCharName = character name (UTF-16LE)
 		CharNamePathKey: "player_game_data",
-		CharNameOffset:  0x88,
-		CharNameMaxLen:  16,
+		CharNameOffset:  DS3OffsetCharName,
+		CharNameMaxLen:  DS3CharNameMaxLen,
 		// Save slot index lives on GameMan (separate base pointer)
-		// at offset +0xA60 (Byte). Resolved entirely via GameManAOB; no static chain.
+		// at offset +DS3OffsetSaveSlot (Byte). Resolved entirely via GameManAOB; no static chain.
 		SaveSlotPathKey: "game_man",
-		SaveSlotOffset:  0xA60,
+		SaveSlotOffset:  DS3OffsetSaveSlot,
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
 			Pattern:           "48 c7 05 ? ? ? ? 00 00 00 00 48 8b 7c 24 38 c7 46 54 ff ff ff ff 48 83 c4 20 5e c3",

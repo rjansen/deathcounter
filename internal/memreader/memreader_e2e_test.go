@@ -7,17 +7,16 @@ import (
 	"time"
 )
 
-// DS3 boss defeated event flag IDs.
-// Verified against ds3-glitchless-any-percent-hybrid.json route file.
+// DS3 boss flag aliases for test readability (see ds3_offsets.go for exported constants).
 const (
-	flagIudexGundyr  = 14000800
-	flagVordt        = 13100800
-	flagAbyssWatcher = 13300800
-	flagWolnir       = 13800800
-	flagPontiff      = 13500850
-	flagAldrich      = 13900800
-	flagDancer       = 13010800
-	flagSoulOfCinder = 14100800
+	flagIudexGundyr  = DS3FlagIudexGundyr
+	flagVordt        = DS3FlagVordt
+	flagAbyssWatcher = DS3FlagAbyssWatcher
+	flagWolnir       = DS3FlagWolnir
+	flagPontiff      = DS3FlagPontiff
+	flagAldrich      = DS3FlagAldrich
+	flagDancer       = DS3FlagDancer
+	flagSoulOfCinder = DS3FlagSoulOfCinder
 )
 
 // skipIfNoGameRunning creates a real GameReader and skips the test if no game is running.
@@ -314,8 +313,8 @@ func TestE2E_ReadMemoryValue_SoulLevel(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// player_stats + 0x44 = SoulLevel (uint32) — inline on PlayerGameData
-	level, err := reader.ReadMemoryValue("player_stats", 0x44, 4)
+	// player_stats + DS3OffsetSoulLevel = SoulLevel (uint32) — inline on PlayerGameData
+	level, err := reader.ReadMemoryValue("player_stats", DS3OffsetSoulLevel, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(player_stats, 0x44) failed: %v", err)
 	}
@@ -341,16 +340,16 @@ func TestE2E_ReadMemoryValue_Stats(t *testing.T) {
 		min    uint32
 		max    uint32
 	}{
-		{0x44, "SoulLevel", 1, 900},
-		{0x50, "Vigor", 1, 99},
-		{0x48, "Attunement", 1, 99},
-		{0x4C, "Endurance", 1, 99},
-		{0x70, "Vitality", 1, 99},
-		{0x6C, "Strength", 1, 99},
-		{0x54, "Dexterity", 1, 99},
-		{0x58, "Intelligence", 1, 99},
-		{0x5C, "Faith", 1, 99},
-		{0x60, "Luck", 1, 99},
+		{DS3OffsetSoulLevel, "SoulLevel", 1, 900},
+		{DS3OffsetVigor, "Vigor", 1, 99},
+		{DS3OffsetAttunement, "Attunement", 1, 99},
+		{DS3OffsetEndurance, "Endurance", 1, 99},
+		{DS3OffsetVitality, "Vitality", 1, 99},
+		{DS3OffsetStrength, "Strength", 1, 99},
+		{DS3OffsetDexterity, "Dexterity", 1, 99},
+		{DS3OffsetIntelligence, "Intelligence", 1, 99},
+		{DS3OffsetFaith, "Faith", 1, 99},
+		{DS3OffsetLuck, "Luck", 1, 99},
 	}
 
 	for _, s := range stats {
@@ -492,7 +491,7 @@ func TestE2E_FullRouteTick(t *testing.T) {
 		t.Fatalf("ReadEventFlag failed: %v", err)
 	}
 
-	level, err := reader.ReadMemoryValue("player_stats", 0x44, 4)
+	level, err := reader.ReadMemoryValue("player_stats", DS3OffsetSoulLevel, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(SoulLevel) failed: %v", err)
 	}
@@ -522,7 +521,7 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tick %d: ReadEventFlag failed: %v", i, err)
 		}
-		_, err = reader.ReadMemoryValue("player_stats", 0x44, 4)
+		_, err = reader.ReadMemoryValue("player_stats", DS3OffsetSoulLevel, 4)
 		if err != nil {
 			t.Fatalf("tick %d: ReadMemoryValue failed: %v", i, err)
 		}
@@ -786,20 +785,17 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	t.Logf("Character Name: %q", name)
 
 	// 3. Player stats via player_game_data path
-	// Stats are inline on PlayerGameData at these offsets (verified via Assassin class):
-	//   +0x44 = SoulLevel, +0x48 = Attunement, +0x4C = Endurance, +0x50 = Vigor,
-	//   +0x54 = Dexterity, +0x58 = Intelligence, +0x5C = Faith, +0x60 = Luck,
-	//   +0x6C = Strength, +0x70 = Vitality
+	// Stats are inline on PlayerGameData (see ds3_offsets.go for all offsets).
 	stats := []struct {
 		offset int64
 		name   string
 		min    uint32
 		max    uint32
 	}{
-		{0x44, "SoulLevel", 1, 900},
-		{0x50, "Vigor", 1, 99},
-		{0x4C, "Endurance", 1, 99},
-		{0x54, "Dexterity", 1, 99},
+		{DS3OffsetSoulLevel, "SoulLevel", 1, 900},
+		{DS3OffsetVigor, "Vigor", 1, 99},
+		{DS3OffsetEndurance, "Endurance", 1, 99},
+		{DS3OffsetDexterity, "Dexterity", 1, 99},
 	}
 
 	t.Log("Player Stats:")
@@ -815,8 +811,8 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 		}
 	}
 
-	// 4. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +0xB3, Byte)
-	reinforceLv, err := reader.ReadMemoryValue("player_game_data", 0xB3, 1)
+	// 4. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +DS3OffsetReinforceLv, Byte)
+	reinforceLv, err := reader.ReadMemoryValue("player_game_data", DS3OffsetReinforceLv, 1)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(player_game_data, 0xB3) ReinforceLv failed: %v", err)
 	}
@@ -825,76 +821,13 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("ReinforceLv: +%d", reinforceLv)
 
-	// 5. Last Bonfire (TGA CT: GameMan → +0xACC, 4 Bytes signed)
-	// Bonfire IDs from TGA CT v3.4.0 dropdown list.
-	bonfireNames := map[uint32]string{
-		4002950: "Firelink Shrine",
-		4002959: "Ashen Grave",
-		4002951: "Cemetery of Ash",
-		4002952: "Iudex Gundyr",
-		4002953: "Untended Graves",
-		4002954: "Champion Gundyr",
-		3002950: "High Wall of Lothric",
-		3002955: "Tower on the Wall",
-		3002952: "Vordt of the Boreal Valley",
-		3002954: "Dancer of the Boreal Valley",
-		3002951: "Oceiros, the Consumed King",
-		3102954: "Foot of the High Wall",
-		3102950: "Undead Settlement",
-		3102952: "Cliff Underside",
-		3102953: "Dilapidated Bridge",
-		3102951: "Pit of Hollows",
-		3302956: "Road of Sacrifices",
-		3302950: "Halfway Fortress",
-		3302957: "Crucifixion Woods",
-		3302952: "Crystal Sage",
-		3302953: "Farron Keep",
-		3302954: "Keep Ruins",
-		3302958: "Farron Keep Perimeter",
-		3302955: "Old Wolf of Farron",
-		3302951: "Abyss Watchers",
-		3502953: "Cathedral of the Deep",
-		3502950: "Cleansing Chapel",
-		3502951: "Deacons of the Deep",
-		3502952: "Rosaria's Bed Chamber",
-		3802956: "Catacombs of Carthus",
-		3802950: "High Lord Wolnir",
-		3802951: "Abandoned Tomb",
-		3802952: "Old King's Antechamber",
-		3802953: "Demon Ruins",
-		3802954: "Old Demon King",
-		3702957: "Irithyll of the Boreal Valley",
-		3702954: "Central Irithyll",
-		3702950: "Church of Yorshka",
-		3702955: "Distant Manor",
-		3702951: "Pontiff Sulyvahn",
-		3702956: "Water Reserve",
-		3702953: "Anor Londo",
-		3702958: "Prison Tower",
-		3702952: "Aldrich, Devourer of Gods",
-		3902950: "Irithyll Dungeon",
-		3902952: "Profaned Capital",
-		3902951: "Yhorm The Giant",
-		3012950: "Lothric Castle",
-		3012952: "Dragon Barracks",
-		3012951: "Dragonslayer Armour",
-		3412951: "Grand Archives",
-		3412950: "Twin Princes",
-		3202950: "Archdragon Peak",
-		3202953: "Dragon-Kin Mausoleum",
-		3202952: "Great Belfry",
-		3202951: "Nameless King",
-		4102950: "Flameless Shrine",
-		4102951: "Kiln of the First Flame",
-		4102952: "The First Flame",
-	}
-
-	lastBonfire, err := reader.ReadMemoryValue("game_man", 0xACC, 4)
+	// 5. Last Bonfire (TGA CT: GameMan → +DS3OffsetLastBonfire, 4 Bytes signed)
+	lastBonfire, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(game_man, 0xACC) Last Bonfire failed: %v", err)
 	}
 	bonfireName := "Unknown"
-	if name, ok := bonfireNames[lastBonfire]; ok {
+	if name, ok := DS3BonfireNames[lastBonfire]; ok {
 		bonfireName = name
 	}
 	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
