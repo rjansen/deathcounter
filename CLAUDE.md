@@ -56,11 +56,11 @@ go mod tidy
 ### Core Components
 
 1. **main.go**: Application entry point
-   - Initializes stats tracker, memory reader, and route runner
-   - Starts system tray UI
+   - Initializes stats tracker, memory reader, and monitor
+   - Creates `DeathCounterMonitor` or `RouteMonitor` based on flags/routes
+   - Passes monitor to tray; tray consumes `DisplayUpdates()` channel
    - Loads route definitions from `routes/` directory
-   - Runs monitoring loop in goroutine that checks every 500ms
-   - Handles game switching and route tick processing
+   - Monitor owns the tick loop (500ms poll)
    - `routeAdapter` bridges `route.Runner` to `tray.RouteInfo` interface
 
 2. **internal/memreader**: Multi-game Windows memory reading
@@ -73,11 +73,14 @@ go mod tidy
    - `ReadEventFlag(flagID)`: reads event flags using DS3 hierarchical algorithm (ported from SoulSplitter)
    - `ReadIGT()`: reads in-game time in milliseconds
    - `ReadMemoryValue(path, offset, size)`: reads arbitrary values from named memory paths
-   - **AOB scanning** (`aob.go`): dynamically finds SprjEventFlagMan and FieldArea pointers at runtime
+   - `ReadCharacterName()`: reads UTF-16LE character name via named memory path
+   - `ReadSaveSlotIndex()`: reads save slot byte via GameMan AOB-resolved path
+   - `resolvePathAddress()`: AOB-aware path resolution (extracted from `ReadMemoryValue`)
+   - **AOB scanning** (`aob.go`): dynamically finds SprjEventFlagMan, FieldArea, and GameMan pointers at runtime
      - Parses PE header to locate `.text` section, scans in 64KB chunks with overlap
      - Resolves RIP-relative addresses from matched patterns
      - Results cached per attach with fallback to static offsets if AOB fails
-   - `GameConfig` includes `EventFlagOffsets64`, `FieldAreaOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`, `SprjEventFlagManAOB`, `FieldAreaAOB`
+   - `GameConfig` includes `EventFlagOffsets64`, `FieldAreaOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`, `SprjEventFlagManAOB`, `FieldAreaAOB`, `GameManAOB`, `CharNamePathKey`, `CharNameOffset`, `CharNameMaxLen`, `SaveSlotPathKey`, `SaveSlotOffset`
    - Auto-reconnection when process starts/stops
    - Memory addresses from DSDeaths project (https://github.com/quidrex/DSDeaths)
 
@@ -99,8 +102,13 @@ go mod tidy
    - Tracks death counts with timestamps
    - Maintains current session vs. total statistics
    - Auto-creates/ends sessions
+   - `saves` table: `(game, slot_index, character_name)` unique key with timestamps
+   - `save_id` FK added to `sessions` and `route_runs` tables (nullable, migration)
+   - `FindOrCreateSave()`: upserts save record, returns save ID
+   - `GetOrCreateSessionForSave()`: finds or creates open session for a specific save
+   - `RecordDeathForSave()`: records death event scoped to a save identity
    - Route run persistence: `route_runs`, `route_splits`, `route_pbs` tables
-   - `StartRouteRun`, `RecordSplit`, `EndRouteRun` for run lifecycle
+   - `StartRouteRun`, `RecordSplit`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
    - `UpdatePersonalBest` with UPSERT that keeps better times
    - Supports tracking across multiple games
 
@@ -109,12 +117,24 @@ go mod tidy
    - `ResolveSavePath` expands environment variables and glob patterns
    - Auto-creates backup directory
 
-6. **internal/tray**: System tray UI
+6. **internal/monitor**: Game monitoring lifecycle
+   - `GameMonitor[S Displayable]` — generic base with attach/detach lifecycle, save detection, death recording
+   - `DeathCounterMonitor` — simple death counting (wraps `GameMonitor`)
+   - `RouteMonitor` — death counting + route tracking with save-change restart
+   - `Monitor` interface: `Tick()` and `DisplayUpdates() <-chan DisplayUpdate`
+   - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and extra fields
+   - `TryDetectSave()` — reads character name + save slot via memreader, creates DB record via `FindOrCreateSave()`, gates further processing until save is identified (retries on `ErrNullPointer`)
+   - Save change detection: if identity changes mid-run → abandon run, end session, restart route
+   - Key files: `monitor.go`, `deathcounter.go`, `routemonitor.go`, `state.go`
+
+7. **internal/tray**: System tray UI
    - Displays currently monitored game
+   - Displays character name and save slot: `"Character: Name (Slot N)"`
    - Shows death counts in tray menu
    - Shows connection status
    - Displays route progress (name, completion %, current checkpoint, split deaths)
    - `RouteInfo` interface for decoupled progress reporting
+   - Consumes `DisplayUpdates()` channel from monitor
    - Provides access to statistics
    - Graceful shutdown handling
 
@@ -135,27 +155,30 @@ Each game has a unique pointer chain that must be followed from the module base 
 ### Data Flow
 
 ```
-Memory Reader (500ms poll) → Detect Game/Count Change → Update Stats DB → Update Tray UI
-                           → Route Runner Tick → Read Event Flags + Memory Values
-                             → ProcessTick (state machine) → Record Splits → Update PBs
-                             → Trigger Save Backup → Update Route Progress UI
+Monitor Tick (500ms) → TryAttach() → TryDetectSave() → ReadDeathCount()
+                     → Detect Change → RecordDeathIfChanged() → Update Stats DB
+                     → PublishState() → DisplayUpdates channel → Tray UI
+                     → Route Runner Tick → Read Event Flags + Memory Values
+                       → ProcessTick (state machine) → Record Splits → Update PBs
+                       → Trigger Save Backup → Update Route Progress UI
 ```
 
 ### Route Runner Startup Flow
 
 When the app detects a matching game, the route runner starts with this sequence:
 
-1. **Game Detection** (`main.go`): Monitor loop detects game process → matches route by game name → calls `runner.Start(0)`
-2. **Route Start** (`runner.go:Start`): Creates run record in SQLite, sets state to `RunInProgress`, initializes `LastDeathCount`
-3. **CatchUp Loop** (`main.go` + `runner.go:CatchUp`): Retries each tick until event flags are readable
+1. **Game Detection**: `RouteMonitor.TryAttach()` detects game process → matches route by game name
+2. **Save Detection**: `TryDetectSave()` reads character name + save slot, creates save record in DB (retries on `ErrNullPointer` while game loads)
+3. **Route Start** (`runner.go:Start`): Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, initializes `LastDeathCount`
+4. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
    - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
-     - Scans `.text` section for SprjEventFlagMan and FieldArea AOB patterns
+     - Scans `.text` section for SprjEventFlagMan, FieldArea, and GameMan AOB patterns
      - Resolves RIP-relative addresses and caches them (one-time cost per attach)
    - Scans all checkpoint flags — marks already-set ones as completed with `[Route] Already completed: X`
    - Marks backup as done for already-completed bosses (prevents unnecessary backups)
    - Returns `false` on `ErrNullPointer` (game still loading) → retries next tick
-4. **Death Count Read**: Logs initial death count after CatchUp completes
-5. **Normal Tick Loop** (`runner.go:Tick`): Every 500ms:
+5. **Death Count Read**: Logs initial death count after CatchUp completes
+6. **Normal Tick Loop** (`runner.go:Tick`): Every 500ms:
    - Reads **backup flags** (boss encounter) for uncompleted checkpoints
    - Reads **event flags** (boss kill) for uncompleted checkpoints
    - Reads **memory values** (level, weapon upgrade) for `mem_check` checkpoints
@@ -165,6 +188,7 @@ When the app detects a matching game, the route runner starts with this sequence
      - `CheckpointEvent`: kill condition met → records split in DB, updates PB
      - If no `backup_flag_id` configured, backup triggers on kill instead
    - When all required checkpoints are done → marks run as `RunCompleted`
+7. **Save Change Detection**: If `TryDetectSave()` detects different character/slot mid-run → abandon run, end session, restart route with new save identity
 
 ### DS3 Event Flag Algorithm
 
@@ -192,6 +216,11 @@ AOB scanning dynamically finds game structures at runtime, making the tool more 
 5. Optionally dereference the resolved address (for SprjEventFlagMan)
 6. Cache result for the lifetime of the current attach
 
+Structures resolved via AOB:
+- **SprjEventFlagMan** — event flag manager (dereferences resolved address)
+- **FieldArea** — world area info for flag category lookup (no dereference)
+- **GameMan** — game manager singleton, save slot index at `[GameMan]+0xA60` (Byte)
+
 ## Important Notes
 
 ### Memory Address Configuration
@@ -208,6 +237,12 @@ Game configurations are stored in `internal/memreader/config.go` in the `support
 - `SaveFilePattern`: Glob pattern for save file location (e.g. `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`)
 - `SprjEventFlagManAOB`: AOB pattern config to dynamically find SprjEventFlagMan at runtime
 - `FieldAreaAOB`: AOB pattern config to dynamically find FieldArea at runtime
+- `GameManAOB`: AOB pattern to find GameMan singleton (for save slot index)
+- `CharNamePathKey`: MemoryPaths key for character name base (e.g. `"player_game_data"`)
+- `CharNameOffset`: Offset from resolved path to UTF-16LE name
+- `CharNameMaxLen`: Max characters to read (e.g. 16 for DS3)
+- `SaveSlotPathKey`: MemoryPaths key for save slot base (e.g. `"game_man"`)
+- `SaveSlotOffset`: Offset from resolved path to save slot byte
 
 **These addresses are game-version specific**. Static offsets may break after game updates. AOB patterns are more resilient to updates since they match instruction patterns rather than fixed addresses. Check the DSDeaths project for updated addresses.
 
@@ -245,6 +280,7 @@ Other games do not have anti-cheat and work normally.
 - **Stats tests** (`internal/stats/`): SQLite-based, platform-independent
 - **Backup tests** (`internal/backup/`): File operations, platform-independent
 - **Memory reader tests** (`internal/memreader/`): Use `mockProcessOps` to simulate Windows API without a running game
+- **Monitor tests** (`internal/monitor/`): Uses mock ProcessOps, tests save detection gate, save change handling, display updates
 - Manual testing with actual games recommended for end-to-end validation
 
 ## Code Conventions
@@ -262,7 +298,7 @@ Other games do not have anti-cheat and work normally.
 
 1. Find memory addresses using CheatEngine or similar tool
 2. Determine pointer chains for death count, event flags, IGT, and player stats
-3. Optionally find AOB patterns for event flag manager and field area structures
+3. Optionally find AOB patterns for event flag manager, field area, and game manager structures
 4. Add entry to `supportedGames` in `internal/memreader/config.go`:
    ```go
    {
@@ -273,13 +309,27 @@ Other games do not have anti-cheat and work normally.
        FieldAreaOffsets64: []int64{0x..., 0x...},
        IGTOffsets64:       []int64{0x..., 0x...},
        MemoryPaths: map[string][]int64{
-           "player_stats": {0x..., 0x..., 0x...},
+           "player_stats":     {0x..., 0x..., 0x...},
+           "player_game_data": {0x..., 0x...},
+           "game_man":         {},  // resolved entirely via GameManAOB
        },
        SaveFilePattern: `%APPDATA%\GameName\*\save.sl2`,
        SprjEventFlagManAOB: &AOBPointerConfig{
            Pattern:           "48 c7 05 ? ? ? ? ...",
            RelativeOffsetPos: 3,
            InstrLen:          11,
+           Dereference:       true,
+       },
+       // Save identity (optional — set if character name/slot is readable)
+       CharNamePathKey:  "player_game_data",
+       CharNameOffset:   0x88,
+       CharNameMaxLen:   16,
+       SaveSlotPathKey:  "game_man",
+       SaveSlotOffset:   0xA60,
+       GameManAOB: &AOBPointerConfig{
+           Pattern:           "48 8B ?? ?? ?? ?? 04 89 48 28 C3",
+           RelativeOffsetPos: 3,
+           InstrLen:          7,
            Dereference:       true,
        },
    }
@@ -355,6 +405,8 @@ Longer chains (like DS2) follow the same pattern with more steps.
 - **Count doesn't update**: Pointer chain broken; game may have updated
 - **Route checkpoint not triggering**: Verify event flag ID is correct, or check mem_check path/offset/comparison
 - **Route not loading**: Check JSON syntax and that `game` field matches a supported game name exactly
+- **Character name shows as "-"**: Character name reading is currently DS3-only; requires successful AOB scan
+- **Wrong save slot**: Save slot requires GameMan AOB scan to succeed; check console for `[AOB] GameMan scan failed`
 
 ### Memory Address Sources
 

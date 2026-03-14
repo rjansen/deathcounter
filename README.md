@@ -21,6 +21,7 @@ A system tray application that tracks your death count in FromSoftware games by 
 - **Save File Backup**: Automatically backs up save files at each checkpoint
 - **System Tray Integration**: Runs quietly in the background with easy access
 - **Session Statistics**: Tracks deaths per gaming session
+- **Save Identity Tracking**: Detects character name and save slot for per-character statistics (DS3)
 - **Historical Data**: SQLite database stores all-time statistics across all games
 - **Auto-reconnect**: Automatically connects when any supported game starts
 
@@ -183,12 +184,13 @@ This application uses memory addresses discovered and shared by the [DSDeaths pr
 1. **Process Detection**: Scans for any supported game process
 2. **Architecture Detection**: Determines if the game is 32-bit or 64-bit
 3. **Memory Attachment**: Opens the process with read permissions
-4. **AOB Scanning**: Dynamically finds game structures (SprjEventFlagMan, FieldArea) by scanning for byte patterns in the `.text` section — more resilient to game updates than static offsets
+4. **AOB Scanning**: Dynamically finds game structures (SprjEventFlagMan, FieldArea, GameMan) by scanning for byte patterns in the `.text` section — more resilient to game updates than static offsets
 5. **Pointer Traversal**: Follows pointer chains to find the death count value
-6. **Event Flag Reading**: Uses hierarchical decimal decomposition to check boss kill/encounter flags
-7. **Change Detection**: Monitors for changes in the death count
-8. **Statistics**: Records each death with timestamp in SQLite database
-9. **Display**: Updates system tray menu with current statistics
+6. **Save Detection**: Reads character name (UTF-16LE) and save slot index to identify the active character
+7. **Event Flag Reading**: Uses hierarchical decimal decomposition to check boss kill/encounter flags
+8. **Change Detection**: Monitors for changes in the death count
+9. **Statistics**: Records each death with timestamp in SQLite database
+10. **Display**: Updates system tray menu with current statistics
 
 ### Memory Address Details
 
@@ -202,7 +204,7 @@ Each game stores the death count at different memory locations:
 - **Sekiro**: `base + 0x3D5AAC0 → [+0x90]`
 - **Elden Ring**: `base + 0x3D5DF38 → [+0x94]`
 
-These addresses are for current game versions as of the DSDeaths project. If a game updates, addresses may need to be updated in `internal/memreader/memreader.go`.
+These addresses are for current game versions as of the DSDeaths project. If a game updates, addresses may need to be updated in `internal/memreader/config.go`.
 
 ## Development
 
@@ -237,8 +239,13 @@ deathcounter/
 │   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
+│   ├── monitor/                     # Game monitoring lifecycle
+│   │   ├── monitor.go              # Generic GameMonitor base, save detection
+│   │   ├── deathcounter.go         # Death counter monitor
+│   │   ├── routemonitor.go         # Route tracking monitor
+│   │   └── state.go               # Display state types
 │   ├── stats/                       # Statistics tracking
-│   │   └── stats.go                # SQLite persistence, sessions, route runs, PBs
+│   │   └── stats.go                # SQLite persistence, sessions, saves, route runs, PBs
 │   ├── route/                       # Speedrun route tracking
 │   │   ├── route.go                # Route/Checkpoint data model + JSON loader
 │   │   ├── state.go                # Run state machine (ProcessTick → TickResult)
@@ -264,7 +271,7 @@ deathcounter/
 ### "Failed to read memory"
 - The memory address may have changed (game update)
 - Check the DSDeaths project for updated addresses
-- Update `internal/memreader/memreader.go` with new offsets
+- Update `internal/memreader/config.go` with new offsets
 
 ### Death count is wrong or doesn't update
 - The memory address is likely incorrect for your game version
@@ -275,6 +282,11 @@ deathcounter/
 - Make sure Easy Anti-Cheat is disabled
 - Launch the game using `eldenring.exe` directly, not through Steam
 - Do NOT go online with EAC disabled
+
+### Character name shows as "-" or wrong slot number
+- Character name reading is currently DS3-only
+- Save slot requires GameMan AOB scan to succeed
+- Check console output for `[AOB] GameMan scan failed` messages
 
 ### App won't start
 - Run with console window: `make build-console && ./deathcounter.exe`
