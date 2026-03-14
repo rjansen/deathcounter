@@ -1,0 +1,271 @@
+package tray
+
+import (
+	"bytes"
+	"image/png"
+	"testing"
+)
+
+func TestFormatStatusText(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{"Starting...", "Status: Starting..."},
+		{"Connected", "Status: Connected"},
+		{"Scanning...", "Status: Scanning..."},
+		{"", "Status: "},
+	}
+	for _, tt := range tests {
+		if got := formatStatusText(tt.status); got != tt.want {
+			t.Errorf("formatStatusText(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+func TestFormatGameText(t *testing.T) {
+	tests := []struct {
+		gameName string
+		want     string
+	}{
+		{"", "Game: None"},
+		{"Dark Souls III", "Game: Dark Souls III"},
+		{"Elden Ring", "Game: Elden Ring"},
+	}
+	for _, tt := range tests {
+		if got := formatGameText(tt.gameName); got != tt.want {
+			t.Errorf("formatGameText(%q) = %q, want %q", tt.gameName, got, tt.want)
+		}
+	}
+}
+
+func TestFormatCharacterText(t *testing.T) {
+	tests := []struct {
+		name  string
+		slot  int
+		want  string
+	}{
+		{"", 0, "Character: -"},
+		{"", 5, "Character: -"},
+		{"Solaire", 0, "Character: Solaire (Slot 0)"},
+		{"Patches", 3, "Character: Patches (Slot 3)"},
+	}
+	for _, tt := range tests {
+		if got := formatCharacterText(tt.name, tt.slot); got != tt.want {
+			t.Errorf("formatCharacterText(%q, %d) = %q, want %q", tt.name, tt.slot, got, tt.want)
+		}
+	}
+}
+
+func TestFormatTooltip(t *testing.T) {
+	tests := []struct {
+		status   string
+		gameName string
+		want     string
+	}{
+		{"Connected", "Dark Souls III", "Death Counter - Dark Souls III"},
+		{"Scanning...", "Elden Ring", "Death Counter - Elden Ring"},
+		{"Scanning...", "", "Death Counter - Scanning..."},
+		{"Connected", "", "Death Counter - Connected"},
+	}
+	for _, tt := range tests {
+		if got := formatTooltip(tt.status, tt.gameName); got != tt.want {
+			t.Errorf("formatTooltip(%q, %q) = %q, want %q", tt.status, tt.gameName, got, tt.want)
+		}
+	}
+}
+
+func TestFormatDeathCountText(t *testing.T) {
+	tests := []struct {
+		label string
+		count uint32
+		want  string
+	}{
+		{"Current", 0, "Current: 0"},
+		{"Session", 42, "Session: 42"},
+		{"Current", 999, "Current: 999"},
+	}
+	for _, tt := range tests {
+		if got := formatDeathCountText(tt.label, tt.count); got != tt.want {
+			t.Errorf("formatDeathCountText(%q, %d) = %q, want %q", tt.label, tt.count, got, tt.want)
+		}
+	}
+}
+
+func TestFormatTotalDeathsText(t *testing.T) {
+	tests := []struct {
+		total uint32
+		want  string
+	}{
+		{0, "Total: 0"},
+		{100, "Total: 100"},
+		{9999, "Total: 9999"},
+	}
+	for _, tt := range tests {
+		if got := formatTotalDeathsText(tt.total); got != tt.want {
+			t.Errorf("formatTotalDeathsText(%d) = %q, want %q", tt.total, got, tt.want)
+		}
+	}
+}
+
+func TestDefaultRouteTexts(t *testing.T) {
+	d := defaultRouteTexts()
+	if d.name != "Route: None" {
+		t.Errorf("name = %q, want %q", d.name, "Route: None")
+	}
+	if d.progress != "Progress: -" {
+		t.Errorf("progress = %q, want %q", d.progress, "Progress: -")
+	}
+	if d.current != "Current: -" {
+		t.Errorf("current = %q, want %q", d.current, "Current: -")
+	}
+	if d.splitD != "Split Deaths: 0" {
+		t.Errorf("splitD = %q, want %q", d.splitD, "Split Deaths: 0")
+	}
+}
+
+func TestResolveRouteTexts_NilFields(t *testing.T) {
+	got := resolveRouteTexts(nil)
+	want := defaultRouteTexts()
+	if got != want {
+		t.Errorf("resolveRouteTexts(nil) = %+v, want %+v", got, want)
+	}
+}
+
+func TestResolveRouteTexts_EmptyRouteName(t *testing.T) {
+	fields := map[string]any{"route_name": ""}
+	got := resolveRouteTexts(fields)
+	want := defaultRouteTexts()
+	if got != want {
+		t.Errorf("resolveRouteTexts(empty route_name) = %+v, want %+v", got, want)
+	}
+}
+
+func TestResolveRouteTexts_MissingRouteName(t *testing.T) {
+	fields := map[string]any{"completed_count": 5}
+	got := resolveRouteTexts(fields)
+	want := defaultRouteTexts()
+	if got != want {
+		t.Errorf("resolveRouteTexts(no route_name) = %+v, want %+v", got, want)
+	}
+}
+
+func TestResolveRouteTexts_FullRoute(t *testing.T) {
+	fields := map[string]any{
+		"route_name":         "Any% Glitchless",
+		"completed_count":    3,
+		"total_count":        10,
+		"completion_percent": 30.0,
+		"current_checkpoint": "Abyss Watchers",
+		"split_deaths":       uint32(5),
+	}
+	got := resolveRouteTexts(fields)
+
+	if got.name != "Route: Any% Glitchless" {
+		t.Errorf("name = %q, want %q", got.name, "Route: Any% Glitchless")
+	}
+	if got.progress != "Progress: 3/10 (30%)" {
+		t.Errorf("progress = %q, want %q", got.progress, "Progress: 3/10 (30%)")
+	}
+	if got.current != "Current: Abyss Watchers" {
+		t.Errorf("current = %q, want %q", got.current, "Current: Abyss Watchers")
+	}
+	if got.splitD != "Split Deaths: 5" {
+		t.Errorf("splitD = %q, want %q", got.splitD, "Split Deaths: 5")
+	}
+}
+
+func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
+	fields := map[string]any{
+		"route_name":         "All Bosses",
+		"completed_count":    19,
+		"total_count":        19,
+		"completion_percent": 100.0,
+		"current_checkpoint": "", // empty = complete
+		"split_deaths":       uint32(0),
+	}
+	got := resolveRouteTexts(fields)
+
+	if got.current != "Current: Complete!" {
+		t.Errorf("current = %q, want %q", got.current, "Current: Complete!")
+	}
+	if got.progress != "Progress: 19/19 (100%)" {
+		t.Errorf("progress = %q, want %q", got.progress, "Progress: 19/19 (100%)")
+	}
+}
+
+func TestResolveRouteTexts_MissingOptionalFields(t *testing.T) {
+	fields := map[string]any{
+		"route_name": "Speedrun",
+	}
+	got := resolveRouteTexts(fields)
+
+	if got.name != "Route: Speedrun" {
+		t.Errorf("name = %q, want %q", got.name, "Route: Speedrun")
+	}
+	if got.progress != "Progress: 0/0 (0%)" {
+		t.Errorf("progress = %q, want %q", got.progress, "Progress: 0/0 (0%)")
+	}
+	if got.current != "Current: Complete!" {
+		t.Errorf("current = %q, want %q", got.current, "Current: Complete!")
+	}
+	if got.splitD != "Split Deaths: 0" {
+		t.Errorf("splitD = %q, want %q", got.splitD, "Split Deaths: 0")
+	}
+}
+
+func TestIconPNGOffset(t *testing.T) {
+	if iconPNGOffset != 22 {
+		t.Fatalf("iconPNGOffset = %d, want 22", iconPNGOffset)
+	}
+}
+
+func TestIconDataContainsValidPNG(t *testing.T) {
+	if len(iconData) <= iconPNGOffset {
+		t.Fatalf("iconData too short: %d bytes, need > %d", len(iconData), iconPNGOffset)
+	}
+
+	pngBytes := iconData[iconPNGOffset:]
+
+	// Verify PNG signature
+	pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	if !bytes.HasPrefix(pngBytes, pngSig) {
+		t.Fatal("PNG data does not start with valid PNG signature")
+	}
+
+	// Verify it decodes as a valid PNG image
+	img, err := png.Decode(bytes.NewReader(pngBytes))
+	if err != nil {
+		t.Fatalf("failed to decode PNG: %v", err)
+	}
+
+	bounds := img.Bounds()
+	if bounds.Dx() != 32 || bounds.Dy() != 32 {
+		t.Errorf("image size = %dx%d, want 32x32", bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestIconDataICOHeader(t *testing.T) {
+	if len(iconData) < 22 {
+		t.Fatalf("iconData too short for ICO header: %d bytes", len(iconData))
+	}
+
+	// ICONDIR: reserved=0, type=1 (ICO), count=1
+	if iconData[0] != 0 || iconData[1] != 0 {
+		t.Error("ICO reserved field is not 0")
+	}
+	if iconData[2] != 1 || iconData[3] != 0 {
+		t.Error("ICO type is not 1 (icon)")
+	}
+	if iconData[4] != 1 || iconData[5] != 0 {
+		t.Error("ICO image count is not 1")
+	}
+
+	// ICONDIRENTRY: width=32, height=32
+	if iconData[6] != 0x20 {
+		t.Errorf("ICO width = %d, want 32", iconData[6])
+	}
+	if iconData[7] != 0x20 {
+		t.Errorf("ICO height = %d, want 32", iconData[7])
+	}
+}
