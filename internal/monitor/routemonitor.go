@@ -42,12 +42,9 @@ func (m *RouteMonitor) Tick() {
 		m.startMatchingRoute()
 	}
 
-	// Save slot detection (between attach and death-count reading)
-	saveChanged, saveOK := m.TryDetectSave()
-	if !saveOK {
-		m.publishRouteState()
-		return
-	}
+	// Save slot detection — best-effort, never blocks the tick loop.
+	// If save detection fails (game still loading), we proceed without it.
+	saveChanged, _ := m.TryDetectSave()
 	if saveChanged {
 		// Save identity changed: abandon active run and restart
 		if m.runner != nil && m.runner.IsActive() {

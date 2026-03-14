@@ -28,17 +28,8 @@ func (m *DeathCounterMonitor) Tick() {
 		return
 	}
 
-	// Save slot detection
-	_, saveOK := m.TryDetectSave()
-	if !saveOK {
-		m.PublishState(DeathCounterState{
-			GameName:      m.GameName(),
-			Status:        m.StatusText(),
-			CharacterName: m.CurrentCharName,
-			SaveSlotIndex: m.CurrentSlotIdx,
-		})
-		return
-	}
+	// Save slot detection — best-effort, never blocks the tick loop.
+	m.TryDetectSave()
 
 	count, ok := m.ReadDeathCount()
 	if !ok {

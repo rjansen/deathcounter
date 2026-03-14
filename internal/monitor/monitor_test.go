@@ -99,17 +99,24 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	binary.LittleEndian.PutUint32(valueBytes, deathCount)
 	mock.memory[valueAddr] = valueBytes
 
-	// GameDataMan pointer: base + 0x4768E78 -> GameDataMan object
-	gameDataManAddr := uintptr(0x140000000 + 0x4768E78)
-	gameDataManPtr := uint64(0x300000000)
+	// GameDataMan global pointer at a simulated AOB-resolved address
+	gameDataManGlobalAddr := uintptr(0x500000000) // address of the global pointer variable
+	gameDataManPtr := uint64(0x300000000)          // the GameDataMan object itself
 	gameDataManBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(gameDataManBytes, gameDataManPtr)
-	mock.memory[gameDataManAddr] = gameDataManBytes
+	mock.memory[gameDataManGlobalAddr] = gameDataManBytes
 
-	// Save slot index at GameDataMan + 0x14
+	// GameMan global pointer at a simulated AOB-resolved address
+	gameManGlobalAddr := uintptr(0x600000000)
+	gameManPtr := uint64(0x700000000)
+	gameManBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(gameManBytes, gameManPtr)
+	mock.memory[gameManGlobalAddr] = gameManBytes
+
+	// Save slot index at GameMan + 0xA60
 	slotBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint32(slotBytes, 0) // slot 0
-	mock.memory[uintptr(gameDataManPtr+0x14)] = slotBytes
+	mock.memory[uintptr(gameManPtr+0xA60)] = slotBytes
 
 	// PlayerGameData: GameDataMan + 0x10 -> PlayerGameData object
 	playerGameDataPtr := uint64(0x400000000)
@@ -122,6 +129,8 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	mock.memory[uintptr(playerGameDataPtr+0x88)] = charName
 
 	reader := memreader.NewGameReaderWithOps(mock)
+	// Inject AOB-resolved addresses (bypasses real AOB scanning)
+	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), int64(gameManGlobalAddr))
 	return mock, reader
 }
 
@@ -427,7 +436,7 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_WaitsForSave(t *testing.T) {
+func TestRouteMonitor_SaveDetectionNonBlocking(t *testing.T) {
 	mock := newMockProcessOps()
 
 	// DS3 process
@@ -440,23 +449,29 @@ func TestRouteMonitor_WaitsForSave(t *testing.T) {
 	binary.LittleEndian.PutUint64(ptrBytes, 0x200000000)
 	mock.memory[uintptr(0x140000000+0x47572B8)] = ptrBytes
 	valueBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(valueBytes, 3)
 	mock.memory[uintptr(0x200000098)] = valueBytes
 
-	// GameDataMan returns null (game loading)
-	gameDataManBytes := make([]byte, 8)
-	// All zeros = null pointer
-	mock.memory[uintptr(0x140000000+0x4768E78)] = gameDataManBytes
+	// GameDataMan AOB resolved but global pointer is null (game loading)
+	gameDataManGlobalAddr := uintptr(0x500000000)
+	gameDataManBytes := make([]byte, 8) // null pointer
+	mock.memory[gameDataManGlobalAddr] = gameDataManBytes
 
 	reader := memreader.NewGameReaderWithOps(mock)
+	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), 0)
 	tracker := newTestTracker(t)
 
 	mon := NewRouteMonitor(reader, tracker, nil, nil)
 	mon.Tick()
 
+	// Save detection fails but tick should still proceed — death count is read
 	select {
 	case update := <-mon.DisplayUpdates():
-		if update.Status != "Waiting for save..." {
-			t.Errorf("expected 'Waiting for save...', got %q", update.Status)
+		if update.CharacterName != "" {
+			t.Errorf("expected empty character name, got %q", update.CharacterName)
+		}
+		if update.DeathCount != 3 {
+			t.Errorf("expected death count 3, got %d", update.DeathCount)
 		}
 	default:
 		t.Fatal("expected a display update")

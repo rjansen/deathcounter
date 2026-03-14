@@ -159,6 +159,8 @@ func (m *GameMonitor[S]) ReadDeathCount() (uint32, bool) {
 // Returns (changed, ok): changed is true if the save identity changed from a
 // previously detected save; ok is true if save detection succeeded or is not
 // supported (transparent pass-through for non-DS3 games).
+// This method never detaches the reader — callers should treat failures as
+// transient and keep ticking.
 func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 	charName, nameErr := m.Reader.ReadCharacterName()
 	slotIdx, slotErr := m.Reader.ReadSaveSlotIndex()
@@ -170,33 +172,25 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 		return false, true
 	}
 
-	// Null pointer means game is still loading
-	if errors.Is(nameErr, memreader.ErrNullPointer) {
-		m.SaveDetected = false
-		m.Status = "Waiting for save..."
-		return false, false
-	}
-
-	// Fatal error on character name
+	// Null pointer or read error means game data is not yet loaded — retry later
 	if nameErr != nil {
-		log.Printf("[%s] Character name read error: %v", m.Reader.GetCurrentGame(), nameErr)
-		m.Reader.Detach()
-		m.Status = "Disconnected"
-		m.LastGame = ""
-		m.WaitingForLoad = false
+		if !m.SaveDetected {
+			log.Printf("[%s] Save detection pending: %v", m.Reader.GetCurrentGame(), nameErr)
+		}
 		return false, false
 	}
 
-	// Save slot is optional — use 0 if unsupported or transiently unavailable
-	if isUnsupportedErr(slotErr) || errors.Is(slotErr, memreader.ErrNullPointer) {
-		slotIdx = 0
-	} else if slotErr != nil {
-		log.Printf("[%s] Save slot read error: %v", m.Reader.GetCurrentGame(), slotErr)
-		m.Reader.Detach()
-		m.Status = "Disconnected"
-		m.LastGame = ""
-		m.WaitingForLoad = false
+	// Empty name means the structure exists but save data isn't populated yet
+	if charName == "" {
+		if !m.SaveDetected {
+			log.Printf("[%s] Save detection pending: empty character name", m.Reader.GetCurrentGame())
+		}
 		return false, false
+	}
+
+	// Save slot is optional — use 0 if unavailable
+	if slotErr != nil {
+		slotIdx = 0
 	}
 
 	// Check if save identity changed
