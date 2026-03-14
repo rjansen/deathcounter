@@ -23,8 +23,9 @@ const (
 
 // DS3 GameMan offsets.
 const (
-	DS3OffsetSaveSlot    int64 = 0xA60 // Save slot index (Byte)
-	DS3OffsetLastBonfire int64 = 0xACC // Last bonfire ID (4 Bytes)
+	DS3OffsetSaveSlot    int64 = 0xA60  // Save slot index (Byte)
+	DS3OffsetLastBonfire int64 = 0xACC  // Last bonfire ID (4 Bytes)
+	DS3OffsetHollowing   int64 = 0x204E // Hollowing level (Byte)
 )
 
 // DS3 SprjEventFlagMan structure offsets (used in ReadEventFlag).

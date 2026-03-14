@@ -365,6 +365,48 @@ func TestE2E_ReadMemoryValue_Stats(t *testing.T) {
 	}
 }
 
+func TestE2E_ReadHollowing(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	hollowing, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("ReadHollowing failed: %v", err)
+	}
+
+	t.Logf("[DS3] Hollowing: %d", hollowing)
+
+	// Hollowing ranges from 0 to 99
+	if hollowing > 99 {
+		t.Errorf("Hollowing %d outside expected range [0, 99]", hollowing)
+	}
+}
+
+func TestE2E_ReadHollowing_Stable(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	first, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("initial ReadHollowing failed: %v", err)
+	}
+
+	// Read 5 times to verify stability
+	for i := 0; i < 5; i++ {
+		time.Sleep(200 * time.Millisecond)
+		val, err := reader.ReadHollowing()
+		if err != nil {
+			t.Fatalf("ReadHollowing iteration %d failed: %v", i, err)
+		}
+		if val != first {
+			t.Errorf("hollowing changed from %d to %d at iteration %d", first, val, i)
+		}
+	}
+	t.Logf("[DS3] Hollowing stable at %d over 5 reads", first)
+}
+
 func TestE2E_ReadMemoryValue_UnknownPath(t *testing.T) {
 	reader := skipIfNoGameRunning(t)
 	defer reader.Detach()
@@ -501,8 +543,13 @@ func TestE2E_FullRouteTick(t *testing.T) {
 		t.Fatalf("ReadIGT failed: %v", err)
 	}
 
-	t.Logf("[DS3] Full tick: deaths=%d, iudex_defeated=%v, soul_level=%d, igt=%dms",
-		deaths, iudexFlag, level, igt)
+	hollowing, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("ReadHollowing failed: %v", err)
+	}
+
+	t.Logf("[DS3] Full tick: deaths=%d, iudex_defeated=%v, soul_level=%d, igt=%dms, hollowing=%d",
+		deaths, iudexFlag, level, igt, hollowing)
 }
 
 func TestE2E_FullRouteTick_Repeated(t *testing.T) {
@@ -528,6 +575,10 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 		_, err = reader.ReadIGT()
 		if err != nil {
 			t.Fatalf("tick %d: ReadIGT failed: %v", i, err)
+		}
+		_, err = reader.ReadHollowing()
+		if err != nil {
+			t.Fatalf("tick %d: ReadHollowing failed: %v", i, err)
 		}
 
 		if i < 9 {
@@ -751,10 +802,16 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 		t.Fatalf("ReadIGT failed: %v", err)
 	}
 
+	hollowing, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("ReadHollowing failed: %v", err)
+	}
+
 	t.Logf("[DS3] Full tick with save identity:")
 	t.Logf("  Character: %q (Slot %d)", name, slot)
 	t.Logf("  Deaths: %d, Iudex defeated: %v", deaths, iudex)
 	t.Logf("  IGT: %d ms (%.1f seconds)", igt, float64(igt)/1000.0)
+	t.Logf("  Hollowing: %d", hollowing)
 }
 
 // --- Comprehensive Read Test (DS3 only) ---
@@ -811,7 +868,17 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 		}
 	}
 
-	// 4. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +DS3OffsetReinforceLv, Byte)
+	// 4. Hollowing (GameMan + DS3OffsetHollowing, Byte)
+	hollowing, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("ReadHollowing failed: %v", err)
+	}
+	if hollowing > 99 {
+		t.Errorf("Hollowing=%d outside expected range [0, 99]", hollowing)
+	}
+	t.Logf("Hollowing: %d", hollowing)
+
+	// 5. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +DS3OffsetReinforceLv, Byte)
 	reinforceLv, err := reader.ReadMemoryValue("player_game_data", DS3OffsetReinforceLv, 1)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(player_game_data, 0xB3) ReinforceLv failed: %v", err)
@@ -821,7 +888,7 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("ReinforceLv: +%d", reinforceLv)
 
-	// 5. Last Bonfire (TGA CT: GameMan → +DS3OffsetLastBonfire, 4 Bytes signed)
+	// 6. Last Bonfire (TGA CT: GameMan → +DS3OffsetLastBonfire, 4 Bytes signed)
 	lastBonfire, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(game_man, 0xACC) Last Bonfire failed: %v", err)
@@ -832,7 +899,7 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
 
-	// 6. Completed checkpoints (boss event flags)
+	// 7. Completed checkpoints (boss event flags)
 	checkpoints := []struct {
 		flagID uint32
 		name   string

@@ -2,6 +2,7 @@ package memreader
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -1058,6 +1059,76 @@ func TestReadSaveSlotIndex_NonDS3_Unsupported(t *testing.T) {
 	}
 
 	_, err := reader.ReadSaveSlotIndex()
+	if err == nil {
+		t.Fatal("expected error for unsupported game")
+	}
+	if err != ErrNotSupported {
+		t.Errorf("expected ErrNotSupported, got %v", err)
+	}
+}
+
+// --- ReadHollowing tests ---
+
+func TestReadHollowing_DS3_GameManAOB(t *testing.T) {
+	_, reader := setupDS3WithGameDataMan(t)
+
+	// Simulate AOB-resolved GameMan address
+	gameManGlobalPtr := int64(0xB0000000)
+	gameManObj := int64(0xC0000000)
+	reader.SetTestAOBAddresses(int64(0x800000000), gameManGlobalPtr)
+
+	// Write GameMan pointer at the AOB-resolved address
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(gameManObj))
+	reader.ops.(*mockProcessOps).memory[uintptr(gameManGlobalPtr)] = b
+
+	// Write hollowing byte (99) at GameMan + DS3OffsetHollowing
+	hollowBuf := make([]byte, 8)
+	hollowBuf[0] = 99
+	reader.ops.(*mockProcessOps).memory[uintptr(gameManObj+DS3OffsetHollowing)] = hollowBuf
+
+	val, err := reader.ReadHollowing()
+	if err != nil {
+		t.Fatalf("ReadHollowing: %v", err)
+	}
+	if val != 99 {
+		t.Errorf("expected hollowing 99, got %d", val)
+	}
+}
+
+func TestReadHollowing_NullPointer(t *testing.T) {
+	_, reader := setupDS3WithGameDataMan(t)
+
+	// Simulate AOB-resolved GameMan address that contains a null pointer
+	gameManGlobalPtr := int64(0xB0000000)
+	reader.SetTestAOBAddresses(int64(0x800000000), gameManGlobalPtr)
+
+	// Write null pointer at the AOB-resolved address
+	b := make([]byte, 8)
+	reader.ops.(*mockProcessOps).memory[uintptr(gameManGlobalPtr)] = b
+
+	_, err := reader.ReadHollowing()
+	if err == nil {
+		t.Fatal("expected error for null pointer")
+	}
+	if !errors.Is(err, ErrNullPointer) {
+		t.Errorf("expected ErrNullPointer, got %v", err)
+	}
+}
+
+func TestReadHollowing_NonDS3_Unsupported(t *testing.T) {
+	// DSR has no game_man memory path
+	mock := newMockProcessOps()
+	mock.processes["DarkSoulsRemastered.exe"] = 7777
+	mock.modules["7777:DarkSoulsRemastered.exe"] = 0x140000000
+	mock.architectures[7777] = true
+
+	reader := NewGameReaderWithOps(mock)
+	if err := reader.Attach(); err != nil {
+		t.Fatalf("attach failed: %v", err)
+	}
+
+	_, err := reader.ReadHollowing()
 	if err == nil {
 		t.Fatal("expected error for unsupported game")
 	}

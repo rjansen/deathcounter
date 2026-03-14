@@ -838,6 +838,23 @@ func (r *GameReader) ReadCharacterName() (string, error) {
 	return r.readUTF16(resolved+r.game.CharNameOffset, r.game.CharNameMaxLen)
 }
 
+// ReadHollowing reads the hollowing level from game memory.
+// Returns ErrNotSupported if the game has no "game_man" memory path.
+func (r *GameReader) ReadHollowing() (uint32, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	if r.game.MemoryPaths == nil {
+		return 0, ErrNotSupported
+	}
+	if _, ok := r.game.MemoryPaths["game_man"]; !ok {
+		return 0, ErrNotSupported
+	}
+
+	return r.ReadMemoryValue("game_man", DS3OffsetHollowing, 1)
+}
+
 // ReadSaveSlotIndex reads the active save slot index from game memory.
 func (r *GameReader) ReadSaveSlotIndex() (int, error) {
 	if !r.attached {
