@@ -16,8 +16,8 @@ A system tray application that tracks your death count in FromSoftware games by 
 - **Multi-Game Support**: Automatically detects and switches between all supported FromSoftware games
 - **Real-time Death Tracking**: Monitors game memory to track death count
 - **Speedrun Route Tracking**: Define custom routes with boss kills, level-up milestones, and weapon upgrade checkpoints
-- **Split Timing**: Records IGT-based split times and per-segment death counts for each checkpoint
-- **Personal Best Tracking**: Automatically tracks and compares against your best splits
+- **Checkpoint Timing**: Records IGT-based checkpoint times and per-segment death counts
+- **Personal Best Tracking**: Automatically tracks and compares against your best checkpoint times
 - **Save File Backup**: Automatically backs up save files at each checkpoint
 - **System Tray Integration**: Runs quietly in the background with easy access
 - **Session Statistics**: Tracks deaths per gaming session
@@ -93,7 +93,7 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 - **Level-up milestones** via memory value checks (e.g. "DEX >= 33")
 - **Weapon upgrade tracking** via max reinforcement level
 - **Pre-existing progress detection**: logs already-completed checkpoints on startup
-- **Per-checkpoint split times** (IGT-based)
+- **Per-checkpoint timing** (IGT-based)
 - **Per-segment death counts**
 - **Personal best tracking** with automatic comparison
 - **Save file backup** on boss encounter (or boss kill if no encounter flag configured)
@@ -106,7 +106,7 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 
 ### Creating Custom Routes
 
-Routes are JSON files placed in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
+Routes are JSON files in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
 
 ```json
 {
@@ -176,6 +176,54 @@ When using `"path": "player_stats"` for Dark Souls III:
 | `0x6C` (108) | Strength |
 | `0x70` (112) | Vitality |
 | `0xB3` (179) | Max Weapon Reinforcement Level (1 byte) |
+
+## Monitor State Machine
+
+The app uses an explicit phase-based state machine to manage the game monitoring lifecycle:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+
+    Disconnected --> Connected : Game process found
+    Connected --> Loaded : Save detected\n(char name + slot)
+    Connected --> Loaded : Save unsupported\n(non-DS3, pass-through)
+    Loaded --> RouteRunning : Route matched\n& started
+
+    Connected --> Disconnected : Process exited
+    Loaded --> Disconnected : Process exited\nor fatal read error
+    RouteRunning --> Disconnected : Process exited\n(run abandoned)
+
+    RouteRunning --> Loaded : Save changed\n(run abandoned,\nrestart route)
+
+    state Disconnected {
+        [*] --> WaitingForGame
+        WaitingForGame : Scanning for game processes
+    }
+
+    state Connected {
+        [*] --> DetectingSave
+        DetectingSave : AOB scanning\nReading char name + slot\nRejects slot 255
+    }
+
+    state Loaded {
+        [*] --> TrackingDeaths
+        TrackingDeaths : Reading death count\nRecording to DB\nMonitoring save changes
+    }
+
+    state RouteRunning {
+        [*] --> CatchUp
+        CatchUp --> TickLoop : Pre-existing progress scanned
+        TickLoop : Reading event flags\nReading memory values\nRecording checkpoints\nUpdating PBs\nTriggering backups
+    }
+```
+
+| Phase | Status Text | Description |
+|-------|-------------|-------------|
+| **Disconnected** | "Waiting for game..." | No game process found |
+| **Connected** | "Connected" | Game attached, detecting save identity |
+| **Loaded** | "Loaded" | Save identified, death tracking active |
+| **RouteRunning** | "Tracking route" | Route started with valid save ID |
 
 ## How It Works
 
@@ -305,7 +353,7 @@ This Go implementation adds:
 - Speedrun route tracking with custom JSON route definitions
 - Boss encounter detection with save file backup before fights
 - Event flag reading, IGT reading, and memory value checks
-- Split timing with personal best tracking
+- Checkpoint timing with personal best tracking
 - System tray integration with ICO icon
 - Persistent statistics database
 - Session tracking

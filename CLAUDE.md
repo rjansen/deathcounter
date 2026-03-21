@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FromSoftware Death Counter is a Windows system tray application written in Go that tracks player deaths and speedrun route progress across multiple FromSoftware games by reading game memory. It automatically detects which game is running, reads the death count using game-specific memory addresses, tracks speedrun checkpoints (boss kills, level-ups, weapon upgrades) via event flags and memory value checks, stores session-based statistics and route splits in SQLite, and provides a minimal UI through the Windows system tray.
+FromSoftware Death Counter is a Windows system tray application written in Go that tracks player deaths and speedrun route progress across multiple FromSoftware games by reading game memory. It automatically detects which game is running, reads the death count using game-specific memory addresses, tracks speedrun checkpoints (boss kills, level-ups, weapon upgrades) via event flags and memory value checks, stores session-based statistics and route checkpoints in SQLite, and provides a minimal UI through the Windows system tray.
 
 ## Supported Games
 
@@ -94,7 +94,7 @@ go mod tidy
    - `TickInput` struct carries flags, memory values, IGT, and death count per cycle
    - `TickResult` contains separate `Checkpoints` and `Backups` event lists
    - `CatchUp()` detects and logs pre-existing checkpoint completions on route start
-   - Tracks split times, per-segment deaths, completion percentage
+   - Tracks checkpoint times, per-segment deaths, completion percentage
    - Automatically detects run completion when all required checkpoints are done
 
 4. **internal/stats**: Statistics tracking and persistence
@@ -107,8 +107,8 @@ go mod tidy
    - `FindOrCreateSave()`: upserts save record, returns save ID
    - `GetOrCreateSessionForSave()`: finds or creates open session for a specific save
    - `RecordDeathForSave()`: records death event scoped to a save identity
-   - Route run persistence: `route_runs`, `route_splits`, `route_pbs` tables
-   - `StartRouteRun`, `RecordSplit`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
+   - Route run persistence: `route_runs`, `route_checkpoints`, `route_pbs` tables
+   - `StartRouteRun`, `RecordCheckpoint`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
    - `UpdatePersonalBest` with UPSERT that keeps better times
    - Supports tracking across multiple games
 
@@ -118,13 +118,15 @@ go mod tidy
    - Auto-creates backup directory
 
 6. **internal/monitor**: Game monitoring lifecycle
+   - `MonitorPhase` enum: `PhaseDisconnected` → `PhaseConnected` → `PhaseLoaded` → `PhaseRouteRunning`
    - `GameMonitor[S Displayable]` — generic base with attach/detach lifecycle, save detection, death recording
-   - `DeathCounterMonitor` — simple death counting (wraps `GameMonitor`)
-   - `RouteMonitor` — death counting + route tracking with save-change restart
+   - `DeathCounterMonitor` — simple death counting (wraps `GameMonitor`), gates death reading on `PhaseLoaded`
+   - `RouteMonitor` — death counting + route tracking, gates route start on `PhaseLoaded`
    - `Monitor` interface: `Tick()` and `DisplayUpdates() <-chan DisplayUpdate`
    - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and extra fields
-   - `TryDetectSave()` — reads character name + save slot via memreader, creates DB record via `FindOrCreateSave()`, gates further processing until save is identified (retries on `ErrNullPointer`)
+   - `TryDetectSave()` — reads character name + save slot via memreader, creates DB record via `FindOrCreateSave()`, transitions from `PhaseConnected` to `PhaseLoaded` on success, rejects slot 255 as uninitialized
    - Save change detection: if identity changes mid-run → abandon run, end session, restart route
+   - Log spam prevention: `saveLoggedOnce` and `loadLoggedOnce` flags reset on attach/detach
    - Key files: `monitor.go`, `deathcounter.go`, `routemonitor.go`, `state.go`
 
 7. **internal/tray**: System tray UI
@@ -155,21 +157,24 @@ Each game has a unique pointer chain that must be followed from the module base 
 ### Data Flow
 
 ```
-Monitor Tick (500ms) → TryAttach() → TryDetectSave() → ReadDeathCount()
-                     → Detect Change → RecordDeathIfChanged() → Update Stats DB
-                     → PublishState() → DisplayUpdates channel → Tray UI
-                     → Route Runner Tick → Read Event Flags + Memory Values
-                       → ProcessTick (state machine) → Record Splits → Update PBs
-                       → Trigger Save Backup → Update Route Progress UI
+Monitor Tick (500ms) → TryAttach() → Phase check:
+  PhaseDisconnected → publish empty state, return
+  PhaseConnected    → TryDetectSave() → if loaded: start route → publish, return
+  PhaseLoaded+      → TryDetectSave() (save change check)
+                    → ReadDeathCount() → RecordDeathIfChanged() → Update Stats DB
+                    → Route Runner Tick → Read Event Flags + Memory Values
+                      → ProcessTick (state machine) → Record Checkpoints → Update PBs
+                      → Trigger Save Backup → Update Route Progress UI
+                    → PublishState() → DisplayUpdates channel → Tray UI
 ```
 
 ### Route Runner Startup Flow
 
 When the app detects a matching game, the route runner starts with this sequence:
 
-1. **Game Detection**: `RouteMonitor.TryAttach()` detects game process → matches route by game name
-2. **Save Detection**: `TryDetectSave()` reads character name + save slot, creates save record in DB (retries on `ErrNullPointer` while game loads)
-3. **Route Start** (`runner.go:Start`): Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, initializes `LastDeathCount`
+1. **Game Detection**: `RouteMonitor.TryAttach()` detects game process → `PhaseConnected`
+2. **Save Detection**: `TryDetectSave()` reads character name + save slot, rejects slot 255, creates save record in DB → `PhaseLoaded` (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
+3. **Route Start** (`startMatchingRoute`→`runner.go:Start`): Only called when `Phase >= PhaseLoaded` and `CurrentSaveID > 0`. Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, transitions to `PhaseRouteRunning`, initializes `LastDeathCount`
 4. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
    - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
      - Scans `.text` section for SprjEventFlagMan, FieldArea, and GameMan AOB patterns
