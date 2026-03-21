@@ -186,15 +186,15 @@ stateDiagram-v2
     [*] --> Disconnected
 
     Disconnected --> Connected : Game process found
-    Connected --> Loaded : Save detected\n(char name + slot)
-    Connected --> Loaded : Save unsupported\n(non-DS3, pass-through)
-    Loaded --> RouteRunning : Route matched\n& started
+    Connected --> Loaded : Save detected<br/>(char name + slot)
+    Connected --> Loaded : Save unsupported<br/>(non-DS3, pass-through)
+    Loaded --> RouteRunning : Route matched<br/>& started
 
     Connected --> Disconnected : Process exited
-    Loaded --> Disconnected : Process exited\nor fatal read error
-    RouteRunning --> Disconnected : Process exited\n(run abandoned)
+    Loaded --> Disconnected : Process exited<br/>or fatal read error
+    RouteRunning --> Disconnected : Process exited<br/>(run abandoned)
 
-    RouteRunning --> Loaded : Save changed\n(run abandoned,\nrestart route)
+    RouteRunning --> Loaded : Save changed<br/>(run abandoned,<br/>restart route)
 
     state Disconnected {
         [*] --> WaitingForGame
@@ -203,18 +203,18 @@ stateDiagram-v2
 
     state Connected {
         [*] --> DetectingSave
-        DetectingSave : AOB scanning\nReading char name + slot\nRejects slot 255
+        DetectingSave : AOB scanning<br/>Reading char name + slot<br/>Rejects slot 255
     }
 
     state Loaded {
         [*] --> TrackingDeaths
-        TrackingDeaths : Reading death count\nRecording to DB\nMonitoring save changes
+        TrackingDeaths : Reading death count<br/>Recording to DB<br/>Monitoring save changes
     }
 
     state RouteRunning {
         [*] --> CatchUp
         CatchUp --> TickLoop : Pre-existing progress scanned
-        TickLoop : Reading event flags\nReading memory values\nRecording checkpoints\nUpdating PBs\nTriggering backups
+        TickLoop : Reading event flags<br/>Reading memory values<br/>Recording checkpoints<br/>Updating PBs<br/>Triggering backups
     }
 ```
 
