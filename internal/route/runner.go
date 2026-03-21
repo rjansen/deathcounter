@@ -95,13 +95,13 @@ func (r *Runner) TotalCount() int {
 	return len(r.route.Checkpoints)
 }
 
-// SplitDeaths returns the deaths for the current segment.
-func (r *Runner) SplitDeaths() uint32 {
+// SegmentDeaths returns the deaths for the current segment toward the next checkpoint.
+func (r *Runner) SegmentDeaths() uint32 {
 	cp := r.CurrentCheckpoint()
 	if cp == nil {
 		return 0
 	}
-	return r.state.SplitDeaths[cp.ID]
+	return r.state.CheckpointDeaths[cp.ID]
 }
 
 // CatchUp scans all checkpoint flags and marks any that are already set as completed.
@@ -225,14 +225,14 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 	// Record each completed checkpoint
 	for _, evt := range result.Checkpoints {
 		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
-		if err := r.tracker.RecordSplit(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
-			evt.IGT, evt.SplitDuration, evt.Deaths); err != nil {
-			log.Printf("Failed to record split: %v", err)
+		if err := r.tracker.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
+			evt.IGT, evt.CheckpointDuration, evt.Deaths); err != nil {
+			log.Printf("Failed to record checkpoint: %v", err)
 		}
 
 		// Update PB if better
 		if err := r.tracker.UpdatePersonalBest(r.route.ID, evt.Checkpoint.ID,
-			evt.IGT, evt.SplitDuration); err != nil {
+			evt.IGT, evt.CheckpointDuration); err != nil {
 			log.Printf("Failed to update PB: %v", err)
 		}
 

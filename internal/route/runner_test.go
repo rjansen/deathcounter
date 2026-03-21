@@ -152,8 +152,8 @@ func TestRunner_Accessors(t *testing.T) {
 	if cp == nil || cp.ID != "boss1" {
 		t.Errorf("expected CurrentCheckpoint=boss1, got %v", cp)
 	}
-	if runner.SplitDeaths() != 0 {
-		t.Errorf("expected SplitDeaths=0, got %d", runner.SplitDeaths())
+	if runner.SegmentDeaths() != 0 {
+		t.Errorf("expected SegmentDeaths=0, got %d", runner.SegmentDeaths())
 	}
 }
 

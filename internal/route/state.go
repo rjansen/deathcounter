@@ -19,8 +19,8 @@ type RunState struct {
 	StartTime      time.Time
 	CompletedFlags map[string]bool   // checkpoint ID -> done
 	BackupDone     map[string]bool   // checkpoint ID -> backup already triggered
-	SplitTimes     map[string]int64  // checkpoint ID -> IGT ms
-	SplitDeaths    map[string]uint32 // checkpoint ID -> deaths in segment
+	CheckpointTimes  map[string]int64  // checkpoint ID -> IGT ms
+	CheckpointDeaths map[string]uint32 // checkpoint ID -> deaths in segment
 	LastDeathCount uint32
 	LastIGT        int64
 }
@@ -29,7 +29,7 @@ type RunState struct {
 type CheckpointEvent struct {
 	Checkpoint    Checkpoint
 	IGT           int64  // IGT at completion (ms)
-	SplitDuration int64  // time for this segment (ms)
+	CheckpointDuration int64  // time for this segment (ms)
 	Deaths        uint32 // deaths in this segment
 }
 
@@ -40,8 +40,8 @@ func NewRunState(route *Route) *RunState {
 		Status:         RunNotStarted,
 		CompletedFlags: make(map[string]bool),
 		BackupDone:     make(map[string]bool),
-		SplitTimes:     make(map[string]int64),
-		SplitDeaths:    make(map[string]uint32),
+		CheckpointTimes:  make(map[string]int64),
+		CheckpointDeaths: make(map[string]uint32),
 	}
 }
 
@@ -104,19 +104,18 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 		// Checkpoint newly completed
 		rs.CompletedFlags[cp.ID] = true
 
-		// Compute split duration: time since last completed checkpoint
-		var splitDuration int64
+		// Compute checkpoint duration: time since last completed checkpoint
 		prevIGT := rs.lastCompletedIGT()
-		splitDuration = input.IGT - prevIGT
+		checkpointDuration := input.IGT - prevIGT
 
-		rs.SplitTimes[cp.ID] = input.IGT
-		rs.SplitDeaths[cp.ID] = segmentDeaths
+		rs.CheckpointTimes[cp.ID] = input.IGT
+		rs.CheckpointDeaths[cp.ID] = segmentDeaths
 
 		result.Checkpoints = append(result.Checkpoints, CheckpointEvent{
-			Checkpoint:    cp,
-			IGT:           input.IGT,
-			SplitDuration: splitDuration,
-			Deaths:        segmentDeaths,
+			Checkpoint:         cp,
+			IGT:                input.IGT,
+			CheckpointDuration: checkpointDuration,
+			Deaths:             segmentDeaths,
 		})
 
 		// Reset segment death tracking after recording
@@ -163,7 +162,7 @@ func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 // or 0 if none have been completed yet.
 func (rs *RunState) lastCompletedIGT() int64 {
 	var maxIGT int64
-	for _, igt := range rs.SplitTimes {
+	for _, igt := range rs.CheckpointTimes {
 		if igt > maxIGT {
 			maxIGT = igt
 		}

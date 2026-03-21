@@ -73,8 +73,8 @@ func TestProcessTick_SingleCheckpoint(t *testing.T) {
 	if result.Checkpoints[0].IGT != 95000 {
 		t.Errorf("got IGT %d, want 95000", result.Checkpoints[0].IGT)
 	}
-	if result.Checkpoints[0].SplitDuration != 95000 {
-		t.Errorf("got split duration %d, want 95000", result.Checkpoints[0].SplitDuration)
+	if result.Checkpoints[0].CheckpointDuration != 95000 {
+		t.Errorf("got split duration %d, want 95000", result.Checkpoints[0].CheckpointDuration)
 	}
 	if result.Checkpoints[0].Deaths != 3 {
 		t.Errorf("got deaths %d, want 3", result.Checkpoints[0].Deaths)
@@ -104,8 +104,8 @@ func TestProcessTick_FullProgression(t *testing.T) {
 	if result.Checkpoints[0].Checkpoint.ID != "boss2" {
 		t.Errorf("tick 2: got checkpoint %q, want %q", result.Checkpoints[0].Checkpoint.ID, "boss2")
 	}
-	if result.Checkpoints[0].SplitDuration != 130000 { // 225000 - 95000
-		t.Errorf("tick 2: got split duration %d, want 130000", result.Checkpoints[0].SplitDuration)
+	if result.Checkpoints[0].CheckpointDuration != 130000 { // 225000 - 95000
+		t.Errorf("tick 2: got split duration %d, want 130000", result.Checkpoints[0].CheckpointDuration)
 	}
 	if result.Checkpoints[0].Deaths != 4 { // 7 - 3
 		t.Errorf("tick 2: got deaths %d, want 4", result.Checkpoints[0].Deaths)
