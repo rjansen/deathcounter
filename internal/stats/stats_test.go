@@ -290,7 +290,7 @@ func TestStartRouteRun(t *testing.T) {
 	}
 }
 
-func TestRecordSplit(t *testing.T) {
+func TestRecordCheckpoint(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
@@ -298,17 +298,17 @@ func TestRecordSplit(t *testing.T) {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
-	if err := tracker.RecordSplit(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
-		t.Fatalf("RecordSplit: %v", err)
+	if err := tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 
 	var count int
-	err = tracker.db.QueryRow("SELECT COUNT(*) FROM route_splits WHERE run_id = ?", runID).Scan(&count)
+	err = tracker.db.QueryRow("SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ?", runID).Scan(&count)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("got %d splits, want 1", count)
+		t.Errorf("got %d checkpoints, want 1", count)
 	}
 }
 
@@ -316,7 +316,7 @@ func TestEndRouteRun(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	runID, _ := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
-	tracker.RecordSplit(runID, "boss1", "Boss 1", 95000, 95000, 2)
+	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 95000, 95000, 2)
 
 	if err := tracker.EndRouteRun(runID, "completed", 10, 400000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
@@ -373,8 +373,8 @@ func TestUpdatePersonalBest_BetterTime(t *testing.T) {
 	if pbs[0].IGTMs != 90000 {
 		t.Errorf("got IGT %d, want 90000", pbs[0].IGTMs)
 	}
-	if pbs[0].SplitDurationMs != 88000 {
-		t.Errorf("got split %d, want 88000", pbs[0].SplitDurationMs)
+	if pbs[0].CheckpointDurationMs != 88000 {
+		t.Errorf("got checkpoint duration %d, want 88000", pbs[0].CheckpointDurationMs)
 	}
 }
 
@@ -414,9 +414,9 @@ func TestRouteRunLifecycle(t *testing.T) {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
-	// Record splits
-	tracker.RecordSplit(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	tracker.RecordSplit(runID, "boss2", "Vordt", 225000, 130000, 2)
+	// Record checkpoints
+	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	tracker.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
 
 	// Update PBs
 	tracker.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
