@@ -9,6 +9,17 @@ type AOBPointerConfig struct {
 	Dereference       bool     // If true, dereference the resolved address to get the final pointer
 }
 
+// InventoryConfig describes the layout of the in-game inventory array.
+type InventoryConfig struct {
+	PathKey        string // MemoryPaths key for base (e.g. "player_game_data")
+	DataOffset     int64  // offset to EquipInventoryData struct
+	ListPtrOffset  int64  // offset within struct to list pointer (dereference)
+	CountOffset    int64  // offset within struct to item count (uint32)
+	ItemStride     int64  // size of each item entry
+	TypeIdOffset   int64  // offset within entry to TypeId
+	QuantityOffset int64  // offset within entry to Quantity
+}
+
 // GameConfig holds the configuration for a specific FromSoftware game
 type GameConfig struct {
 	Name                string
@@ -30,6 +41,7 @@ type GameConfig struct {
 	CharNameMaxLen      int                // Max characters to read (e.g. 16 for DS3)
 	SaveSlotPathKey     string             // MemoryPaths key for save slot index base (e.g. "game_data_man")
 	SaveSlotOffset      int64              // Extra offset from resolved path to save slot index (uint32)
+	Inventory           *InventoryConfig   // Inventory array layout (nil if not supported)
 }
 
 var supportedGames = []GameConfig{
@@ -83,6 +95,15 @@ var supportedGames = []GameConfig{
 		// at offset +DS3OffsetSaveSlot (Byte). Resolved entirely via GameManAOB; no static chain.
 		SaveSlotPathKey: "game_man",
 		SaveSlotOffset:  DS3OffsetSaveSlot,
+		Inventory: &InventoryConfig{
+			PathKey:        "player_game_data",
+			DataOffset:     DS3OffsetEquipInventoryData,
+			ListPtrOffset:  DS3OffsetInvListPtr,
+			CountOffset:    DS3OffsetInvCount,
+			ItemStride:     DS3InvItemStride,
+			TypeIdOffset:   DS3InvItemTypeIdOffset,
+			QuantityOffset: DS3InvItemQuantityOffset,
+		},
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
 			Pattern:           "48 c7 05 ? ? ? ? 00 00 00 00 48 8b 7c 24 38 c7 46 54 ff ff ff ff 48 83 c4 20 5e c3",

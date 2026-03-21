@@ -855,6 +855,64 @@ func (r *GameReader) ReadHollowing() (uint32, error) {
 	return r.ReadMemoryValue("game_man", DS3OffsetHollowing, 1)
 }
 
+// ReadInventoryItemQuantity scans the inventory array for an item with the given
+// TypeId and returns its quantity. Returns (0, nil) if the item is not found.
+func (r *GameReader) ReadInventoryItemQuantity(itemID uint32) (uint32, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	inv := r.game.Inventory
+	if inv == nil {
+		return 0, ErrNotSupported
+	}
+
+	// Resolve the base path (e.g. player_game_data → PlayerGameData address)
+	base, err := r.resolvePathAddress(inv.PathKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to resolve inventory path %q: %w", inv.PathKey, err)
+	}
+
+	// EquipInventoryData is inline at base + DataOffset
+	equipInvData := base + inv.DataOffset
+
+	// Read the list pointer (dereference)
+	listPtr, err := r.readPtr(equipInvData + inv.ListPtrOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read inventory list pointer: %w", err)
+	}
+	if listPtr == 0 {
+		return 0, ErrNullPointer
+	}
+
+	// Read item count
+	count, err := r.readUint32(equipInvData + inv.CountOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read inventory count: %w", err)
+	}
+	if count > 8192 {
+		count = 8192
+	}
+
+	// Scan entries for matching TypeId
+	for i := uint32(0); i < count; i++ {
+		entryBase := listPtr + int64(i)*inv.ItemStride
+		typeId, err := r.readUint32(entryBase + inv.TypeIdOffset)
+		if err != nil {
+			continue
+		}
+		if typeId == itemID {
+			qty, err := r.readUint32(entryBase + inv.QuantityOffset)
+			if err != nil {
+				return 0, fmt.Errorf("failed to read quantity at entry %d: %w", i, err)
+			}
+			return qty, nil
+		}
+	}
+
+	return 0, nil
+}
+
 // ReadSaveSlotIndex reads the active save slot index from game memory.
 func (r *GameReader) ReadSaveSlotIndex() (int, error) {
 	if !r.attached {

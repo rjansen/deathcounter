@@ -28,6 +28,16 @@ const (
 	DS3OffsetHollowing   int64 = 0x204E // Hollowing level (Byte)
 )
 
+// DS3 EquipInventoryData offsets (from PlayerGameData).
+const (
+	DS3OffsetEquipInventoryData int64 = 0x3D0 // PlayerGameData → EquipInventoryData inline struct
+	DS3OffsetInvListPtr         int64 = 0x18  // EquipInventoryData → list pointer (dereference)
+	DS3OffsetInvCount           int64 = 0x20  // EquipInventoryData → item count (uint32)
+	DS3InvItemStride            int64 = 0x10  // Size of each inventory item entry
+	DS3InvItemTypeIdOffset      int64 = 0x4   // TypeId within item entry
+	DS3InvItemQuantityOffset    int64 = 0x8   // Quantity within item entry
+)
+
 // DS3 SprjEventFlagMan structure offsets (used in ReadEventFlag).
 const (
 	DS3OffsetFlagArray      int64 = 0x218 // SprjEventFlagMan → flag array pointer
