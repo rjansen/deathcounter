@@ -16,6 +16,7 @@ type GameReader interface {
 	ReadEventFlag(flagID uint32) (bool, error)
 	ReadMemoryValue(pathName string, extraOffset int64, size int) (uint32, error)
 	ReadIGT() (int64, error)
+	ReadInventoryItemQuantity(itemID uint32) (uint32, error)
 }
 
 // Runner orchestrates a route run, connecting the state machine to memory reading,
@@ -128,6 +129,17 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			}
 		}
 
+		if cp.InventoryCheck != nil && !r.state.CompletedFlags[cp.ID] {
+			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+			if err != nil {
+				return false
+			}
+			if compareValue(qty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
+				r.state.CompletedFlags[cp.ID] = true
+				log.Printf("[Route] Already completed: %s", cp.Name)
+			}
+		}
+
 		// Also mark backup as done for already-completed checkpoints
 		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
@@ -145,9 +157,10 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 
 	// Build tick input by reading all unfinished checkpoint conditions
 	input := TickInput{
-		Flags:      make(map[uint32]bool),
-		MemValues:  make(map[string]uint32),
-		DeathCount: deathCount,
+		Flags:           make(map[uint32]bool),
+		MemValues:       make(map[string]uint32),
+		InventoryValues: make(map[string]uint32),
+		DeathCount:      deathCount,
 	}
 
 	for _, cp := range r.route.Checkpoints {
@@ -200,6 +213,18 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 				continue
 			}
 			input.MemValues[cp.ID] = val
+		}
+
+		// Inventory item quantity checkpoint
+		if cp.InventoryCheck != nil {
+			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+			if err != nil {
+				if !errors.Is(err, memreader.ErrNullPointer) {
+					return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
+				}
+				continue
+			}
+			input.InventoryValues[cp.ID] = qty
 		}
 	}
 

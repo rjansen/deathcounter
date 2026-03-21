@@ -58,10 +58,11 @@ func (rs *RunState) Abandon() {
 
 // TickInput holds all memory readings for a single tick cycle.
 type TickInput struct {
-	Flags      map[uint32]bool   // event flag ID → set
-	MemValues  map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
-	IGT        int64
-	DeathCount uint32
+	Flags           map[uint32]bool   // event flag ID → set
+	MemValues       map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
+	InventoryValues map[string]uint32 // checkpoint ID → current inventory quantity (for inventory_check checkpoints)
+	IGT             int64
+	DeathCount      uint32
 }
 
 // BackupEvent is emitted when a backup flag is newly set (e.g. boss encountered).
@@ -145,14 +146,16 @@ func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 		if !ok {
 			return false
 		}
-		switch cp.MemCheck.Comparison {
-		case "gte":
-			return val >= cp.MemCheck.Value
-		case "gt":
-			return val > cp.MemCheck.Value
-		case "eq":
-			return val == cp.MemCheck.Value
+		return compareValue(val, cp.MemCheck.Comparison, cp.MemCheck.Value)
+	}
+
+	// Inventory item quantity check
+	if cp.InventoryCheck != nil {
+		val, ok := input.InventoryValues[cp.ID]
+		if !ok {
+			return false
 		}
+		return compareValue(val, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value)
 	}
 
 	return false
@@ -198,6 +201,19 @@ func (rs *RunState) CurrentCheckpoint() *Checkpoint {
 		}
 	}
 	return nil
+}
+
+// compareValue applies a comparison operator between actual and target values.
+func compareValue(actual uint32, comparison string, target uint32) bool {
+	switch comparison {
+	case "gte":
+		return actual >= target
+	case "gt":
+		return actual > target
+	case "eq":
+		return actual == target
+	}
+	return false
 }
 
 // IsComplete returns true when all required checkpoints are done.
