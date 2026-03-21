@@ -27,7 +27,7 @@ type App struct {
 	menuRouteProgress *systray.MenuItem
 	menuRouteCurrent  *systray.MenuItem
 	menuHollowing     *systray.MenuItem
-	menuRouteSplitD   *systray.MenuItem
+	menuRouteSegmentD   *systray.MenuItem
 }
 
 // NewApp creates a new system tray application
@@ -89,8 +89,8 @@ func (a *App) onReady() {
 	a.menuRouteProgress.Disable()
 	a.menuRouteCurrent = systray.AddMenuItem("Current: -", "Current checkpoint")
 	a.menuRouteCurrent.Disable()
-	a.menuRouteSplitD = systray.AddMenuItem("Split Deaths: 0", "Deaths in current segment")
-	a.menuRouteSplitD.Disable()
+	a.menuRouteSegmentD = systray.AddMenuItem("Segment Deaths: 0", "Deaths in current segment")
+	a.menuRouteSegmentD.Disable()
 
 	systray.AddSeparator()
 
@@ -249,9 +249,9 @@ func (a *App) refreshRouteDisplay(fields map[string]any) {
 		a.menuRouteCurrent.SetTitle(fmt.Sprintf("Current: %s", cp))
 	}
 
-	if a.menuRouteSplitD != nil {
-		deaths, _ := fields["split_deaths"].(uint32)
-		a.menuRouteSplitD.SetTitle(fmt.Sprintf("Split Deaths: %d", deaths))
+	if a.menuRouteSegmentD != nil {
+		deaths, _ := fields["segment_deaths"].(uint32)
+		a.menuRouteSegmentD.SetTitle(fmt.Sprintf("Segment Deaths: %d", deaths))
 	}
 }
 
@@ -265,8 +265,8 @@ func (a *App) setRouteDefaults() {
 	if a.menuRouteCurrent != nil {
 		a.menuRouteCurrent.SetTitle("Current: -")
 	}
-	if a.menuRouteSplitD != nil {
-		a.menuRouteSplitD.SetTitle("Split Deaths: 0")
+	if a.menuRouteSegmentD != nil {
+		a.menuRouteSegmentD.SetTitle("Segment Deaths: 0")
 	}
 }
 
