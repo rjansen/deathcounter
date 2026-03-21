@@ -1,4 +1,4 @@
-.PHONY: build run clean test test-e2e help
+.PHONY: build run clean test test-e2e test-e2e-ds3 help
 
 # Build the application
 build:
@@ -18,9 +18,14 @@ run: build-console
 test:
 	go test -count=1 ./internal/...
 
-# Run E2E tests (requires a game running on Windows)
+# Run E2E tests — game-agnostic only (requires any supported game running on Windows)
 test-e2e:
 	go test -tags e2e -v -count=1 ./internal/memreader/
+
+# Run E2E tests — DS3 (requires Dark Souls III running on Windows)
+# Includes game-agnostic + DS3-specific memreader + monitor state machine tests
+test-e2e-ds3:
+	go test -tags e2e,ds3 -v -count=1 ./internal/memreader/ ./internal/monitor/
 
 # Clean build artifacts
 clean:
@@ -46,13 +51,20 @@ deps:
 # Help
 help:
 	@echo "Available commands:"
-	@echo "  make build         - Build the application (no console window)"
-	@echo "  make build-console - Build with console window (for debugging)"
-	@echo "  make run           - Build and run the application"
-	@echo "  make test          - Run tests"
-	@echo "  make test-e2e      - Run E2E tests (Windows, game required)"
-	@echo "  make clean         - Remove build artifacts"
-	@echo "  make fmt           - Format code"
-	@echo "  make vet           - Run go vet"
-	@echo "  make lint          - Run linter"
-	@echo "  make deps          - Download and tidy dependencies"
+	@echo "  make build          - Build the application (no console window)"
+	@echo "  make build-console  - Build with console window (for debugging)"
+	@echo "  make run            - Build and run the application"
+	@echo "  make test           - Run tests"
+	@echo "  make test-e2e       - Run E2E tests: game-agnostic (any game)"
+	@echo "  make test-e2e-ds3   - Run E2E tests: DS3 (memreader + monitor)"
+	@echo "  make clean          - Remove build artifacts"
+	@echo "  make fmt            - Format code"
+	@echo "  make vet            - Run go vet"
+	@echo "  make lint           - Run linter"
+	@echo "  make deps           - Download and tidy dependencies"
+	@echo ""
+	@echo "E2E tag combinations (go test -tags ...):"
+	@echo "  e2e       - Game-agnostic tests (attach, death count)"
+	@echo "  e2e,ds3   - + DS3 event flags, AOB, stats, save identity, monitor phases"
+	@echo "  e2e,er    - + Elden Ring tests (future)"
+	@echo "  e2e,ds2   - + Dark Souls II tests (future)"
