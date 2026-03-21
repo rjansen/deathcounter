@@ -1116,6 +1116,110 @@ func TestReadHollowing_NullPointer(t *testing.T) {
 	}
 }
 
+// --- ReadInventoryItemQuantity tests ---
+
+func TestReadInventoryItemQuantity_Found(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+	playerGameData := setupGameDataManChain(mock, reader)
+
+	// EquipInventoryData at PlayerGameData + 0x3D0
+	equipInvData := uintptr(int64(playerGameData) + DS3OffsetEquipInventoryData)
+
+	// List pointer at equipInvData + 0x18
+	listBase := uintptr(0x90000000)
+	mock.setMemory64(equipInvData+uintptr(DS3OffsetInvListPtr), uint64(listBase))
+
+	// Count at equipInvData + 0x20 = 3 items
+	mock.setMemory32(equipInvData+uintptr(DS3OffsetInvCount), 3)
+
+	// Item 0: TypeId=0x10000001, Qty=1
+	mock.setMemory32(listBase+uintptr(0*DS3InvItemStride+DS3InvItemTypeIdOffset), 0x10000001)
+	mock.setMemory32(listBase+uintptr(0*DS3InvItemStride+DS3InvItemQuantityOffset), 1)
+	// Item 1: TypeId=0x400003E8 (Titanite Shard), Qty=5
+	mock.setMemory32(listBase+uintptr(1*DS3InvItemStride+DS3InvItemTypeIdOffset), 0x400003E8)
+	mock.setMemory32(listBase+uintptr(1*DS3InvItemStride+DS3InvItemQuantityOffset), 5)
+	// Item 2: TypeId=0x10000002, Qty=2
+	mock.setMemory32(listBase+uintptr(2*DS3InvItemStride+DS3InvItemTypeIdOffset), 0x10000002)
+	mock.setMemory32(listBase+uintptr(2*DS3InvItemStride+DS3InvItemQuantityOffset), 2)
+
+	qty, err := reader.ReadInventoryItemQuantity(0x400003E8)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity: %v", err)
+	}
+	if qty != 5 {
+		t.Errorf("expected qty 5, got %d", qty)
+	}
+}
+
+func TestReadInventoryItemQuantity_NotFound(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+	playerGameData := setupGameDataManChain(mock, reader)
+
+	equipInvData := uintptr(int64(playerGameData) + DS3OffsetEquipInventoryData)
+	listBase := uintptr(0x90000000)
+	mock.setMemory64(equipInvData+uintptr(DS3OffsetInvListPtr), uint64(listBase))
+	mock.setMemory32(equipInvData+uintptr(DS3OffsetInvCount), 1)
+
+	mock.setMemory32(listBase+uintptr(DS3InvItemTypeIdOffset), 0x10000001)
+	mock.setMemory32(listBase+uintptr(DS3InvItemQuantityOffset), 1)
+
+	qty, err := reader.ReadInventoryItemQuantity(0x400003E8) // not in inventory
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity: %v", err)
+	}
+	if qty != 0 {
+		t.Errorf("expected qty 0 for absent item, got %d", qty)
+	}
+}
+
+func TestReadInventoryItemQuantity_NullListPointer(t *testing.T) {
+	mock, reader := attachDS3WithEventFlags(t)
+	playerGameData := setupGameDataManChain(mock, reader)
+
+	equipInvData := uintptr(int64(playerGameData) + DS3OffsetEquipInventoryData)
+	mock.setMemory64(equipInvData+uintptr(DS3OffsetInvListPtr), 0) // null
+	mock.setMemory32(equipInvData+uintptr(DS3OffsetInvCount), 1)
+
+	_, err := reader.ReadInventoryItemQuantity(0x400003E8)
+	if err == nil {
+		t.Fatal("expected error for null list pointer")
+	}
+	if !errors.Is(err, ErrNullPointer) {
+		t.Errorf("expected ErrNullPointer, got %v", err)
+	}
+}
+
+func TestReadInventoryItemQuantity_Unsupported(t *testing.T) {
+	// DSR has no Inventory config
+	mock := newMockProcessOps()
+	mock.processes["DarkSoulsRemastered.exe"] = 7777
+	mock.modules["7777:DarkSoulsRemastered.exe"] = 0x140000000
+	mock.architectures[7777] = true
+
+	reader := NewGameReaderWithOps(mock)
+	if err := reader.Attach(); err != nil {
+		t.Fatalf("attach failed: %v", err)
+	}
+
+	_, err := reader.ReadInventoryItemQuantity(0x400003E8)
+	if err == nil {
+		t.Fatal("expected error for unsupported game")
+	}
+	if err != ErrNotSupported {
+		t.Errorf("expected ErrNotSupported, got %v", err)
+	}
+}
+
+func TestReadInventoryItemQuantity_NotAttached(t *testing.T) {
+	mock := newMockProcessOps()
+	reader := NewGameReaderWithOps(mock)
+
+	_, err := reader.ReadInventoryItemQuantity(0x400003E8)
+	if err == nil {
+		t.Fatal("expected error when not attached")
+	}
+}
+
 func TestReadHollowing_NonDS3_Unsupported(t *testing.T) {
 	// DSR has no game_man memory path
 	mock := newMockProcessOps()
