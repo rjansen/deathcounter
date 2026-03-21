@@ -1,5 +1,47 @@
 package monitor
 
+// MonitorPhase represents the current phase of the game monitoring lifecycle.
+type MonitorPhase int
+
+const (
+	PhaseDisconnected  MonitorPhase = iota // No game process found
+	PhaseConnected                         // Game process attached, AOB scanning
+	PhaseLoaded                            // Save detected, DB record created
+	PhaseRouteRunning                      // Route started with valid saveID
+)
+
+// String returns the phase name.
+func (p MonitorPhase) String() string {
+	switch p {
+	case PhaseDisconnected:
+		return "Disconnected"
+	case PhaseConnected:
+		return "Connected"
+	case PhaseLoaded:
+		return "Loaded"
+	case PhaseRouteRunning:
+		return "RouteRunning"
+	default:
+		return "Unknown"
+	}
+}
+
+// StatusText returns the user-facing status text for this phase.
+func (p MonitorPhase) StatusText() string {
+	switch p {
+	case PhaseDisconnected:
+		return "Waiting for game..."
+	case PhaseConnected:
+		return "Connected"
+	case PhaseLoaded:
+		return "Loaded"
+	case PhaseRouteRunning:
+		return "Tracking route"
+	default:
+		return "Unknown"
+	}
+}
+
 // DeathCounterState is the simple death counting state.
 type DeathCounterState struct {
 	GameName      string
@@ -36,7 +78,7 @@ type RouteMonitorState struct {
 	LastCheckpoint    string
 	BackupCount       int
 	CompletionPercent float64
-	SplitDeaths       uint32
+	SegmentDeaths     uint32
 	CurrentCheckpoint string
 }
 
@@ -55,7 +97,7 @@ func (s RouteMonitorState) ToDisplayUpdate() DisplayUpdate {
 			"completed_count":    s.CompletedCount,
 			"total_count":        s.TotalCount,
 			"current_checkpoint": s.CurrentCheckpoint,
-			"split_deaths":       s.SplitDeaths,
+			"segment_deaths":     s.SegmentDeaths,
 			"backup_count":       s.BackupCount,
 		},
 	}

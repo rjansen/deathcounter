@@ -51,7 +51,7 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 		CurrentCheckpoint: "Pontiff Sulyvahn",
 		BackupCount:       2,
 		CompletionPercent: 30.0,
-		SplitDeaths:       5,
+		SegmentDeaths:     5,
 	}
 
 	update := s.ToDisplayUpdate()
@@ -85,7 +85,7 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 		"current_checkpoint": "Pontiff Sulyvahn",
 		"backup_count":       2,
 		"completion_percent": 30.0,
-		"split_deaths":       uint32(5),
+		"segment_deaths":     uint32(5),
 	}
 	for key, want := range checks {
 		got, ok := update.Fields[key]
@@ -114,5 +114,39 @@ func TestRouteMonitorState_ToDisplayUpdate_ZeroValue(t *testing.T) {
 	}
 	if len(update.Fields) != 7 {
 		t.Errorf("expected 7 fields, got %d", len(update.Fields))
+	}
+}
+
+func TestMonitorPhase_String(t *testing.T) {
+	tests := []struct {
+		phase MonitorPhase
+		want  string
+	}{
+		{PhaseDisconnected, "Disconnected"},
+		{PhaseConnected, "Connected"},
+		{PhaseLoaded, "Loaded"},
+		{PhaseRouteRunning, "RouteRunning"},
+	}
+	for _, tt := range tests {
+		if got := tt.phase.String(); got != tt.want {
+			t.Errorf("MonitorPhase(%d).String() = %q, want %q", tt.phase, got, tt.want)
+		}
+	}
+}
+
+func TestMonitorPhase_StatusText(t *testing.T) {
+	tests := []struct {
+		phase MonitorPhase
+		want  string
+	}{
+		{PhaseDisconnected, "Waiting for game..."},
+		{PhaseConnected, "Connected"},
+		{PhaseLoaded, "Loaded"},
+		{PhaseRouteRunning, "Tracking route"},
+	}
+	for _, tt := range tests {
+		if got := tt.phase.StatusText(); got != tt.want {
+			t.Errorf("MonitorPhase(%d).StatusText() = %q, want %q", tt.phase, got, tt.want)
+		}
 	}
 }

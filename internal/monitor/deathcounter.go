@@ -21,15 +21,27 @@ func NewDeathCounterMonitor(reader *memreader.GameReader, tracker *stats.Tracker
 func (m *DeathCounterMonitor) Tick() {
 	m.TryAttach()
 
-	if !m.IsAttached() {
+	if m.Phase == PhaseDisconnected {
 		m.PublishState(DeathCounterState{
 			Status: m.StatusText(),
 		})
 		return
 	}
 
-	// Save slot detection — best-effort, never blocks the tick loop.
-	m.TryDetectSave()
+	// PhaseConnected: attempt save detection before reading death count
+	if m.Phase == PhaseConnected {
+		m.TryDetectSave()
+		m.PublishState(DeathCounterState{
+			GameName:      m.GameName(),
+			Status:        m.StatusText(),
+			CharacterName: m.CurrentCharName,
+			SaveSlotIndex: m.CurrentSlotIdx,
+		})
+		return
+	}
+
+	// PhaseLoaded or beyond: full tick
+	m.TryDetectSave() // check for save changes (best-effort)
 
 	count, ok := m.ReadDeathCount()
 	if !ok {
