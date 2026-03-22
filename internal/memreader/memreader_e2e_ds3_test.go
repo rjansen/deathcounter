@@ -1039,6 +1039,8 @@ func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
 		{DS3ItemTitaniteSlab, "Titanite Slab"},
 		{DS3ItemEstusShard, "Estus Shard"},
 		{DS3ItemGraveWardenAshes, "Grave Warden Ashes"},
+		{DS3ItemMorticiansAshes, "Mortician's Ashes"},
+		{DS3ItemSharpGem, "Sharp Gem"},
 		// Weapons
 		{DS3ItemSellswordTwinblades, "Sellsword Twinblades"},
 	}
@@ -1058,22 +1060,42 @@ func TestE2E_ReadInventoryItemQuantity_CountSanity(t *testing.T) {
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// Read the raw inventory count via ReadMemoryValue to independently validate
-	// the count offset before the scan loop uses it.
 	inv := reader.game.Inventory
 	if inv == nil {
 		t.Skip("No inventory config for current game")
 	}
 
+	// Validate normal item count
 	count, err := reader.ReadMemoryValue(inv.PathKey, inv.DataOffset+inv.CountOffset, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(inventory count) failed: %v", err)
 	}
-
-	t.Logf("[DS3] Inventory item count: %d", count)
-
+	t.Logf("[DS3] Normal item count: %d", count)
 	if count < 1 || count > 8192 {
-		t.Errorf("inventory count %d outside expected range [1, 8192]", count)
+		t.Errorf("normal item count %d outside expected range [1, 8192]", count)
+	}
+
+	// Validate capacity
+	capacity, err := reader.ReadMemoryValue(inv.PathKey, inv.DataOffset+inv.CapacityOffset, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(inventory capacity) failed: %v", err)
+	}
+	t.Logf("[DS3] Inventory capacity: %d", capacity)
+	if capacity < count {
+		t.Errorf("capacity %d < count %d", capacity, count)
+	}
+
+	// Validate key item start
+	keyStart, err := reader.ReadMemoryValue(inv.PathKey, inv.DataOffset+inv.KeyItemStartOffset, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(key item start) failed: %v", err)
+	}
+	t.Logf("[DS3] Key item start index: %d", keyStart)
+	if keyStart >= capacity {
+		t.Errorf("key item start %d >= capacity %d", keyStart, capacity)
+	}
+	if keyStart <= count {
+		t.Errorf("key item start %d <= normal count %d (regions would overlap)", keyStart, count)
 	}
 }
 

@@ -127,6 +127,8 @@ const (
 	DS3ItemTitaniteSlab       uint32 = 0x400003EB
 	DS3ItemEstusShard         uint32 = 0x4000085D
 	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
+	DS3ItemMorticiansAshes    uint32 = 0x4000083B
+	DS3ItemSharpGem           uint32 = 0x40000456
 )
 
 // DS3 item IDs — Weapons (from TGA CT v3.4.0).
