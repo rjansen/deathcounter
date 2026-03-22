@@ -28,8 +28,9 @@ type Checkpoint struct {
 	EventType    string    `json:"event_type"`               // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
 	EventFlagID  uint32    `json:"event_flag_id,omitempty"`  // game memory flag ID (for flag-based checks)
 	BackupFlagID uint32    `json:"backup_flag_id,omitempty"` // event flag that triggers a save backup (e.g. boss encounter)
-	MemCheck     *MemCheck `json:"mem_check,omitempty"`      // memory value check (for value-based checks)
-	Optional     bool      `json:"optional"`
+	MemCheck       *MemCheck       `json:"mem_check,omitempty"`       // memory value check (for value-based checks)
+	InventoryCheck *InventoryCheck `json:"inventory_check,omitempty"` // inventory item quantity check
+	Optional       bool            `json:"optional"`
 }
 
 // MemCheck defines a condition based on reading an integer from game memory.
@@ -39,6 +40,13 @@ type MemCheck struct {
 	Comparison string `json:"comparison"` // "gte", "eq", "gt"
 	Value      uint32 `json:"value"`      // target value to compare against
 	Size       int    `json:"size"`       // bytes to read: 1, 2, or 4 (default 4)
+}
+
+// InventoryCheck defines a condition based on an item's quantity in the inventory.
+type InventoryCheck struct {
+	ItemID     uint32 `json:"item_id"`    // full TypeId (e.g. 0x400003E8 = 1073742824)
+	Comparison string `json:"comparison"` // "gte", "gt", "eq"
+	Value      uint32 `json:"value"`      // target quantity
 }
 
 // LoadRoute parses and validates a route JSON file.
@@ -114,8 +122,19 @@ func (r *Route) validate() error {
 		if cp.EventType == "" {
 			return fmt.Errorf("checkpoint %d: missing event_type", i)
 		}
-		if cp.EventFlagID == 0 && cp.MemCheck == nil {
-			return fmt.Errorf("checkpoint %d (%s): must have event_flag_id or mem_check", i, cp.ID)
+		if cp.EventFlagID == 0 && cp.MemCheck == nil && cp.InventoryCheck == nil {
+			return fmt.Errorf("checkpoint %d (%s): must have event_flag_id, mem_check, or inventory_check", i, cp.ID)
+		}
+		if cp.InventoryCheck != nil {
+			if cp.InventoryCheck.ItemID == 0 {
+				return fmt.Errorf("checkpoint %d (%s): inventory_check missing item_id", i, cp.ID)
+			}
+			switch cp.InventoryCheck.Comparison {
+			case "gte", "eq", "gt":
+				// valid
+			default:
+				return fmt.Errorf("checkpoint %d (%s): inventory_check invalid comparison %q (must be gte, eq, or gt)", i, cp.ID, cp.InventoryCheck.Comparison)
+			}
 		}
 		if cp.MemCheck != nil {
 			if cp.MemCheck.Path == "" {

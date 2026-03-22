@@ -118,6 +118,11 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 	binary.LittleEndian.PutUint32(slotBytes, 0) // slot 0
 	mock.memory[uintptr(gameManPtr+0xA60)] = slotBytes
 
+	// Hollowing at GameMan + 0x204E
+	hollowBytes := make([]byte, 8)
+	hollowBytes[0] = 15 // hollowing level 15
+	mock.memory[uintptr(gameManPtr+0x204E)] = hollowBytes
+
 	// PlayerGameData: GameDataMan + 0x10 -> PlayerGameData object
 	playerGameDataPtr := uint64(0x400000000)
 	pgdBytes := make([]byte, 8)
@@ -186,6 +191,10 @@ func TestDeathCounterMonitor_AttachAndRead(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	mon := NewDeathCounterMonitor(reader, tracker)
+
+	// First tick: attach → PhaseConnected, detect save → PhaseLoaded
+	// But death count is not read until PhaseLoaded, and PhaseLoaded
+	// only happens after save detection succeeds.
 	mon.Tick()
 
 	select {
@@ -193,11 +202,24 @@ func TestDeathCounterMonitor_AttachAndRead(t *testing.T) {
 		if update.GameName != "Dark Souls III" {
 			t.Errorf("expected 'Dark Souls III', got %q", update.GameName)
 		}
-		if update.Status != "Connected" {
-			t.Errorf("expected 'Connected', got %q", update.Status)
+		// First tick with save detection should transition to Loaded
+		if update.Status != "Loaded" {
+			t.Errorf("expected 'Loaded', got %q", update.Status)
 		}
+	default:
+		t.Fatal("expected a display update")
+	}
+
+	// Second tick: PhaseLoaded, reads death count
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
 		if update.DeathCount != 42 {
 			t.Errorf("expected death count 42, got %d", update.DeathCount)
+		}
+		if update.Hollowing != 15 {
+			t.Errorf("expected hollowing 15, got %d", update.Hollowing)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -210,7 +232,11 @@ func TestDeathCounterMonitor_DeathCountChange(t *testing.T) {
 
 	mon := NewDeathCounterMonitor(reader, tracker)
 
-	// First tick: attach and read initial count
+	// First tick: attach + save detection → PhaseLoaded
+	mon.Tick()
+	<-mon.DisplayUpdates()
+
+	// Second tick: read initial count
 	mon.Tick()
 	<-mon.DisplayUpdates()
 
@@ -220,7 +246,7 @@ func TestDeathCounterMonitor_DeathCountChange(t *testing.T) {
 	binary.LittleEndian.PutUint32(valueBytes, 15)
 	mock.memory[valueAddr] = valueBytes
 
-	// Second tick: should detect change
+	// Third tick: should detect change
 	mon.Tick()
 
 	select {
@@ -239,7 +265,7 @@ func TestDeathCounterMonitor_Detach(t *testing.T) {
 
 	mon := NewDeathCounterMonitor(reader, tracker)
 
-	// First tick: attach
+	// First tick: attach + save detect
 	mon.Tick()
 	<-mon.DisplayUpdates()
 
@@ -300,6 +326,8 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 	}
 
 	mon := NewRouteMonitor(reader, tracker, routes, nil)
+
+	// First tick: attach → Connected, detect save → Loaded → start route
 	mon.Tick()
 
 	select {
@@ -307,6 +335,9 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 		routeName, _ := update.Fields["route_name"].(string)
 		if routeName != "DS3 Any%" {
 			t.Errorf("expected route name 'DS3 Any%%', got %q", routeName)
+		}
+		if update.Status != "Tracking route" {
+			t.Errorf("expected 'Tracking route' status, got %q", update.Status)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -393,6 +424,8 @@ func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	mon := NewDeathCounterMonitor(reader, tracker)
+
+	// First tick: attach + save detection
 	mon.Tick()
 
 	select {
@@ -402,6 +435,21 @@ func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
 		}
 		if update.SaveSlotIndex != 0 {
 			t.Errorf("expected slot 0, got %d", update.SaveSlotIndex)
+		}
+		if update.Status != "Loaded" {
+			t.Errorf("expected 'Loaded', got %q", update.Status)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+
+	// Second tick: reads death count + hollowing
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.Hollowing != 15 {
+			t.Errorf("expected hollowing 15, got %d", update.Hollowing)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -436,7 +484,7 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_SaveDetectionNonBlocking(t *testing.T) {
+func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 	mock := newMockProcessOps()
 
 	// DS3 process
@@ -461,17 +509,109 @@ func TestRouteMonitor_SaveDetectionNonBlocking(t *testing.T) {
 	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), 0)
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor(reader, tracker, nil, nil)
+	routes := []*route.Route{
+		{
+			ID:   "ds3-any",
+			Name: "DS3 Any%",
+			Game: "Dark Souls III",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
 	mon.Tick()
 
-	// Save detection fails but tick should still proceed — death count is read
+	// Save detection fails → route should NOT start, phase stays Connected
 	select {
 	case update := <-mon.DisplayUpdates():
-		if update.CharacterName != "" {
-			t.Errorf("expected empty character name, got %q", update.CharacterName)
+		if update.Status != "Connected" {
+			t.Errorf("expected 'Connected' status while save pending, got %q", update.Status)
 		}
-		if update.DeathCount != 3 {
-			t.Errorf("expected death count 3, got %d", update.DeathCount)
+		// No route should be active
+		routeName, _ := update.Fields["route_name"].(string)
+		if routeName != "" {
+			t.Errorf("expected no route name before save detection, got %q", routeName)
+		}
+		// Death count should NOT be read yet (still in Connected phase)
+		if update.DeathCount != 0 {
+			t.Errorf("expected death count 0 in Connected phase, got %d", update.DeathCount)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+}
+
+func TestRouteMonitor_Slot255Rejected(t *testing.T) {
+	mock := newMockProcessOps()
+
+	// DS3 process
+	mock.processes["DarkSoulsIII.exe"] = 1234
+	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
+	mock.architectures[1234] = true
+
+	// Death count chain
+	ptrBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(ptrBytes, 0x200000000)
+	mock.memory[uintptr(0x140000000+0x47572B8)] = ptrBytes
+	valueBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(valueBytes, 0)
+	mock.memory[uintptr(0x200000098)] = valueBytes
+
+	// GameDataMan + PlayerGameData chain
+	gameDataManGlobalAddr := uintptr(0x500000000)
+	gameDataManPtr := uint64(0x300000000)
+	gdmBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(gdmBytes, gameDataManPtr)
+	mock.memory[gameDataManGlobalAddr] = gdmBytes
+
+	playerGameDataPtr := uint64(0x400000000)
+	pgdBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(pgdBytes, playerGameDataPtr)
+	mock.memory[uintptr(gameDataManPtr+0x10)] = pgdBytes
+
+	// Character name
+	mock.memory[uintptr(playerGameDataPtr+0x88)] = encodeUTF16LE("Knight")
+
+	// GameMan with slot 255 (uninitialized)
+	gameManGlobalAddr := uintptr(0x600000000)
+	gameManPtr := uint64(0x700000000)
+	gmBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(gmBytes, gameManPtr)
+	mock.memory[gameManGlobalAddr] = gmBytes
+
+	slotBytes := make([]byte, 8)
+	slotBytes[0] = 255 // uninitialized slot
+	mock.memory[uintptr(gameManPtr+0xA60)] = slotBytes
+
+	reader := memreader.NewGameReaderWithOps(mock)
+	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), int64(gameManGlobalAddr))
+	tracker := newTestTracker(t)
+
+	routes := []*route.Route{
+		{
+			ID:   "ds3-any",
+			Name: "DS3 Any%",
+			Game: "Dark Souls III",
+			Checkpoints: []route.Checkpoint{
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+			},
+		},
+	}
+
+	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon.Tick()
+
+	// Slot 255 should be rejected → stays Connected, no route started
+	select {
+	case update := <-mon.DisplayUpdates():
+		if update.Status != "Connected" {
+			t.Errorf("expected 'Connected' with slot 255, got %q", update.Status)
+		}
+		routeName, _ := update.Fields["route_name"].(string)
+		if routeName != "" {
+			t.Errorf("expected no route with slot 255, got %q", routeName)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -535,6 +675,8 @@ func TestRouteMonitor_NonDS3_SkipsSaveDetection(t *testing.T) {
 	tracker := newTestTracker(t)
 
 	mon := NewDeathCounterMonitor(reader, tracker)
+
+	// First tick: attach → Connected, save unsupported → immediately Loaded
 	mon.Tick()
 
 	select {
@@ -542,6 +684,18 @@ func TestRouteMonitor_NonDS3_SkipsSaveDetection(t *testing.T) {
 		if update.GameName != "Elden Ring" {
 			t.Errorf("expected 'Elden Ring', got %q", update.GameName)
 		}
+		if update.Status != "Loaded" {
+			t.Errorf("expected 'Loaded' for unsupported save detection, got %q", update.Status)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+
+	// Second tick: PhaseLoaded, reads death count
+	mon.Tick()
+
+	select {
+	case update := <-mon.DisplayUpdates():
 		if update.DeathCount != 7 {
 			t.Errorf("expected death count 7, got %d", update.DeathCount)
 		}

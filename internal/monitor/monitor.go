@@ -25,6 +25,7 @@ type DisplayUpdate struct {
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
+	Hollowing     uint32
 	Fields        map[string]any
 }
 
@@ -43,16 +44,19 @@ type GameMonitor[S Displayable] struct {
 	updates   chan S
 	displayCh chan DisplayUpdate
 
-	LastCount      uint32
-	LastGame       string
-	WaitingForLoad bool
-	Status         string
+	LastCount uint32
+	LastGame  string
+	Phase     MonitorPhase
 
 	// Save slot tracking
-	CurrentSaveID   int64
-	CurrentSlotIdx  int
-	CurrentCharName string
-	SaveDetected    bool
+	CurrentSaveID    int64
+	CurrentSlotIdx   int
+	CurrentCharName  string
+	CurrentHollowing uint32
+
+	// Log spam prevention (reset on attach/detach)
+	saveLoggedOnce bool
+	loadLoggedOnce bool
 }
 
 // InitGameMonitor initializes a GameMonitor with buffered channels.
@@ -62,7 +66,7 @@ func InitGameMonitor[S Displayable](reader *memreader.GameReader, tracker *stats
 		Tracker:   tracker,
 		updates:   make(chan S, 1),
 		displayCh: make(chan DisplayUpdate, 1),
-		Status:    "Waiting for game...",
+		Phase:     PhaseDisconnected,
 	}
 }
 
@@ -81,9 +85,9 @@ func (m *GameMonitor[S]) GameName() string {
 	return m.LastGame
 }
 
-// StatusText returns the current status string.
+// StatusText returns the current status string derived from the Phase.
 func (m *GameMonitor[S]) StatusText() string {
-	return m.Status
+	return m.Phase.StatusText()
 }
 
 // IsAttached returns whether a game is currently attached.
@@ -98,10 +102,9 @@ func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
 		if err := m.Reader.Attach(); err != nil {
 			if m.LastGame != "" {
 				log.Printf("[%s] Game process ended", m.LastGame)
-				m.Status = "Waiting for game..."
+				m.Phase = PhaseDisconnected
 				m.LastGame = ""
 				m.LastCount = 0
-				m.WaitingForLoad = false
 			}
 			return false
 		}
@@ -110,14 +113,14 @@ func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
 	currentGame := m.Reader.GetCurrentGame()
 	if currentGame != m.LastGame {
 		log.Printf("Attached to: %s", currentGame)
-		m.Status = "Connected"
+		m.Phase = PhaseConnected
 		m.LastGame = currentGame
 		m.LastCount = 0
-		m.WaitingForLoad = false
 		m.CurrentSaveID = 0
 		m.CurrentSlotIdx = 0
 		m.CurrentCharName = ""
-		m.SaveDetected = false
+		m.saveLoggedOnce = false
+		m.loadLoggedOnce = false
 		return true
 	}
 	return false
@@ -129,10 +132,9 @@ func (m *GameMonitor[S]) ReadDeathCount() (uint32, bool) {
 	count, err := m.Reader.ReadDeathCount()
 	if err != nil {
 		if errors.Is(err, memreader.ErrNullPointer) {
-			if !m.WaitingForLoad {
+			if !m.loadLoggedOnce {
 				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
-				m.Status = "Loading..."
-				m.WaitingForLoad = true
+				m.loadLoggedOnce = true
 			}
 			return 0, false
 		}
@@ -140,16 +142,9 @@ func (m *GameMonitor[S]) ReadDeathCount() (uint32, bool) {
 		// Fatal error: process likely gone, detach
 		log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), err)
 		m.Reader.Detach()
-		m.Status = "Disconnected"
+		m.Phase = PhaseDisconnected
 		m.LastGame = ""
-		m.WaitingForLoad = false
 		return 0, false
-	}
-
-	if m.WaitingForLoad {
-		log.Printf("[%s] Game loaded successfully", m.Reader.GetCurrentGame())
-		m.WaitingForLoad = false
-		m.Status = "Connected"
 	}
 
 	return count, true
@@ -168,22 +163,26 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 	// If character name is not supported, skip save detection entirely
 	// (save slot alone is not enough to identify a character)
 	if isUnsupportedErr(nameErr) {
-		m.SaveDetected = true
+		if m.Phase == PhaseConnected {
+			m.Phase = PhaseLoaded
+		}
 		return false, true
 	}
 
 	// Null pointer or read error means game data is not yet loaded — retry later
 	if nameErr != nil {
-		if !m.SaveDetected {
+		if !m.saveLoggedOnce {
 			log.Printf("[%s] Save detection pending: %v", m.Reader.GetCurrentGame(), nameErr)
+			m.saveLoggedOnce = true
 		}
 		return false, false
 	}
 
 	// Empty name means the structure exists but save data isn't populated yet
 	if charName == "" {
-		if !m.SaveDetected {
+		if !m.saveLoggedOnce {
 			log.Printf("[%s] Save detection pending: empty character name", m.Reader.GetCurrentGame())
+			m.saveLoggedOnce = true
 		}
 		return false, false
 	}
@@ -193,8 +192,17 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 		slotIdx = 0
 	}
 
+	// Slot 255 is uninitialized memory — treat as not yet loaded
+	if slotIdx == 255 {
+		if !m.saveLoggedOnce {
+			log.Printf("[%s] Save detection pending: uninitialized slot (255)", m.Reader.GetCurrentGame())
+			m.saveLoggedOnce = true
+		}
+		return false, false
+	}
+
 	// Check if save identity changed
-	previouslyHadSave := m.SaveDetected
+	previouslyLoaded := m.Phase >= PhaseLoaded
 	if slotIdx != m.CurrentSlotIdx || charName != m.CurrentCharName {
 		saveID, err := m.Tracker.FindOrCreateSave(m.Reader.GetCurrentGame(), slotIdx, charName)
 		if err != nil {
@@ -204,12 +212,29 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 		m.CurrentSaveID = saveID
 		m.CurrentSlotIdx = slotIdx
 		m.CurrentCharName = charName
-		m.SaveDetected = true
-		log.Printf("[%s] Save detected: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
-		return previouslyHadSave, true
+
+		if m.Phase == PhaseConnected {
+			m.Phase = PhaseLoaded
+			log.Printf("[%s] Save detected: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
+			log.Printf("[%s] Game loaded successfully", m.Reader.GetCurrentGame())
+		} else {
+			log.Printf("[%s] Save changed: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
+		}
+
+		return previouslyLoaded, true
 	}
 
 	return false, true
+}
+
+// ReadHollowing reads the hollowing level, returning 0 on any error.
+func (m *GameMonitor[S]) ReadHollowing() {
+	val, err := m.Reader.ReadHollowing()
+	if err != nil {
+		m.CurrentHollowing = 0
+		return
+	}
+	m.CurrentHollowing = val
 }
 
 // RecordDeathIfChanged checks if the death count changed and records it.

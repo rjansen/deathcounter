@@ -16,8 +16,8 @@ A system tray application that tracks your death count in FromSoftware games by 
 - **Multi-Game Support**: Automatically detects and switches between all supported FromSoftware games
 - **Real-time Death Tracking**: Monitors game memory to track death count
 - **Speedrun Route Tracking**: Define custom routes with boss kills, level-up milestones, and weapon upgrade checkpoints
-- **Split Timing**: Records IGT-based split times and per-segment death counts for each checkpoint
-- **Personal Best Tracking**: Automatically tracks and compares against your best splits
+- **Checkpoint Timing**: Records IGT-based checkpoint times and per-segment death counts
+- **Personal Best Tracking**: Automatically tracks and compares against your best checkpoint times
 - **Save File Backup**: Automatically backs up save files at each checkpoint
 - **System Tray Integration**: Runs quietly in the background with easy access
 - **Session Statistics**: Tracks deaths per gaming session
@@ -93,20 +93,20 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 - **Level-up milestones** via memory value checks (e.g. "DEX >= 33")
 - **Weapon upgrade tracking** via max reinforcement level
 - **Pre-existing progress detection**: logs already-completed checkpoints on startup
-- **Per-checkpoint split times** (IGT-based)
+- **Per-checkpoint timing** (IGT-based)
 - **Per-segment death counts**
 - **Personal best tracking** with automatic comparison
 - **Save file backup** on boss encounter (or boss kill if no encounter flag configured)
 
 ### Included Routes
 
-- **DS3 Glitchless Any% - Hybrid Route** (`routes/ds3-glitchless-any-percent-hybrid.json`)
-  - 13 required boss checkpoints in hybrid route order
+- **DS3 Glitchless Any% - Hybrid Route v6** (`routes/ds3-glitchless-any-percent-hybrid.json`)
+  - 18 checkpoints total: 13 required boss kills in hybrid route order
   - 5 optional milestones: DEX 33/38/47 and Sellsword Twinblades +3/+6
 
 ### Creating Custom Routes
 
-Routes are JSON files placed in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
+Routes are JSON files in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
 
 ```json
 {
@@ -120,8 +120,8 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13100800,
-      "backup_flag_id": 13100801
+      "event_flag_id": 13000800,
+      "backup_flag_id": 13000801
     },
     {
       "id": "level-30",
@@ -129,7 +129,7 @@ Routes are JSON files placed in the `routes/` directory. Each checkpoint can use
       "event_type": "level_up",
       "mem_check": {
         "path": "player_stats",
-        "offset": 104,
+        "offset": 68,
         "comparison": "gte",
         "value": 30,
         "size": 4
@@ -165,17 +165,65 @@ When using `"path": "player_stats"` for Dark Souls III:
 
 | Offset | Stat |
 |--------|------|
-| `0x68` (104) | Soul Level |
-| `0x6C` (108) | Vigor |
-| `0x70` (112) | Attunement |
-| `0x74` (116) | Endurance |
-| `0x78` (120) | Vitality |
-| `0x7C` (124) | Strength |
-| `0x80` (128) | Dexterity |
-| `0x84` (132) | Intelligence |
-| `0x88` (136) | Faith |
-| `0x8C` (140) | Luck |
-| `0xA2` (162) | Max Weapon Reinforcement Level (1 byte) |
+| `0x44` (68) | Soul Level |
+| `0x48` (72) | Attunement |
+| `0x4C` (76) | Endurance |
+| `0x50` (80) | Vigor |
+| `0x54` (84) | Dexterity |
+| `0x58` (88) | Intelligence |
+| `0x5C` (92) | Faith |
+| `0x60` (96) | Luck |
+| `0x6C` (108) | Strength |
+| `0x70` (112) | Vitality |
+| `0xB3` (179) | Max Weapon Reinforcement Level (1 byte) |
+
+## Monitor State Machine
+
+The app uses an explicit phase-based state machine to manage the game monitoring lifecycle:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+
+    Disconnected --> Connected : Game process found
+    Connected --> Loaded : Save detected<br/>(char name + slot)
+    Connected --> Loaded : Save unsupported<br/>(non-DS3, pass-through)
+    Loaded --> RouteRunning : Route matched<br/>& started
+
+    Connected --> Disconnected : Process exited
+    Loaded --> Disconnected : Process exited<br/>or fatal read error
+    RouteRunning --> Disconnected : Process exited<br/>(run abandoned)
+
+    RouteRunning --> Loaded : Save changed<br/>(run abandoned,<br/>restart route)
+
+    state Disconnected {
+        [*] --> WaitingForGame
+        WaitingForGame : Scanning for game processes
+    }
+
+    state Connected {
+        [*] --> DetectingSave
+        DetectingSave : AOB scanning<br/>Reading char name + slot<br/>Rejects slot 255
+    }
+
+    state Loaded {
+        [*] --> TrackingDeaths
+        TrackingDeaths : Reading death count<br/>Recording to DB<br/>Monitoring save changes
+    }
+
+    state RouteRunning {
+        [*] --> CatchUp
+        CatchUp --> TickLoop : Pre-existing progress scanned
+        TickLoop : Reading event flags<br/>Reading memory values<br/>Recording checkpoints<br/>Updating PBs<br/>Triggering backups
+    }
+```
+
+| Phase | Status Text | Description |
+|-------|-------------|-------------|
+| **Disconnected** | "Waiting for game..." | No game process found |
+| **Connected** | "Connected" | Game attached, detecting save identity |
+| **Loaded** | "Loaded" | Save identified, death tracking active |
+| **RouteRunning** | "Tracking route" | Route started with valid save ID |
 
 ## How It Works
 
@@ -237,6 +285,7 @@ deathcounter/
 │   │   ├── config.go               # Game configurations, offsets, AOB patterns
 │   │   ├── reader.go               # Death count, event flag, IGT, and memory value reading
 │   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
+│   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, bonfire names
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
 │   ├── monitor/                     # Game monitoring lifecycle
@@ -304,7 +353,7 @@ This Go implementation adds:
 - Speedrun route tracking with custom JSON route definitions
 - Boss encounter detection with save file backup before fights
 - Event flag reading, IGT reading, and memory value checks
-- Split timing with personal best tracking
+- Checkpoint timing with personal best tracking
 - System tray integration with ICO icon
 - Persistent statistics database
 - Session tracking

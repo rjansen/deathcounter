@@ -73,8 +73,8 @@ func TestProcessTick_SingleCheckpoint(t *testing.T) {
 	if result.Checkpoints[0].IGT != 95000 {
 		t.Errorf("got IGT %d, want 95000", result.Checkpoints[0].IGT)
 	}
-	if result.Checkpoints[0].SplitDuration != 95000 {
-		t.Errorf("got split duration %d, want 95000", result.Checkpoints[0].SplitDuration)
+	if result.Checkpoints[0].CheckpointDuration != 95000 {
+		t.Errorf("got split duration %d, want 95000", result.Checkpoints[0].CheckpointDuration)
 	}
 	if result.Checkpoints[0].Deaths != 3 {
 		t.Errorf("got deaths %d, want 3", result.Checkpoints[0].Deaths)
@@ -104,8 +104,8 @@ func TestProcessTick_FullProgression(t *testing.T) {
 	if result.Checkpoints[0].Checkpoint.ID != "boss2" {
 		t.Errorf("tick 2: got checkpoint %q, want %q", result.Checkpoints[0].Checkpoint.ID, "boss2")
 	}
-	if result.Checkpoints[0].SplitDuration != 130000 { // 225000 - 95000
-		t.Errorf("tick 2: got split duration %d, want 130000", result.Checkpoints[0].SplitDuration)
+	if result.Checkpoints[0].CheckpointDuration != 130000 { // 225000 - 95000
+		t.Errorf("tick 2: got split duration %d, want 130000", result.Checkpoints[0].CheckpointDuration)
 	}
 	if result.Checkpoints[0].Deaths != 4 { // 7 - 3
 		t.Errorf("tick 2: got deaths %d, want 4", result.Checkpoints[0].Deaths)
@@ -392,6 +392,154 @@ func TestMixedFlagAndMemCheckpoints(t *testing.T) {
 	}
 	if result.Checkpoints[1].Checkpoint.ID != "boss2" {
 		t.Errorf("second: got %q, want boss2", result.Checkpoints[1].Checkpoint.ID)
+	}
+	if rs.Status != RunCompleted {
+		t.Errorf("expected completed, got %q", rs.Status)
+	}
+}
+
+func TestInventoryCheck_Gte(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	// 3 shards: not triggered
+	result := rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-5": 3},
+		IGT: 30000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 0 {
+		t.Fatalf("got %d events at qty 3, want 0", len(result.Checkpoints))
+	}
+
+	// 5 shards: triggered
+	result = rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-5": 5},
+		IGT: 60000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events at qty 5, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Checkpoint.ID != "shards-5" {
+		t.Errorf("got checkpoint %q, want shards-5", result.Checkpoints[0].Checkpoint.ID)
+	}
+}
+
+func TestInventoryCheck_Gt(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-gt5", Name: "Over 5 Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gt", Value: 5},
+			},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	// Exactly 5: not triggered (gt, not gte)
+	result := rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-gt5": 5},
+		IGT: 10000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 0 {
+		t.Errorf("got %d events at qty 5, want 0 (gt)", len(result.Checkpoints))
+	}
+
+	// 6: triggered
+	result = rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-gt5": 6},
+		IGT: 20000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events at qty 6, want 1", len(result.Checkpoints))
+	}
+}
+
+func TestInventoryCheck_Eq(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-eq3", Name: "Exactly 3 Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "eq", Value: 3},
+			},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	result := rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-eq3": 2},
+		IGT: 10000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 0 {
+		t.Errorf("got %d events at qty 2, want 0", len(result.Checkpoints))
+	}
+
+	result = rs.ProcessTick(TickInput{
+		InventoryValues: map[string]uint32{"shards-eq3": 3},
+		IGT: 20000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events at qty 3, want 1", len(result.Checkpoints))
+	}
+}
+
+func TestMixedFlagAndInventoryCheckpoints(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000},
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	// Boss 1 killed, shards not enough
+	result := rs.ProcessTick(TickInput{
+		Flags:           map[uint32]bool{1000: true},
+		InventoryValues: map[string]uint32{"shards-5": 2},
+		IGT: 95000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1 (boss1 only)", len(result.Checkpoints))
+	}
+
+	// Shards + boss 2
+	result = rs.ProcessTick(TickInput{
+		Flags:           map[uint32]bool{1000: true, 2000: true},
+		InventoryValues: map[string]uint32{"shards-5": 5},
+		IGT: 300000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 2 {
+		t.Fatalf("got %d events, want 2 (shards-5 + boss2)", len(result.Checkpoints))
 	}
 	if rs.Status != RunCompleted {
 		t.Errorf("expected completed, got %q", rs.Status)

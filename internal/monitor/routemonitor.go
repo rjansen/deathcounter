@@ -30,20 +30,28 @@ func NewRouteMonitor(reader *memreader.GameReader, tracker *stats.Tracker, route
 
 // Tick performs one monitoring cycle with route tracking.
 func (m *RouteMonitor) Tick() {
-	gameChanged := m.TryAttach()
+	m.TryAttach()
 
-	if !m.IsAttached() {
+	// Disconnected: abandon any active runner, publish empty state
+	if m.Phase == PhaseDisconnected {
+		if m.runner != nil && m.runner.IsActive() {
+			m.runner.Abandon()
+		}
 		m.publishRouteState()
 		return
 	}
 
-	// Auto-start matching route on game change
-	if gameChanged {
-		m.startMatchingRoute()
+	// PhaseConnected: attempt save detection, start route if loaded
+	if m.Phase == PhaseConnected {
+		m.TryDetectSave()
+		if m.Phase == PhaseLoaded {
+			m.startMatchingRoute()
+		}
+		m.publishRouteState()
+		return
 	}
 
-	// Save slot detection — best-effort, never blocks the tick loop.
-	// If save detection fails (game still loading), we proceed without it.
+	// PhaseLoaded or PhaseRouteRunning: check for save changes
 	saveChanged, _ := m.TryDetectSave()
 	if saveChanged {
 		// Save identity changed: abandon active run and restart
@@ -66,6 +74,7 @@ func (m *RouteMonitor) Tick() {
 	}
 
 	m.RecordDeathIfChanged(count)
+	m.ReadHollowing()
 
 	// Tick route runner if active
 	if m.runner != nil && m.runner.IsActive() {
@@ -92,6 +101,7 @@ func (m *RouteMonitor) startMatchingRoute() {
 				m.runner = nil
 			} else {
 				log.Printf("[Route] Started route: %s", r.Name)
+				m.Phase = PhaseRouteRunning
 				m.caughtUp = false
 				m.backupCount = 0
 			}
@@ -120,6 +130,7 @@ func (m *RouteMonitor) publishRouteState() {
 		DeathCount:    m.LastCount,
 		CharacterName: m.CurrentCharName,
 		SaveSlotIndex: m.CurrentSlotIdx,
+		Hollowing:     m.CurrentHollowing,
 	}
 
 	if m.runner != nil && m.runner.IsActive() {
@@ -128,7 +139,7 @@ func (m *RouteMonitor) publishRouteState() {
 		state.CompletionPercent = m.runner.CompletionPercent()
 		state.CompletedCount = m.runner.CompletedCount()
 		state.TotalCount = m.runner.TotalCount()
-		state.SplitDeaths = m.runner.SplitDeaths()
+		state.SegmentDeaths = m.runner.SegmentDeaths()
 		state.BackupCount = m.backupCount
 
 		cp := m.runner.CurrentCheckpoint()

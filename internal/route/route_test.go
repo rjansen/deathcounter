@@ -284,6 +284,81 @@ func TestLoadRoute_NoCondition(t *testing.T) {
 	}
 }
 
+func TestLoadRoute_InventoryCheckValid(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	loaded, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("LoadRoute: %v", err)
+	}
+	if loaded.Checkpoints[0].InventoryCheck == nil {
+		t.Fatal("expected InventoryCheck to be loaded")
+	}
+	if loaded.Checkpoints[0].InventoryCheck.ItemID != 0x400003E8 {
+		t.Errorf("got item_id %d, want %d", loaded.Checkpoints[0].InventoryCheck.ItemID, 0x400003E8)
+	}
+}
+
+func TestLoadRoute_InventoryCheckMissingItemID(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for missing item_id")
+	}
+}
+
+func TestLoadRoute_InventoryCheckInvalidComparison(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "lte", Value: 5},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid comparison")
+	}
+}
+
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
 

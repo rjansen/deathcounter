@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "5",
+  "version": "6",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
@@ -16,8 +16,8 @@
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13100800,
-      "backup_flag_id": 13100801
+      "event_flag_id": 13000800,
+      "backup_flag_id": 13000801
     },
     {
       "id": "abyss-watchers",
@@ -51,15 +51,15 @@
       "id": "crystal-sage",
       "name": "Crystal Sage",
       "event_type": "boss_kill",
-      "event_flag_id": 13200800,
-      "backup_flag_id": 13200801
+      "event_flag_id": 13300850,
+      "backup_flag_id": 13300852
     },
     {
       "id": "deacons",
       "name": "Deacons of the Deep",
       "event_type": "boss_kill",
-      "event_flag_id": 13500850,
-      "backup_flag_id": 13500851
+      "event_flag_id": 13500800,
+      "backup_flag_id": 13500801
     },
     {
       "id": "yhorm",
@@ -72,15 +72,13 @@
       "id": "pontiff",
       "name": "Pontiff Sulyvahn",
       "event_type": "boss_kill",
-      "event_flag_id": 13700800,
-      "backup_flag_id": 13700801
+      "event_flag_id": 13700850
     },
     {
       "id": "aldrich",
       "name": "Aldrich, Devourer of Gods",
       "event_type": "boss_kill",
-      "event_flag_id": 13701800,
-      "backup_flag_id": 13701801
+      "event_flag_id": 13700800
     },
     {
       "id": "twinblades-plus6",
@@ -100,22 +98,20 @@
       "id": "dancer",
       "name": "Dancer of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13010800,
-      "backup_flag_id": 13010801
+      "event_flag_id": 13000890
     },
     {
       "id": "dragonslayer-armour",
       "name": "Dragonslayer Armour",
       "event_type": "boss_kill",
-      "event_flag_id": 13500800,
-      "backup_flag_id": 13500801
+      "event_flag_id": 13010800
     },
     {
       "id": "twin-princes",
       "name": "Twin Princes",
       "event_type": "boss_kill",
-      "event_flag_id": 13501800,
-      "backup_flag_id": 13501801
+      "event_flag_id": 13410830,
+      "backup_flag_id": 13410831
     },
     {
       "id": "dex-47",

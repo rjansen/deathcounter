@@ -41,12 +41,20 @@ func formatTotalDeathsText(total uint32) string {
 	return fmt.Sprintf("Total: %d", total)
 }
 
+// formatHollowingText returns the menu text for the hollowing item.
+func formatHollowingText(gameName string, hollowing uint32) string {
+	if gameName != "" {
+		return fmt.Sprintf("Hollowing: %d", hollowing)
+	}
+	return "Hollowing: -"
+}
+
 // routeDisplayTexts holds the resolved text for all route menu items.
 type routeDisplayTexts struct {
 	name     string
 	progress string
 	current  string
-	splitD   string
+	segmentD string
 }
 
 // defaultRouteTexts returns the default route display values.
@@ -55,7 +63,7 @@ func defaultRouteTexts() routeDisplayTexts {
 		name:     "Route: None",
 		progress: "Progress: -",
 		current:  "Current: -",
-		splitD:   "Split Deaths: 0",
+		segmentD: "Segment Deaths: 0",
 	}
 }
 
@@ -80,13 +88,13 @@ func resolveRouteTexts(fields map[string]any) routeDisplayTexts {
 		cp = "Complete!"
 	}
 
-	deaths, _ := fields["split_deaths"].(uint32)
+	deaths, _ := fields["segment_deaths"].(uint32)
 
 	return routeDisplayTexts{
 		name:     fmt.Sprintf("Route: %s", routeName),
 		progress: fmt.Sprintf("Progress: %d/%d (%.0f%%)", completed, total, percent),
 		current:  fmt.Sprintf("Current: %s", cp),
-		splitD:   fmt.Sprintf("Split Deaths: %d", deaths),
+		segmentD: fmt.Sprintf("Segment Deaths: %d", deaths),
 	}
 }
 

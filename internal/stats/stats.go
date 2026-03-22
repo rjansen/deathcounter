@@ -85,13 +85,13 @@ func (t *Tracker) initDB() error {
 		final_igt_ms INTEGER
 	);
 
-	CREATE TABLE IF NOT EXISTS route_splits (
+	CREATE TABLE IF NOT EXISTS route_checkpoints (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		run_id INTEGER NOT NULL,
 		checkpoint_id TEXT NOT NULL,
 		checkpoint_name TEXT NOT NULL,
 		igt_ms INTEGER NOT NULL,
-		split_duration_ms INTEGER NOT NULL,
+		checkpoint_duration_ms INTEGER NOT NULL,
 		deaths INTEGER NOT NULL DEFAULT 0,
 		completed_at DATETIME NOT NULL,
 		FOREIGN KEY (run_id) REFERENCES route_runs(id)
@@ -123,6 +123,19 @@ func (t *Tracker) initDB() error {
 
 // migrateDB adds new columns to existing tables.
 func (t *Tracker) migrateDB() error {
+	// Rename route_splits → route_checkpoints if old table exists
+	if t.tableExists("route_splits") {
+		if _, err := t.db.Exec("ALTER TABLE route_splits RENAME TO route_checkpoints"); err != nil {
+			return fmt.Errorf("failed to rename route_splits to route_checkpoints: %w", err)
+		}
+		// Rename column split_duration_ms → checkpoint_duration_ms
+		if t.columnExists("route_checkpoints", "split_duration_ms") {
+			if _, err := t.db.Exec("ALTER TABLE route_checkpoints RENAME COLUMN split_duration_ms TO checkpoint_duration_ms"); err != nil {
+				return fmt.Errorf("failed to rename split_duration_ms column: %w", err)
+			}
+		}
+	}
+
 	// Add save_id to sessions if missing
 	if !t.columnExists("sessions", "save_id") {
 		if _, err := t.db.Exec("ALTER TABLE sessions ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
@@ -136,6 +149,15 @@ func (t *Tracker) migrateDB() error {
 		}
 	}
 	return nil
+}
+
+// tableExists checks if a table exists in the database.
+func (t *Tracker) tableExists(table string) bool {
+	var name string
+	err := t.db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+	).Scan(&name)
+	return err == nil
 }
 
 // columnExists checks if a column exists in a table.
@@ -364,13 +386,13 @@ func (t *Tracker) GetSessionHistory(limit int) ([]Session, error) {
 	return sessions, rows.Err()
 }
 
-// RouteSplit represents a recorded split in a route run.
-type RouteSplit struct {
-	CheckpointID   string
-	CheckpointName string
-	IGTMs          int64
-	SplitDurationMs int64
-	Deaths         uint32
+// RouteCheckpoint represents a recorded checkpoint in a route run.
+type RouteCheckpoint struct {
+	CheckpointID       string
+	CheckpointName     string
+	IGTMs              int64
+	CheckpointDurationMs int64
+	Deaths             uint32
 }
 
 // StartRouteRun creates a new route run record and returns its ID.
@@ -395,15 +417,15 @@ func (t *Tracker) StartRouteRun(routeID, game string, saveID int64) (int64, erro
 	return result.LastInsertId()
 }
 
-// RecordSplit records a completed checkpoint split.
-func (t *Tracker) RecordSplit(runID int64, checkpointID, name string, igtMs, splitMs int64, deaths uint32) error {
+// RecordCheckpoint records a completed checkpoint.
+func (t *Tracker) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
 	_, err := t.db.Exec(
-		`INSERT INTO route_splits (run_id, checkpoint_id, checkpoint_name, igt_ms, split_duration_ms, deaths, completed_at)
+		`INSERT INTO route_checkpoints (run_id, checkpoint_id, checkpoint_name, igt_ms, checkpoint_duration_ms, deaths, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		runID, checkpointID, name, igtMs, splitMs, deaths, time.Now(),
+		runID, checkpointID, name, igtMs, checkpointMs, deaths, time.Now(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to record split: %w", err)
+		return fmt.Errorf("failed to record checkpoint: %w", err)
 	}
 	return nil
 }
@@ -417,8 +439,8 @@ func (t *Tracker) EndRouteRun(runID int64, status string, totalDeaths uint32, fi
 	return err
 }
 
-// GetPersonalBest returns the personal best splits for a route.
-func (t *Tracker) GetPersonalBest(routeID string) ([]RouteSplit, error) {
+// GetPersonalBest returns the personal best checkpoints for a route.
+func (t *Tracker) GetPersonalBest(routeID string) ([]RouteCheckpoint, error) {
 	rows, err := t.db.Query(
 		"SELECT checkpoint_id, '', best_igt_ms, best_split_ms, 0 FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
 		routeID,
@@ -428,15 +450,15 @@ func (t *Tracker) GetPersonalBest(routeID string) ([]RouteSplit, error) {
 	}
 	defer rows.Close()
 
-	var splits []RouteSplit
+	var checkpoints []RouteCheckpoint
 	for rows.Next() {
-		var s RouteSplit
-		if err := rows.Scan(&s.CheckpointID, &s.CheckpointName, &s.IGTMs, &s.SplitDurationMs, &s.Deaths); err != nil {
+		var c RouteCheckpoint
+		if err := rows.Scan(&c.CheckpointID, &c.CheckpointName, &c.IGTMs, &c.CheckpointDurationMs, &c.Deaths); err != nil {
 			return nil, err
 		}
-		splits = append(splits, s)
+		checkpoints = append(checkpoints, c)
 	}
-	return splits, rows.Err()
+	return checkpoints, rows.Err()
 }
 
 // UpdatePersonalBest updates the PB for a checkpoint if the new time is better.
@@ -450,6 +472,11 @@ func (t *Tracker) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitM
 			best_split_ms = MIN(best_split_ms, excluded.best_split_ms)
 	`, routeID, checkpointID, igtMs, splitMs)
 	return err
+}
+
+// DB returns the underlying database connection for advanced queries.
+func (t *Tracker) DB() *sql.DB {
+	return t.db
 }
 
 // Close closes the database connection

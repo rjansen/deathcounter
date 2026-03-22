@@ -101,6 +101,9 @@ func TestBuildMenu(t *testing.T) {
 	if app.menuCharacter == nil {
 		t.Error("menuCharacter is nil")
 	}
+	if app.menuHollowing == nil {
+		t.Error("menuHollowing is nil")
+	}
 	if app.menuCount == nil {
 		t.Error("menuCount is nil")
 	}
@@ -119,8 +122,8 @@ func TestBuildMenu(t *testing.T) {
 	if app.menuRouteCurrent == nil {
 		t.Error("menuRouteCurrent is nil")
 	}
-	if app.menuRouteSplitD == nil {
-		t.Error("menuRouteSplitD is nil")
+	if app.menuRouteSegmentD == nil {
+		t.Error("menuRouteSegmentD is nil")
 	}
 
 	// Verify initial text values
@@ -296,7 +299,7 @@ func TestRefreshDisplay_WithRouteFields(t *testing.T) {
 			"total_count":        20,
 			"completion_percent": 25.0,
 			"current_checkpoint": "Pontiff Sulyvahn",
-			"split_deaths":       uint32(3),
+			"segment_deaths":       uint32(3),
 		},
 	}
 
@@ -311,8 +314,8 @@ func TestRefreshDisplay_WithRouteFields(t *testing.T) {
 	if got := app.menuRouteCurrent.Text(); got != "Current: Pontiff Sulyvahn" {
 		t.Errorf("current = %q, want %q", got, "Current: Pontiff Sulyvahn")
 	}
-	if got := app.menuRouteSplitD.Text(); got != "Split Deaths: 3" {
-		t.Errorf("split deaths = %q, want %q", got, "Split Deaths: 3")
+	if got := app.menuRouteSegmentD.Text(); got != "Segment Deaths: 3" {
+		t.Errorf("split deaths = %q, want %q", got, "Segment Deaths: 3")
 	}
 }
 
@@ -350,7 +353,7 @@ func TestRefreshDisplay_NilRouteFieldsResetsDefaults(t *testing.T) {
 			"total_count":        5,
 			"completion_percent": 20.0,
 			"current_checkpoint": "Boss 2",
-			"split_deaths":       uint32(7),
+			"segment_deaths":       uint32(7),
 		},
 	})
 
@@ -369,8 +372,8 @@ func TestRefreshDisplay_NilRouteFieldsResetsDefaults(t *testing.T) {
 	if got := app.menuRouteCurrent.Text(); got != "Current: -" {
 		t.Errorf("current = %q, want %q after reset", got, "Current: -")
 	}
-	if got := app.menuRouteSplitD.Text(); got != "Split Deaths: 0" {
-		t.Errorf("split deaths = %q, want %q after reset", got, "Split Deaths: 0")
+	if got := app.menuRouteSegmentD.Text(); got != "Segment Deaths: 0" {
+		t.Errorf("split deaths = %q, want %q after reset", got, "Segment Deaths: 0")
 	}
 }
 

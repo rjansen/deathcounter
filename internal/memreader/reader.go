@@ -320,8 +320,8 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 		}
 	}
 
-	// Navigate: sprjBase + 0x218 → [div10000000 * 0x18] → [0x0]
-	ptr, err := r.readPtr(sprjBase + 0x218)
+	// Navigate: sprjBase + DS3OffsetFlagArray → [div10000000 * DS3FlagArrayEntryStride] → [0x0]
+	ptr, err := r.readPtr(sprjBase + DS3OffsetFlagArray)
 	if err != nil {
 		return false, fmt.Errorf("failed to read SprjEventFlagMan array: %w", err)
 	}
@@ -329,7 +329,7 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 		return false, ErrNullPointer
 	}
 
-	ptr, err = r.readPtr(ptr + int64(div10000000*0x18))
+	ptr, err = r.readPtr(ptr + int64(div10000000)*DS3FlagArrayEntryStride)
 	if err != nil {
 		return false, fmt.Errorf("failed to read flag array entry: %w", err)
 	}
@@ -338,7 +338,7 @@ func (r *GameReader) ReadEventFlag(flagID uint32) (bool, error) {
 	}
 
 	// Step 3: Compute final data address
-	dataAddr := ptr + int64(div1000<<4) + int64(category)*0xa8
+	dataAddr := ptr + int64(div1000<<4) + int64(category)*DS3FlagCategoryStride
 
 	// Dereference to get the flag data pointer
 	flagDataPtr, err := r.readPtr(dataAddr)
@@ -405,7 +405,7 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 		return -1, ErrNullPointer
 	}
 
-	worldInfoOwner, err := r.readPtr(ptr1 + 0x10)
+	worldInfoOwner, err := r.readPtr(ptr1 + DS3OffsetFieldAreaPtr)
 	if err != nil {
 		return -1, fmt.Errorf("failed to read WorldInfoOwner: %w", err)
 	}
@@ -413,14 +413,14 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 		return -1, ErrNullPointer
 	}
 
-	// Read size at worldInfoOwner + 0x8
-	size, err := r.readInt32(worldInfoOwner + 0x8)
+	// Read size at worldInfoOwner + DS3OffsetWorldInfoSize
+	size, err := r.readInt32(worldInfoOwner + DS3OffsetWorldInfoSize)
 	if err != nil {
 		return -1, fmt.Errorf("failed to read world info size: %w", err)
 	}
 
-	// Vector base is a pointer at worldInfoOwner + 0x10
-	vectorBase, err := r.readPtr(worldInfoOwner + 0x10)
+	// Vector base is a pointer at worldInfoOwner + DS3OffsetWorldInfoVector
+	vectorBase, err := r.readPtr(worldInfoOwner + DS3OffsetWorldInfoVector)
 	if err != nil {
 		return -1, fmt.Errorf("failed to read world info vector base: %w", err)
 	}
@@ -429,10 +429,10 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 	}
 
 	for i := range size {
-		entryBase := vectorBase + int64(i)*0x38
+		entryBase := vectorBase + int64(i)*DS3WorldInfoEntrySize
 
-		// Read area byte at offset 0xb
-		entryArea, err := r.readByte(entryBase + 0xb)
+		// Read area byte at DS3OffsetWorldInfoArea
+		entryArea, err := r.readByte(entryBase + DS3OffsetWorldInfoArea)
 		if err != nil {
 			continue
 		}
@@ -442,7 +442,7 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 		}
 
 		// Found matching area, now search block sub-vector
-		count, err := r.readByte(entryBase + 0x20)
+		count, err := r.readByte(entryBase + DS3OffsetBlockCount)
 		if err != nil {
 			continue
 		}
@@ -451,15 +451,15 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 			continue
 		}
 
-		blockVectorPtr, err := r.readPtr(entryBase + 0x28)
+		blockVectorPtr, err := r.readPtr(entryBase + DS3OffsetBlockVector)
 		if err != nil {
 			continue
 		}
 
 		for j := range count {
-			blockEntry := blockVectorPtr + int64(j)*0x70
+			blockEntry := blockVectorPtr + int64(j)*DS3BlockEntrySize
 
-			flag, err := r.readInt32(blockEntry + 0x8)
+			flag, err := r.readInt32(blockEntry + DS3OffsetBlockFlag)
 			if err != nil {
 				continue
 			}
@@ -468,7 +468,7 @@ func (r *GameReader) lookupFieldAreaCategory(area, block int) (int, error) {
 			flagBlock := int((flag >> 0x10) & 0xff)
 
 			if flagArea == area && flagBlock == block {
-				cat, err := r.readInt32(blockEntry + 0x20)
+				cat, err := r.readInt32(blockEntry + DS3OffsetBlockCategory)
 				if err != nil {
 					return -1, fmt.Errorf("failed to read category: %w", err)
 				}
@@ -836,6 +836,81 @@ func (r *GameReader) ReadCharacterName() (string, error) {
 	}
 
 	return r.readUTF16(resolved+r.game.CharNameOffset, r.game.CharNameMaxLen)
+}
+
+// ReadHollowing reads the hollowing level from game memory.
+// Returns ErrNotSupported if the game has no "game_man" memory path.
+func (r *GameReader) ReadHollowing() (uint32, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	if r.game.MemoryPaths == nil {
+		return 0, ErrNotSupported
+	}
+	if _, ok := r.game.MemoryPaths["game_man"]; !ok {
+		return 0, ErrNotSupported
+	}
+
+	return r.ReadMemoryValue("game_man", DS3OffsetHollowing, 1)
+}
+
+// ReadInventoryItemQuantity scans the inventory array for an item with the given
+// TypeId and returns its quantity. Returns (0, nil) if the item is not found.
+func (r *GameReader) ReadInventoryItemQuantity(itemID uint32) (uint32, error) {
+	if !r.attached {
+		return 0, fmt.Errorf("not attached to process")
+	}
+
+	inv := r.game.Inventory
+	if inv == nil {
+		return 0, ErrNotSupported
+	}
+
+	// Resolve the base path (e.g. player_game_data → PlayerGameData address)
+	base, err := r.resolvePathAddress(inv.PathKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to resolve inventory path %q: %w", inv.PathKey, err)
+	}
+
+	// EquipInventoryData is inline at base + DataOffset
+	equipInvData := base + inv.DataOffset
+
+	// Read the list pointer (dereference)
+	listPtr, err := r.readPtr(equipInvData + inv.ListPtrOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read inventory list pointer: %w", err)
+	}
+	if listPtr == 0 {
+		return 0, ErrNullPointer
+	}
+
+	// Read item count
+	count, err := r.readUint32(equipInvData + inv.CountOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read inventory count: %w", err)
+	}
+	if count > 8192 {
+		count = 8192
+	}
+
+	// Scan entries for matching TypeId
+	for i := uint32(0); i < count; i++ {
+		entryBase := listPtr + int64(i)*inv.ItemStride
+		typeId, err := r.readUint32(entryBase + inv.TypeIdOffset)
+		if err != nil {
+			continue
+		}
+		if typeId == itemID {
+			qty, err := r.readUint32(entryBase + inv.QuantityOffset)
+			if err != nil {
+				return 0, fmt.Errorf("failed to read quantity at entry %d: %w", i, err)
+			}
+			return qty, nil
+		}
+	}
+
+	return 0, nil
 }
 
 // ReadSaveSlotIndex reads the active save slot index from game memory.

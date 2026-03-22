@@ -23,6 +23,7 @@ type App struct {
 	menuTitle         *walk.Action
 	menuGame          *walk.Action
 	menuCharacter     *walk.Action
+	menuHollowing     *walk.Action
 	menuCount         *walk.Action
 	menuSession       *walk.Action
 	menuTotal         *walk.Action
@@ -30,7 +31,7 @@ type App struct {
 	menuRouteName     *walk.Action
 	menuRouteProgress *walk.Action
 	menuRouteCurrent  *walk.Action
-	menuRouteSplitD   *walk.Action
+	menuRouteSegmentD *walk.Action
 }
 
 // NewApp creates a new system tray application
@@ -155,6 +156,12 @@ func (a *App) buildMenu() error {
 	a.menuCharacter.SetEnabled(false)
 	menu.Actions().Add(a.menuCharacter)
 
+	// Hollowing
+	a.menuHollowing = walk.NewAction()
+	a.menuHollowing.SetText("Hollowing: -")
+	a.menuHollowing.SetEnabled(false)
+	menu.Actions().Add(a.menuHollowing)
+
 	menu.Actions().Add(walk.NewSeparatorAction())
 
 	// Death counts
@@ -193,10 +200,10 @@ func (a *App) buildMenu() error {
 	a.menuRouteCurrent.SetEnabled(false)
 	menu.Actions().Add(a.menuRouteCurrent)
 
-	a.menuRouteSplitD = walk.NewAction()
-	a.menuRouteSplitD.SetText("Split Deaths: 0")
-	a.menuRouteSplitD.SetEnabled(false)
-	menu.Actions().Add(a.menuRouteSplitD)
+	a.menuRouteSegmentD = walk.NewAction()
+	a.menuRouteSegmentD.SetText("Segment Deaths: 0")
+	a.menuRouteSegmentD.SetEnabled(false)
+	menu.Actions().Add(a.menuRouteSegmentD)
 
 	menu.Actions().Add(walk.NewSeparatorAction())
 
@@ -261,6 +268,9 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 	if a.menuCharacter != nil {
 		a.menuCharacter.SetText(formatCharacterText(update.CharacterName, update.SaveSlotIndex))
 	}
+	if a.menuHollowing != nil {
+		a.menuHollowing.SetText(formatHollowingText(update.GameName, update.Hollowing))
+	}
 
 	a.ni.SetToolTip(formatTooltip(update.Status, update.GameName))
 
@@ -287,8 +297,8 @@ func (a *App) refreshRouteDisplay(fields map[string]any) {
 	if a.menuRouteCurrent != nil {
 		a.menuRouteCurrent.SetText(texts.current)
 	}
-	if a.menuRouteSplitD != nil {
-		a.menuRouteSplitD.SetText(texts.splitD)
+	if a.menuRouteSegmentD != nil {
+		a.menuRouteSegmentD.SetText(texts.segmentD)
 	}
 }
 

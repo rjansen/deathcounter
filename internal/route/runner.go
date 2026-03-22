@@ -16,6 +16,7 @@ type GameReader interface {
 	ReadEventFlag(flagID uint32) (bool, error)
 	ReadMemoryValue(pathName string, extraOffset int64, size int) (uint32, error)
 	ReadIGT() (int64, error)
+	ReadInventoryItemQuantity(itemID uint32) (uint32, error)
 }
 
 // Runner orchestrates a route run, connecting the state machine to memory reading,
@@ -95,13 +96,13 @@ func (r *Runner) TotalCount() int {
 	return len(r.route.Checkpoints)
 }
 
-// SplitDeaths returns the deaths for the current segment.
-func (r *Runner) SplitDeaths() uint32 {
+// SegmentDeaths returns the deaths for the current segment toward the next checkpoint.
+func (r *Runner) SegmentDeaths() uint32 {
 	cp := r.CurrentCheckpoint()
 	if cp == nil {
 		return 0
 	}
-	return r.state.SplitDeaths[cp.ID]
+	return r.state.CheckpointDeaths[cp.ID]
 }
 
 // CatchUp scans all checkpoint flags and marks any that are already set as completed.
@@ -128,6 +129,17 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			}
 		}
 
+		if cp.InventoryCheck != nil && !r.state.CompletedFlags[cp.ID] {
+			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+			if err != nil {
+				return false
+			}
+			if compareValue(qty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
+				r.state.CompletedFlags[cp.ID] = true
+				log.Printf("[Route] Already completed: %s", cp.Name)
+			}
+		}
+
 		// Also mark backup as done for already-completed checkpoints
 		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
@@ -145,9 +157,10 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 
 	// Build tick input by reading all unfinished checkpoint conditions
 	input := TickInput{
-		Flags:      make(map[uint32]bool),
-		MemValues:  make(map[string]uint32),
-		DeathCount: deathCount,
+		Flags:           make(map[uint32]bool),
+		MemValues:       make(map[string]uint32),
+		InventoryValues: make(map[string]uint32),
+		DeathCount:      deathCount,
 	}
 
 	for _, cp := range r.route.Checkpoints {
@@ -201,6 +214,18 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 			}
 			input.MemValues[cp.ID] = val
 		}
+
+		// Inventory item quantity checkpoint
+		if cp.InventoryCheck != nil {
+			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+			if err != nil {
+				if !errors.Is(err, memreader.ErrNullPointer) {
+					return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
+				}
+				continue
+			}
+			input.InventoryValues[cp.ID] = qty
+		}
 	}
 
 	// Read IGT (fall back to last known value if transient failure)
@@ -225,14 +250,14 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 	// Record each completed checkpoint
 	for _, evt := range result.Checkpoints {
 		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
-		if err := r.tracker.RecordSplit(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
-			evt.IGT, evt.SplitDuration, evt.Deaths); err != nil {
-			log.Printf("Failed to record split: %v", err)
+		if err := r.tracker.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
+			evt.IGT, evt.CheckpointDuration, evt.Deaths); err != nil {
+			log.Printf("Failed to record checkpoint: %v", err)
 		}
 
 		// Update PB if better
 		if err := r.tracker.UpdatePersonalBest(r.route.ID, evt.Checkpoint.ID,
-			evt.IGT, evt.SplitDuration); err != nil {
+			evt.IGT, evt.CheckpointDuration); err != nil {
 			log.Printf("Failed to update PB: %v", err)
 		}
 

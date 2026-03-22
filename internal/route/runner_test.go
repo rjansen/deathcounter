@@ -10,18 +10,21 @@ import (
 
 // mockGameReader implements GameReader for testing.
 type mockGameReader struct {
-	flags     map[uint32]bool
-	flagErr   error
-	memValues map[string]uint32
-	memErr    error
-	igt       int64
-	igtErr    error
+	flags          map[uint32]bool
+	flagErr        error
+	memValues      map[string]uint32
+	memErr         error
+	invQuantities  map[uint32]uint32 // itemID → quantity
+	invErr         error
+	igt            int64
+	igtErr         error
 }
 
 func newMockGameReader() *mockGameReader {
 	return &mockGameReader{
-		flags:     make(map[uint32]bool),
-		memValues: make(map[string]uint32),
+		flags:         make(map[uint32]bool),
+		memValues:     make(map[string]uint32),
+		invQuantities: make(map[uint32]uint32),
 	}
 }
 
@@ -43,6 +46,13 @@ func (m *mockGameReader) ReadMemoryValue(pathName string, extraOffset int64, siz
 		return 0, nil
 	}
 	return val, nil
+}
+
+func (m *mockGameReader) ReadInventoryItemQuantity(itemID uint32) (uint32, error) {
+	if m.invErr != nil {
+		return 0, m.invErr
+	}
+	return m.invQuantities[itemID], nil
 }
 
 func (m *mockGameReader) ReadIGT() (int64, error) {
@@ -152,8 +162,8 @@ func TestRunner_Accessors(t *testing.T) {
 	if cp == nil || cp.ID != "boss1" {
 		t.Errorf("expected CurrentCheckpoint=boss1, got %v", cp)
 	}
-	if runner.SplitDeaths() != 0 {
-		t.Errorf("expected SplitDeaths=0, got %d", runner.SplitDeaths())
+	if runner.SegmentDeaths() != 0 {
+		t.Errorf("expected SegmentDeaths=0, got %d", runner.SegmentDeaths())
 	}
 }
 
@@ -508,5 +518,118 @@ func TestRunner_Tick_IGTError(t *testing.T) {
 	}
 	if events != nil {
 		t.Error("expected nil events for IGT ErrNullPointer")
+	}
+}
+
+func TestRunner_Tick_InventoryCheck(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-inv",
+		Name: "Inventory Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.invQuantities[0x400003E8] = 3 // only 3 shards
+	reader.igt = 30000
+
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events at qty 3, got %d", len(events))
+	}
+
+	// Pick up more shards
+	reader.invQuantities[0x400003E8] = 5
+	reader.igt = 60000
+
+	events, err = runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event at qty 5, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "shards-5" {
+		t.Errorf("expected shards-5 event, got %s", events[0].Checkpoint.ID)
+	}
+}
+
+func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-inv-null",
+		Name: "Inventory Null Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100},
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+				Optional: true,
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.flags[100] = true
+	reader.invErr = memreader.ErrNullPointer
+	reader.igt = 60000
+
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (boss1), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss1" {
+		t.Errorf("expected boss1 event, got %s", events[0].Checkpoint.ID)
+	}
+	if runner.state.CompletedFlags["shards-5"] {
+		t.Error("shards-5 should not be completed when inv read fails")
+	}
+}
+
+func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-inv-catchup",
+		Name: "Inventory CatchUp Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.invQuantities[0x400003E8] = 7 // already have 7 shards
+
+	if !runner.CatchUp(reader) {
+		t.Error("expected CatchUp to return true")
+	}
+	if !runner.state.CompletedFlags["shards-5"] {
+		t.Error("expected shards-5 to be marked completed in CatchUp")
+	}
+	if runner.state.CompletedFlags["boss1"] {
+		t.Error("boss1 should not be completed")
 	}
 }

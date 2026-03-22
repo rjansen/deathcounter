@@ -119,8 +119,8 @@ func TestDefaultRouteTexts(t *testing.T) {
 	if d.current != "Current: -" {
 		t.Errorf("current = %q, want %q", d.current, "Current: -")
 	}
-	if d.splitD != "Split Deaths: 0" {
-		t.Errorf("splitD = %q, want %q", d.splitD, "Split Deaths: 0")
+	if d.segmentD != "Segment Deaths: 0" {
+		t.Errorf("splitD = %q, want %q", d.segmentD, "Segment Deaths: 0")
 	}
 }
 
@@ -157,7 +157,7 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 		"total_count":        10,
 		"completion_percent": 30.0,
 		"current_checkpoint": "Abyss Watchers",
-		"split_deaths":       uint32(5),
+		"segment_deaths":       uint32(5),
 	}
 	got := resolveRouteTexts(fields)
 
@@ -170,8 +170,8 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 	if got.current != "Current: Abyss Watchers" {
 		t.Errorf("current = %q, want %q", got.current, "Current: Abyss Watchers")
 	}
-	if got.splitD != "Split Deaths: 5" {
-		t.Errorf("splitD = %q, want %q", got.splitD, "Split Deaths: 5")
+	if got.segmentD != "Segment Deaths: 5" {
+		t.Errorf("splitD = %q, want %q", got.segmentD, "Segment Deaths: 5")
 	}
 }
 
@@ -182,7 +182,7 @@ func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
 		"total_count":        19,
 		"completion_percent": 100.0,
 		"current_checkpoint": "", // empty = complete
-		"split_deaths":       uint32(0),
+		"segment_deaths":       uint32(0),
 	}
 	got := resolveRouteTexts(fields)
 
@@ -209,8 +209,8 @@ func TestResolveRouteTexts_MissingOptionalFields(t *testing.T) {
 	if got.current != "Current: Complete!" {
 		t.Errorf("current = %q, want %q", got.current, "Current: Complete!")
 	}
-	if got.splitD != "Split Deaths: 0" {
-		t.Errorf("splitD = %q, want %q", got.splitD, "Split Deaths: 0")
+	if got.segmentD != "Segment Deaths: 0" {
+		t.Errorf("splitD = %q, want %q", got.segmentD, "Segment Deaths: 0")
 	}
 }
 

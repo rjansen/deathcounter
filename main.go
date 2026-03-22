@@ -45,7 +45,7 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Could not load routes: %v", err)
 	} else if len(routes) > 0 {
-		log.Printf("Loaded route: %s (%s)", routes[0].Name, routes[0].Game)
+		log.Printf("Loaded %d route(s) from routes/", len(routes))
 	}
 
 	// Choose monitor based on available routes and flags

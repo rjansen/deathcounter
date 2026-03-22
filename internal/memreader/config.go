@@ -9,6 +9,17 @@ type AOBPointerConfig struct {
 	Dereference       bool     // If true, dereference the resolved address to get the final pointer
 }
 
+// InventoryConfig describes the layout of the in-game inventory array.
+type InventoryConfig struct {
+	PathKey        string // MemoryPaths key for base (e.g. "player_game_data")
+	DataOffset     int64  // offset to EquipInventoryData struct
+	ListPtrOffset  int64  // offset within struct to list pointer (dereference)
+	CountOffset    int64  // offset within struct to item count (uint32)
+	ItemStride     int64  // size of each item entry
+	TypeIdOffset   int64  // offset within entry to TypeId
+	QuantityOffset int64  // offset within entry to Quantity
+}
+
 // GameConfig holds the configuration for a specific FromSoftware game
 type GameConfig struct {
 	Name                string
@@ -30,6 +41,7 @@ type GameConfig struct {
 	CharNameMaxLen      int                // Max characters to read (e.g. 16 for DS3)
 	SaveSlotPathKey     string             // MemoryPaths key for save slot index base (e.g. "game_data_man")
 	SaveSlotOffset      int64              // Extra offset from resolved path to save slot index (uint32)
+	Inventory           *InventoryConfig   // Inventory array layout (nil if not supported)
 }
 
 var supportedGames = []GameConfig{
@@ -56,12 +68,12 @@ var supportedGames = []GameConfig{
 		MemoryPaths: map[string][]int64{
 			// GameDataMan — resolved via GameDataManAOB; static offset 0x4768E78 is stale
 			"game_data_man": {},
-			// GameDataMan → PlayerGameData → player stats struct
-			// Final address is base of stats; use offset in MemCheck for specific fields:
-			//   +0x68 = SoulLevel (uint32)
-			//   +0x6C = Vigor, +0x70 = Attunement, +0x74 = Endurance, +0x78 = Vitality
-			//   +0x7C = Strength, +0x80 = Dexterity, +0x84 = Intelligence, +0x88 = Faith, +0x8C = Luck
-			"player_stats": {0x10, 0x10},
+			// GameDataMan → PlayerGameData; stats are inline on PlayerGameData.
+			// Use offset in MemCheck for specific fields:
+			//   +0x44 = SoulLevel (uint32)
+			//   +0x48 = Attunement, +0x4C = Endurance, +0x50 = Vigor, +0x54 = Dexterity
+			//   +0x58 = Intelligence, +0x5C = Faith, +0x60 = Luck, +0x6C = Strength, +0x70 = Vitality
+			"player_stats": {0x10},
 			// GameDataMan → PlayerGameData (for character name)
 			// Character name is UTF-16LE at PlayerGameData + 0x88
 			// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 (Unicode, 48 bytes)
@@ -72,15 +84,26 @@ var supportedGames = []GameConfig{
 		PathBases: map[string]string{
 			"player_stats":     "game_data_man",
 			"player_game_data": "game_data_man",
+			"game_data_man":    "game_data_man",
+			"game_man":         "game_man",
 		},
-		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +0x88 = character name (UTF-16LE)
+		// Verified from TGA CT v3.4.0: GameDataMan → +0x10 → +DS3OffsetCharName = character name (UTF-16LE)
 		CharNamePathKey: "player_game_data",
-		CharNameOffset:  0x88,
-		CharNameMaxLen:  16,
+		CharNameOffset:  DS3OffsetCharName,
+		CharNameMaxLen:  DS3CharNameMaxLen,
 		// Save slot index lives on GameMan (separate base pointer)
-		// at offset +0xA60 (Byte). Resolved entirely via GameManAOB; no static chain.
+		// at offset +DS3OffsetSaveSlot (Byte). Resolved entirely via GameManAOB; no static chain.
 		SaveSlotPathKey: "game_man",
-		SaveSlotOffset:  0xA60,
+		SaveSlotOffset:  DS3OffsetSaveSlot,
+		Inventory: &InventoryConfig{
+			PathKey:        "player_game_data",
+			DataOffset:     DS3OffsetEquipInventoryData,
+			ListPtrOffset:  DS3OffsetInvListPtr,
+			CountOffset:    DS3OffsetInvCount,
+			ItemStride:     DS3InvItemStride,
+			TypeIdOffset:   DS3InvItemTypeIdOffset,
+			QuantityOffset: DS3InvItemQuantityOffset,
+		},
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
 			Pattern:           "48 c7 05 ? ? ? ? 00 00 00 00 48 8b 7c 24 38 c7 46 54 ff ff ff ff 48 83 c4 20 5e c3",

@@ -19,8 +19,8 @@ type RunState struct {
 	StartTime      time.Time
 	CompletedFlags map[string]bool   // checkpoint ID -> done
 	BackupDone     map[string]bool   // checkpoint ID -> backup already triggered
-	SplitTimes     map[string]int64  // checkpoint ID -> IGT ms
-	SplitDeaths    map[string]uint32 // checkpoint ID -> deaths in segment
+	CheckpointTimes  map[string]int64  // checkpoint ID -> IGT ms
+	CheckpointDeaths map[string]uint32 // checkpoint ID -> deaths in segment
 	LastDeathCount uint32
 	LastIGT        int64
 }
@@ -29,7 +29,7 @@ type RunState struct {
 type CheckpointEvent struct {
 	Checkpoint    Checkpoint
 	IGT           int64  // IGT at completion (ms)
-	SplitDuration int64  // time for this segment (ms)
+	CheckpointDuration int64  // time for this segment (ms)
 	Deaths        uint32 // deaths in this segment
 }
 
@@ -40,8 +40,8 @@ func NewRunState(route *Route) *RunState {
 		Status:         RunNotStarted,
 		CompletedFlags: make(map[string]bool),
 		BackupDone:     make(map[string]bool),
-		SplitTimes:     make(map[string]int64),
-		SplitDeaths:    make(map[string]uint32),
+		CheckpointTimes:  make(map[string]int64),
+		CheckpointDeaths: make(map[string]uint32),
 	}
 }
 
@@ -58,10 +58,11 @@ func (rs *RunState) Abandon() {
 
 // TickInput holds all memory readings for a single tick cycle.
 type TickInput struct {
-	Flags      map[uint32]bool   // event flag ID → set
-	MemValues  map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
-	IGT        int64
-	DeathCount uint32
+	Flags           map[uint32]bool   // event flag ID → set
+	MemValues       map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
+	InventoryValues map[string]uint32 // checkpoint ID → current inventory quantity (for inventory_check checkpoints)
+	IGT             int64
+	DeathCount      uint32
 }
 
 // BackupEvent is emitted when a backup flag is newly set (e.g. boss encountered).
@@ -104,19 +105,18 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 		// Checkpoint newly completed
 		rs.CompletedFlags[cp.ID] = true
 
-		// Compute split duration: time since last completed checkpoint
-		var splitDuration int64
+		// Compute checkpoint duration: time since last completed checkpoint
 		prevIGT := rs.lastCompletedIGT()
-		splitDuration = input.IGT - prevIGT
+		checkpointDuration := input.IGT - prevIGT
 
-		rs.SplitTimes[cp.ID] = input.IGT
-		rs.SplitDeaths[cp.ID] = segmentDeaths
+		rs.CheckpointTimes[cp.ID] = input.IGT
+		rs.CheckpointDeaths[cp.ID] = segmentDeaths
 
 		result.Checkpoints = append(result.Checkpoints, CheckpointEvent{
-			Checkpoint:    cp,
-			IGT:           input.IGT,
-			SplitDuration: splitDuration,
-			Deaths:        segmentDeaths,
+			Checkpoint:         cp,
+			IGT:                input.IGT,
+			CheckpointDuration: checkpointDuration,
+			Deaths:             segmentDeaths,
 		})
 
 		// Reset segment death tracking after recording
@@ -146,14 +146,16 @@ func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 		if !ok {
 			return false
 		}
-		switch cp.MemCheck.Comparison {
-		case "gte":
-			return val >= cp.MemCheck.Value
-		case "gt":
-			return val > cp.MemCheck.Value
-		case "eq":
-			return val == cp.MemCheck.Value
+		return compareValue(val, cp.MemCheck.Comparison, cp.MemCheck.Value)
+	}
+
+	// Inventory item quantity check
+	if cp.InventoryCheck != nil {
+		val, ok := input.InventoryValues[cp.ID]
+		if !ok {
+			return false
 		}
+		return compareValue(val, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value)
 	}
 
 	return false
@@ -163,7 +165,7 @@ func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 // or 0 if none have been completed yet.
 func (rs *RunState) lastCompletedIGT() int64 {
 	var maxIGT int64
-	for _, igt := range rs.SplitTimes {
+	for _, igt := range rs.CheckpointTimes {
 		if igt > maxIGT {
 			maxIGT = igt
 		}
@@ -199,6 +201,19 @@ func (rs *RunState) CurrentCheckpoint() *Checkpoint {
 		}
 	}
 	return nil
+}
+
+// compareValue applies a comparison operator between actual and target values.
+func compareValue(actual uint32, comparison string, target uint32) bool {
+	switch comparison {
+	case "gte":
+		return actual >= target
+	case "gt":
+		return actual > target
+	case "eq":
+		return actual == target
+	}
+	return false
 }
 
 // IsComplete returns true when all required checkpoints are done.
