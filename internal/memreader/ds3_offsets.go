@@ -113,6 +113,25 @@ const (
 	DS3FlagGaelEnc             uint32 = 15110801
 )
 
+// DS3 item IDs — Goods (prefix 0x4000, from TGA CT v3.4.0).
+const (
+	DS3ItemEmber              uint32 = 0x400001F4
+	DS3ItemGoldPineResin      uint32 = 0x4000014B
+	DS3ItemCarthusRouge       uint32 = 0x4000014F
+	DS3ItemHomewardBone       uint32 = 0x4000015E
+	DS3ItemTitaniteShard      uint32 = 0x400003E8
+	DS3ItemLargeTitaniteShard uint32 = 0x400003E9
+	DS3ItemTitaniteChunk      uint32 = 0x400003EA
+	DS3ItemTitaniteSlab       uint32 = 0x400003EB
+	DS3ItemEstusShard         uint32 = 0x4000085D
+	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
+)
+
+// DS3 item IDs — Weapons (from TGA CT v3.4.0).
+const (
+	DS3ItemSellswordTwinblades uint32 = 0x00F42400
+)
+
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).
 var DS3BonfireNames = map[uint32]string{
 	4002950: "Firelink Shrine",

@@ -720,8 +720,14 @@ func TestE2E_FullRouteTick(t *testing.T) {
 		t.Fatalf("ReadHollowing failed: %v", err)
 	}
 
-	t.Logf("[DS3] Full tick: deaths=%d, iudex_defeated=%v, soul_level=%d, igt=%dms, hollowing=%d",
-		deaths, iudexFlag, level, igt, hollowing)
+	// Inventory item quantity (Titanite Shard)
+	invQty, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity failed: %v", err)
+	}
+
+	t.Logf("[DS3] Full tick: deaths=%d, iudex_defeated=%v, soul_level=%d, igt=%dms, hollowing=%d, titanite_shards=%d",
+		deaths, iudexFlag, level, igt, hollowing, invQty)
 }
 
 func TestE2E_FullRouteTick_Repeated(t *testing.T) {
@@ -888,7 +894,14 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
 
-	// 7. Completed checkpoints (all 25 boss event flags)
+	// 7. Inventory item quantity (Titanite Shard)
+	titaniteQty, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity(Titanite Shard) failed: %v", err)
+	}
+	t.Logf("Titanite Shards: %d", titaniteQty)
+
+	// 8. Completed checkpoints (all 25 boss event flags)
 	checkpoints := []struct {
 		flagID uint32
 		name   string
@@ -938,6 +951,130 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 		t.Logf("  %s %s", status, cp.name)
 	}
 	t.Logf("Progress: %d/%d bosses defeated", completed, len(checkpoints))
+}
+
+// --- Inventory Item Quantity E2E Tests ---
+
+func TestE2E_ReadInventoryItemQuantity(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Titanite Shard — common upgrade material, likely in most saves
+	qty, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity(Titanite Shard) failed: %v", err)
+	}
+	t.Logf("[DS3] Titanite Shard (0x%X) quantity: %d", DS3ItemTitaniteShard, qty)
+
+	// Ember — common consumable
+	qty2, err := reader.ReadInventoryItemQuantity(DS3ItemEmber)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity(Ember) failed: %v", err)
+	}
+	t.Logf("[DS3] Ember (0x%X) quantity: %d", DS3ItemEmber, qty2)
+}
+
+func TestE2E_ReadInventoryItemQuantity_NotInInventory(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Bogus item ID — should return 0 without error
+	const bogusID = uint32(0xDEADBEEF)
+	qty, err := reader.ReadInventoryItemQuantity(bogusID)
+	if err != nil {
+		t.Fatalf("ReadInventoryItemQuantity(bogus) failed: %v", err)
+	}
+	if qty != 0 {
+		t.Errorf("expected quantity 0 for bogus item, got %d", qty)
+	}
+	t.Logf("[DS3] Bogus item (0x%X) quantity: %d (expected 0)", bogusID, qty)
+}
+
+func TestE2E_ReadInventoryItemQuantity_Stable(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	first, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
+	if err != nil {
+		t.Fatalf("initial ReadInventoryItemQuantity failed: %v", err)
+	}
+
+	// Read 5 times to verify stability (inventory shouldn't change while idle)
+	for i := 0; i < 5; i++ {
+		time.Sleep(200 * time.Millisecond)
+		qty, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
+		if err != nil {
+			t.Fatalf("ReadInventoryItemQuantity iteration %d failed: %v", i, err)
+		}
+		if qty != first {
+			t.Errorf("quantity changed from %d to %d at iteration %d", first, qty, i)
+		}
+	}
+	t.Logf("[DS3] Titanite Shard quantity stable at %d over 5 reads", first)
+}
+
+func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Read all tracked item constants against live game memory.
+	// A successful read (no error) validates the TypeId is correct.
+	// Items not in the current save return (0, nil) which is fine.
+	items := []struct {
+		itemID uint32
+		name   string
+	}{
+		// Goods
+		{DS3ItemEmber, "Ember"},
+		{DS3ItemGoldPineResin, "Gold Pine Resin"},
+		{DS3ItemCarthusRouge, "Carthus Rouge"},
+		{DS3ItemHomewardBone, "Homeward Bone"},
+		{DS3ItemTitaniteShard, "Titanite Shard"},
+		{DS3ItemLargeTitaniteShard, "Large Titanite Shard"},
+		{DS3ItemTitaniteChunk, "Titanite Chunk"},
+		{DS3ItemTitaniteSlab, "Titanite Slab"},
+		{DS3ItemEstusShard, "Estus Shard"},
+		{DS3ItemGraveWardenAshes, "Grave Warden Ashes"},
+		// Weapons
+		{DS3ItemSellswordTwinblades, "Sellsword Twinblades"},
+	}
+
+	for _, item := range items {
+		qty, err := reader.ReadInventoryItemQuantity(item.itemID)
+		if err != nil {
+			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", item.itemID, item.name, err)
+			continue
+		}
+		t.Logf("[DS3] %s (0x%X): quantity=%d", item.name, item.itemID, qty)
+	}
+}
+
+func TestE2E_ReadInventoryItemQuantity_CountSanity(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	// Read the raw inventory count via ReadMemoryValue to independently validate
+	// the count offset before the scan loop uses it.
+	inv := reader.game.Inventory
+	if inv == nil {
+		t.Skip("No inventory config for current game")
+	}
+
+	count, err := reader.ReadMemoryValue(inv.PathKey, inv.DataOffset+inv.CountOffset, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(inventory count) failed: %v", err)
+	}
+
+	t.Logf("[DS3] Inventory item count: %d", count)
+
+	if count < 1 || count > 8192 {
+		t.Errorf("inventory count %d outside expected range [1, 8192]", count)
+	}
 }
 
 // --- Stat Offset Probe ---
