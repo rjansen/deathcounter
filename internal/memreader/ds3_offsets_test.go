@@ -270,6 +270,7 @@ func allItemIDs() []struct {
 		{"GoldPineResin", DS3ItemGoldPineResin},
 		{"CarthusRouge", DS3ItemCarthusRouge},
 		{"HomewardBone", DS3ItemHomewardBone},
+		{"Firebomb", DS3ItemFirebomb},
 		{"TitaniteShard", DS3ItemTitaniteShard},
 		{"LargeTitaniteShard", DS3ItemLargeTitaniteShard},
 		{"TitaniteChunk", DS3ItemTitaniteChunk},
@@ -278,6 +279,11 @@ func allItemIDs() []struct {
 		{"GraveWardenAshes", DS3ItemGraveWardenAshes},
 		{"MorticiansAshes", DS3ItemMorticiansAshes},
 		{"SharpGem", DS3ItemSharpGem},
+		// Rings
+		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing},
+		{"ChloranthyRing", DS3ItemChloranthyRing},
+		{"LloydsSwordRing", DS3ItemLloydsSwordRing},
+		{"PontiffsRightEye", DS3ItemPontiffsRightEye},
 		// Weapons
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades},
 	}
@@ -285,8 +291,8 @@ func allItemIDs() []struct {
 
 func TestDS3ItemIDs_Count(t *testing.T) {
 	items := allItemIDs()
-	if len(items) != 13 {
-		t.Errorf("expected 13 item ID constants, got %d", len(items))
+	if len(items) != 18 {
+		t.Errorf("expected 18 item ID constants, got %d", len(items))
 	}
 }
 
@@ -318,7 +324,14 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"EstusShard", DS3ItemEstusShard, 0x4000085D},
 		{"GraveWardenAshes", DS3ItemGraveWardenAshes, 0x4000083E},
 		{"MorticiansAshes", DS3ItemMorticiansAshes, 0x4000083B},
+		{"Firebomb", DS3ItemFirebomb, 0x40000124},
 		{"SharpGem", DS3ItemSharpGem, 0x40000456},
+		// Rings
+		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing, 0x20004FB0},
+		{"ChloranthyRing", DS3ItemChloranthyRing, 0x20004E2A},
+		{"LloydsSwordRing", DS3ItemLloydsSwordRing, 0x200050B4},
+		{"PontiffsRightEye", DS3ItemPontiffsRightEye, 0x2000510E},
+		// Weapons
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades, 0x00F42400},
 	}
 
@@ -333,12 +346,17 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 
 func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
 	// All goods items should have the 0x4000xxxx prefix.
+	// Skip non-goods categories (weapons, rings).
 	goods := allItemIDs()
 	for _, item := range goods {
-		if item.name == "SellswordTwinblades" {
-			continue // weapon, no goods prefix
+		prefix := item.id & 0xFFFF0000
+		switch prefix {
+		case 0x00F40000: // weapon
+			continue
+		case 0x20000000: // ring
+			continue
 		}
-		if item.id&0xFFFF0000 != 0x40000000 {
+		if prefix != 0x40000000 {
 			t.Errorf("DS3Item%s = 0x%X, expected goods prefix 0x4000xxxx", item.name, item.id)
 		}
 	}

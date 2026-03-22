@@ -121,6 +121,7 @@ const (
 	DS3ItemGoldPineResin      uint32 = 0x4000014B
 	DS3ItemCarthusRouge       uint32 = 0x4000014F
 	DS3ItemHomewardBone       uint32 = 0x4000015E
+	DS3ItemFirebomb           uint32 = 0x40000124
 	DS3ItemTitaniteShard      uint32 = 0x400003E8
 	DS3ItemLargeTitaniteShard uint32 = 0x400003E9
 	DS3ItemTitaniteChunk      uint32 = 0x400003EA
@@ -129,6 +130,14 @@ const (
 	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
 	DS3ItemMorticiansAshes    uint32 = 0x4000083B
 	DS3ItemSharpGem           uint32 = 0x40000456
+)
+
+// DS3 item IDs — Rings/Accessories (prefix 0x2000, from TGA CT v3.4.0).
+const (
+	DS3ItemCovetousSilverSerpentRing uint32 = 0x20004FB0
+	DS3ItemChloranthyRing            uint32 = 0x20004E2A
+	DS3ItemLloydsSwordRing           uint32 = 0x200050B4
+	DS3ItemPontiffsRightEye          uint32 = 0x2000510E
 )
 
 // DS3 item IDs — Weapons (from TGA CT v3.4.0).

@@ -1041,6 +1041,12 @@ func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
 		{DS3ItemGraveWardenAshes, "Grave Warden Ashes"},
 		{DS3ItemMorticiansAshes, "Mortician's Ashes"},
 		{DS3ItemSharpGem, "Sharp Gem"},
+		{DS3ItemFirebomb, "Firebomb"},
+		// Rings
+		{DS3ItemCovetousSilverSerpentRing, "Covetous Silver Serpent Ring"},
+		{DS3ItemChloranthyRing, "Chloranthy Ring"},
+		{DS3ItemLloydsSwordRing, "Lloyd's Sword Ring"},
+		{DS3ItemPontiffsRightEye, "Pontiff's Right Eye"},
 		// Weapons
 		{DS3ItemSellswordTwinblades, "Sellsword Twinblades"},
 	}
