@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - Hybrid Route",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "6",
+  "version": "7",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
@@ -37,14 +37,14 @@
       "id": "twinblades-plus3",
       "name": "Sellsword Twinblades +3",
       "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 3, "size": 1},
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 3, "size": 1},
       "optional": true
     },
     {
       "id": "dex-33",
       "name": "Level DEX to 33",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 33, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 33, "size": 4},
       "optional": true
     },
     {
@@ -84,14 +84,14 @@
       "id": "twinblades-plus6",
       "name": "Sellsword Twinblades +6",
       "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 6, "size": 1},
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 6, "size": 1},
       "optional": true
     },
     {
       "id": "dex-38",
       "name": "Level DEX to 38",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 38, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 38, "size": 4},
       "optional": true
     },
     {
@@ -117,7 +117,7 @@
       "id": "dex-47",
       "name": "Level DEX to 47",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 47, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 47, "size": 4},
       "optional": true
     },
     {
