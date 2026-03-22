@@ -79,11 +79,11 @@ go mod tidy
    - `ReadInventoryItemQuantity(itemID)`: scans inventory array for matching TypeId, returns quantity
    - `InventoryConfig` struct describes inventory memory layout (path key, offsets, strides)
    - Inventory split into two regions: normal items (0..count-1) and key items (keyStart..capacity-1)
-   - **AOB scanning** (`aob.go`): dynamically finds SprjEventFlagMan, FieldArea, and GameMan pointers at runtime
+   - **AOB scanning** (`aob.go`): dynamically finds SprjEventFlagMan, FieldArea, GameMan, and GameDataMan pointers at runtime
      - Parses PE header to locate `.text` section, scans in 64KB chunks with overlap
      - Resolves RIP-relative addresses from matched patterns
      - Results cached per attach with fallback to static offsets if AOB fails
-   - `GameConfig` includes `EventFlagOffsets64`, `FieldAreaOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`, `SprjEventFlagManAOB`, `FieldAreaAOB`, `GameManAOB`, `CharNamePathKey`, `CharNameOffset`, `CharNameMaxLen`, `SaveSlotPathKey`, `SaveSlotOffset`, `Inventory`
+   - `GameConfig` includes `EventFlagOffsets64`, `FieldAreaOffsets64`, `IGTOffsets64`, `MemoryPaths`, `SaveFilePattern`, `SprjEventFlagManAOB`, `FieldAreaAOB`, `GameManAOB`, `GameDataManAOB`, `PathBases`, `CharNamePathKey`, `CharNameOffset`, `CharNameMaxLen`, `SaveSlotPathKey`, `SaveSlotOffset`, `Inventory`
    - Auto-reconnection when process starts/stops
    - Memory addresses from DSDeaths project (https://github.com/quidrex/DSDeaths)
 
@@ -229,6 +229,7 @@ Structures resolved via AOB:
 - **SprjEventFlagMan** — event flag manager (dereferences resolved address)
 - **FieldArea** — world area info for flag category lookup (no dereference)
 - **GameMan** — game manager singleton, save slot index at `[GameMan]+0xA60` (Byte)
+- **GameDataMan** — player data singleton, base for stats/name/inventory paths (dereferences, 6 fallback patterns)
 
 ### DS3 Inventory Memory Layout
 
@@ -270,6 +271,12 @@ Each item entry (stride 0x10):
 6. Add to `allItemIDs()` in `ds3_offsets_test.go` and the e2e `AllTrackedItems` table
 7. Naming convention: `DS3Item<PascalCaseName>` (e.g. `DS3ItemFirebomb`, `DS3ItemChloranthyRing`)
 
+### PathBases — AOB-Resolved Starting Points
+
+`PathBases` maps named memory paths to AOB-resolved singleton base addresses. Without PathBases, pointer chains in `MemoryPaths` start from the module base address. With PathBases, they start from a singleton resolved via AOB.
+
+Example (DS3): `PathBases["player_stats"] = "game_data_man"` means `ReadMemoryValue("player_stats", ...)` first resolves GameDataMan via AOB, then applies the `MemoryPaths["player_stats"]` offsets `{0x10}` from that base. This indirection allows multiple paths to share the same AOB-resolved singleton — `player_stats`, `player_game_data`, and `game_data_man` all start from the GameDataMan pointer.
+
 ## Important Notes
 
 ### Memory Address Configuration
@@ -287,6 +294,8 @@ Game configurations are stored in `internal/memreader/config.go` in the `support
 - `SprjEventFlagManAOB`: AOB pattern config to dynamically find SprjEventFlagMan at runtime
 - `FieldAreaAOB`: AOB pattern config to dynamically find FieldArea at runtime
 - `GameManAOB`: AOB pattern to find GameMan singleton (for save slot index)
+- `GameDataManAOB`: AOB pattern to find GameDataMan singleton (for player data paths)
+- `PathBases`: Optional map of path name → base path name (resolved via AOB before applying offsets)
 - `CharNamePathKey`: MemoryPaths key for character name base (e.g. `"player_game_data"`)
 - `CharNameOffset`: Offset from resolved path to UTF-16LE name
 - `CharNameMaxLen`: Max characters to read (e.g. 16 for DS3)
@@ -295,6 +304,8 @@ Game configurations are stored in `internal/memreader/config.go` in the `support
 - `Inventory`: `*InventoryConfig` describing inventory array layout (path key, struct offsets, item stride)
 
 **These addresses are game-version specific**. Static offsets may break after game updates. AOB patterns are more resilient to updates since they match instruction patterns rather than fixed addresses. Check the DSDeaths project for updated addresses.
+
+**Static fallback availability**: SprjEventFlagMan and FieldArea have static fallback offsets (`EventFlagOffsets64`, `FieldAreaOffsets64`) that are used when AOB scanning fails. GameDataMan and GameMan have **no static fallback** — they require successful AOB scanning. GameDataMan uses 6 fallback AOB patterns (1 primary + 5 alternatives) for resilience.
 
 ### Windows-Specific Code
 
@@ -384,6 +395,18 @@ Other games do not have anti-cheat and work normally.
            RelativeOffsetPos: 3,
            InstrLen:          7,
            Dereference:       true,
+       },
+       GameDataManAOB: &AOBPointerConfig{
+           Pattern:           "48 8B 05 ? ? ? ? 48 85 C0 ...",
+           RelativeOffsetPos: 3,
+           InstrLen:          7,
+           Dereference:       true,
+       },
+       PathBases: map[string]string{
+           "player_stats":     "game_data_man",
+           "player_game_data": "game_data_man",
+           "game_data_man":    "game_data_man",
+           "game_man":         "game_man",
        },
    }
    ```
@@ -484,6 +507,30 @@ If addresses stop working:
 2. Check for game updates
 3. Use CheatEngine to find new addresses
 4. Report findings to DSDeaths project
+
+## Developer Skills Reference
+
+Slash commands (skills) provide focused task guides. Use `/skill-name` to invoke.
+
+### Architecture & Memory Reading
+- `/game-attach` — Process discovery, attachment, and ASLR handling
+- `/aob-scan` — AOB pattern scanning algorithm and PE header parsing
+- `/pointer-chain` — Pointer chain traversal semantics (three methods)
+- `/singleton-resolve` — AOB-based singleton resolution and PathBases indirection
+- `/event-flag-read` — DS3 hierarchical event flag algorithm (ported from SoulSplitter)
+- `/inventory-scan` — Inventory array memory layout and scanning
+
+### DS3 Developer Workflows
+- `/ds3-add-game-data` — Master orchestrator: routes to the right sub-skill
+- `/ds3-read-event-flag` — End-to-end: add boss flag constant → tests → route JSON
+- `/ds3-read-inventory` — End-to-end: add item constant → tests → route JSON
+- `/ds3-read-char-stats` — Stat offset reference and mem_check route examples
+- `/ds3-read-char-name` — Character name memory path and config
+- `/ds3-read-save-slot` — Save slot reading via GameMan AOB
+
+### Tooling
+- `/ct-extract` — Extract data from CheatEngine cheat tables
+- `/cc` — Create well-structured conventional commits
 
 ## Architecture Notes
 
