@@ -126,7 +126,7 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 
 	// Initial state
 	if mon.Phase != PhaseDisconnected {
@@ -198,7 +198,7 @@ func TestE2E_RouteMonitor_SaveIDPassedToRouteRun(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 
 	// Tick until route starts
 	for i := 0; i < 5; i++ {

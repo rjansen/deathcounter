@@ -15,6 +15,7 @@ import (
 
 func main() {
 	dcOnly := flag.Bool("dc", false, "Death counter only (disable route tracking)")
+	routeID := flag.String("route", "ds3-glitchless-any-percent-e2e", "Route ID to load")
 	flag.Parse()
 
 	log.Println("Starting FromSoftware Death Counter...")
@@ -40,18 +41,15 @@ func main() {
 		log.Printf("Attached to: %s", reader.GetCurrentGame())
 	}
 
-	// Load routes
-	routes, err := route.LoadRoutesDir("routes")
-	if err != nil {
-		log.Printf("Warning: Could not load routes: %v", err)
-	} else if len(routes) > 0 {
-		log.Printf("Loaded %d route(s) from routes/", len(routes))
-	}
-
-	// Choose monitor based on available routes and flags
+	// Choose monitor based on flags
 	var mon monitor.Monitor
-	if !*dcOnly && len(routes) > 0 {
-		mon = monitor.NewRouteMonitor(reader, statsTracker, routes, nil)
+	if !*dcOnly {
+		r, err := route.LoadRouteByID(*routeID, "routes")
+		if err != nil {
+			log.Fatalf("Failed to load route: %v", err)
+		}
+		log.Printf("Loaded route: %s (%s)", r.Name, r.ID)
+		mon = monitor.NewRouteMonitor(reader, statsTracker, r, nil)
 	} else {
 		mon = monitor.NewDeathCounterMonitor(reader, statsTracker)
 	}

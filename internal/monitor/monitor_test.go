@@ -294,7 +294,7 @@ func TestRouteMonitor_NoRoute(t *testing.T) {
 	_, reader := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor(reader, tracker, nil, nil)
+	mon := NewRouteMonitor(reader, tracker, (*route.Route)(nil), nil)
 	mon.Tick()
 
 	select {
@@ -325,7 +325,7 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 
 	// First tick: attach → Connected, detect save → Loaded → start route
 	// CatchUp can't succeed (no event flag memory in mock), so phase stays Loaded
@@ -360,7 +360,7 @@ func TestRouteMonitor_NonMatchingRoute(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 	mon.Tick()
 
 	select {
@@ -379,7 +379,7 @@ func TestRouteMonitor_NonMatchingRoute(t *testing.T) {
 func TestRouteMonitor_countBackups(t *testing.T) {
 	_, reader := setupDS3Mock(0)
 	tracker := newTestTracker(t)
-	mon := NewRouteMonitor(reader, tracker, nil, nil)
+	mon := NewRouteMonitor(reader, tracker, (*route.Route)(nil), nil)
 
 	events := []route.CheckpointEvent{
 		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagID: 101}}, // has encounter flag → NOT counted
@@ -472,7 +472,7 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 	mon.Tick()
 
 	select {
@@ -521,7 +521,7 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 	mon.Tick()
 
 	// Save detection fails → route should NOT start, phase stays Connected
@@ -601,7 +601,7 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 	mon.Tick()
 
 	// Slot 255 should be rejected → stays Connected, no route started
@@ -634,7 +634,7 @@ func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
 		},
 	}
 
-	mon := NewRouteMonitor(reader, tracker, routes, nil)
+	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
 
 	// First tick: attach, detect save, start route
 	mon.Tick()

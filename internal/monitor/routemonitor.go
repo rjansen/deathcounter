@@ -13,16 +13,16 @@ import (
 type RouteMonitor struct {
 	GameMonitor[RouteMonitorState]
 	runner      *route.Runner
-	routes      []*route.Route
+	route       *route.Route
 	backupMgr   *backup.Manager
 	backupCount int
 }
 
 // NewRouteMonitor creates a new route monitor.
-func NewRouteMonitor(reader *memreader.GameReader, tracker *stats.Tracker, routes []*route.Route, backupMgr *backup.Manager) *RouteMonitor {
+func NewRouteMonitor(reader *memreader.GameReader, tracker *stats.Tracker, r *route.Route, backupMgr *backup.Manager) *RouteMonitor {
 	return &RouteMonitor{
 		GameMonitor: InitGameMonitor[RouteMonitorState](reader, tracker),
-		routes:      routes,
+		route:       r,
 		backupMgr:   backupMgr,
 	}
 }
@@ -99,23 +99,21 @@ func (m *RouteMonitor) Tick() {
 }
 
 func (m *RouteMonitor) startMatchingRoute() {
-	for _, r := range m.routes {
-		if r.Game == m.GameName() {
-			m.runner = route.NewRunner(r, m.Tracker, m.backupMgr)
-			if err := m.runner.Start(0, m.CurrentSaveID); err != nil {
-				log.Printf("Failed to start route run: %v", err)
-				m.runner = nil
-			} else {
-				log.Printf("[Route] Started route: %s", r.Name)
-				m.backupCount = 0
-				// Attempt CatchUp immediately; if it fails, Phase stays PhaseLoaded
-				// and Tick will retry on subsequent cycles
-				if m.runner.CatchUp(m.Reader) {
-					m.Phase = PhaseRouteRunning
-				}
-			}
-			return
-		}
+	if m.route == nil || m.route.Game != m.GameName() {
+		return
+	}
+	m.runner = route.NewRunner(m.route, m.Tracker, m.backupMgr)
+	if err := m.runner.Start(0, m.CurrentSaveID); err != nil {
+		log.Printf("Failed to start route run: %v", err)
+		m.runner = nil
+		return
+	}
+	log.Printf("[Route] Started route: %s", m.route.Name)
+	m.backupCount = 0
+	// Attempt CatchUp immediately; if it fails, Phase stays PhaseLoaded
+	// and Tick will retry on subsequent cycles
+	if m.runner.CatchUp(m.Reader) {
+		m.Phase = PhaseRouteRunning
 	}
 }
 
