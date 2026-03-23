@@ -27,6 +27,11 @@ func NewRouteMonitor(reader *memreader.GameReader, tracker *stats.Tracker, route
 	}
 }
 
+// Start begins the monitoring tick loop.
+func (m *RouteMonitor) Start() {
+	m.StartLoop(m.Tick)
+}
+
 // Tick performs one monitoring cycle with route tracking.
 func (m *RouteMonitor) Tick() {
 	m.TryAttach()

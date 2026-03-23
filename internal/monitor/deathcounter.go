@@ -17,6 +17,11 @@ func NewDeathCounterMonitor(reader *memreader.GameReader, tracker *stats.Tracker
 	}
 }
 
+// Start begins the monitoring tick loop.
+func (m *DeathCounterMonitor) Start() {
+	m.StartLoop(m.Tick)
+}
+
 // Tick performs one monitoring cycle.
 func (m *DeathCounterMonitor) Tick() {
 	m.TryAttach()

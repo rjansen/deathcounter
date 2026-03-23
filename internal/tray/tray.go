@@ -3,7 +3,6 @@ package tray
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"fyne.io/systray"
 	"github.com/rjansen/deathcounter/internal/monitor"
@@ -14,8 +13,6 @@ import (
 type App struct {
 	monitor           monitor.Monitor
 	tracker           *stats.Tracker
-	ticker            *time.Ticker
-	stopCh            chan struct{}
 	menuTitle         *systray.MenuItem
 	menuGame          *systray.MenuItem
 	menuCharacter     *systray.MenuItem
@@ -103,30 +100,11 @@ func (a *App) onReady() {
 
 	mQuit := systray.AddMenuItem("Quit", "Quit the application")
 
-	// Start tick loop and listen for display updates
-	a.ticker = time.NewTicker(500 * time.Millisecond)
-	a.stopCh = make(chan struct{})
+	// Start monitor tick loop and consume display updates
+	a.monitor.Start()
 	go func() {
-		for {
-			select {
-			case <-a.ticker.C:
-				a.monitor.Tick()
-			case <-a.stopCh:
-				return
-			}
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case update, ok := <-a.monitor.DisplayUpdates():
-				if !ok {
-					return
-				}
-				a.refreshDisplay(update)
-			case <-a.stopCh:
-				return
-			}
+		for update := range a.monitor.DisplayUpdates() {
+			a.refreshDisplay(update)
 		}
 	}()
 
@@ -152,12 +130,7 @@ func (a *App) onReady() {
 // onExit is called when the system tray is exiting
 func (a *App) onExit() {
 	log.Println("Shutting down...")
-	if a.ticker != nil {
-		a.ticker.Stop()
-	}
-	if a.stopCh != nil {
-		close(a.stopCh)
-	}
+	a.monitor.Stop()
 }
 
 // refreshDisplay updates all tray menu items from a DisplayUpdate.

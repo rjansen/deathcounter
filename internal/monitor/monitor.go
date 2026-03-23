@@ -3,6 +3,8 @@ package monitor
 import (
 	"errors"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/stats"
@@ -10,9 +12,8 @@ import (
 
 // Monitor is the interface tray.App uses to drive the monitoring lifecycle.
 type Monitor interface {
-	Tick()
-	// DisplayUpdates returns a channel that receives display-ready state
-	// each time Tick produces new information.
+	Start()
+	Stop()
 	DisplayUpdates() <-chan DisplayUpdate
 }
 
@@ -43,6 +44,10 @@ type GameMonitor[S Displayable] struct {
 
 	updates   chan S
 	displayCh chan DisplayUpdate
+
+	ticker   *time.Ticker
+	stopCh   chan struct{}
+	stopOnce sync.Once
 
 	LastCount uint32
 	LastGame  string
@@ -259,6 +264,35 @@ func isUnsupportedErr(err error) bool {
 		return false
 	}
 	return errors.Is(err, memreader.ErrNotSupported)
+}
+
+// StartLoop creates a 500ms ticker and runs tickFn on each tick in a goroutine.
+func (m *GameMonitor[S]) StartLoop(tickFn func()) {
+	m.stopCh = make(chan struct{})
+	m.ticker = time.NewTicker(500 * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-m.ticker.C:
+				tickFn()
+			case <-m.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// Stop halts the tick loop and closes the display channel.
+func (m *GameMonitor[S]) Stop() {
+	m.stopOnce.Do(func() {
+		if m.ticker != nil {
+			m.ticker.Stop()
+		}
+		if m.stopCh != nil {
+			close(m.stopCh)
+		}
+		close(m.displayCh)
+	})
 }
 
 // PublishState sends state on both the typed and display channels.

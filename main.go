@@ -56,7 +56,7 @@ func main() {
 		mon = monitor.NewDeathCounterMonitor(reader, statsTracker)
 	}
 
-	// Run system tray (blocks until quit, owns the tick loop)
+	// Run system tray (blocks until quit; monitor owns its own tick loop)
 	trayApp := tray.NewApp(mon, statsTracker)
 	if err := trayApp.Run(); err != nil {
 		log.Fatalf("System tray error: %v", err)
