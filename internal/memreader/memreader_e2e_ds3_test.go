@@ -1042,6 +1042,8 @@ func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
 		{DS3ItemMorticiansAshes, "Mortician's Ashes"},
 		{DS3ItemSharpGem, "Sharp Gem"},
 		{DS3ItemFirebomb, "Firebomb"},
+		{DS3ItemAshenEstusFlask, "Ashen Estus Flask"},
+		{DS3ItemFarronCoal, "Farron Coal"},
 		// Rings
 		{DS3ItemCovetousSilverSerpentRing, "Covetous Silver Serpent Ring"},
 		{DS3ItemChloranthyRing, "Chloranthy Ring"},
@@ -1049,6 +1051,8 @@ func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
 		{DS3ItemPontiffsRightEye, "Pontiff's Right Eye"},
 		// Weapons
 		{DS3ItemSellswordTwinblades, "Sellsword Twinblades"},
+		{DS3ItemDagger, "Dagger"},
+		{DS3ItemShortsword, "Shortsword"},
 	}
 
 	for _, item := range items {
@@ -1102,6 +1106,31 @@ func TestE2E_ReadInventoryItemQuantity_CountSanity(t *testing.T) {
 	}
 	if keyStart <= count {
 		t.Errorf("key item start %d <= normal count %d (regions would overlap)", keyStart, count)
+	}
+}
+
+func TestE2E_ReadInventoryItemQuantity_NewItems(t *testing.T) {
+	reader := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	newItems := []struct {
+		itemID uint32
+		name   string
+	}{
+		{DS3ItemAshenEstusFlask, "Ashen Estus Flask"},
+		{DS3ItemFarronCoal, "Farron Coal"},
+		{DS3ItemDagger, "Dagger"},
+		{DS3ItemShortsword, "Shortsword"},
+	}
+
+	for _, item := range newItems {
+		qty, err := reader.ReadInventoryItemQuantity(item.itemID)
+		if err != nil {
+			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", item.itemID, item.name, err)
+			continue
+		}
+		t.Logf("[DS3] %s (0x%X): quantity=%d", item.name, item.itemID, qty)
 	}
 }
 

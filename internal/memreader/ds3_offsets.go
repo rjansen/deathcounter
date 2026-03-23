@@ -130,6 +130,8 @@ const (
 	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
 	DS3ItemMorticiansAshes    uint32 = 0x4000083B
 	DS3ItemSharpGem           uint32 = 0x40000456
+	DS3ItemAshenEstusFlask    uint32 = 0x400000BE
+	DS3ItemFarronCoal         uint32 = 0x40000837
 )
 
 // DS3 item IDs — Rings/Accessories (prefix 0x2000, from TGA CT v3.4.0).
@@ -143,6 +145,8 @@ const (
 // DS3 item IDs — Weapons (from TGA CT v3.4.0).
 const (
 	DS3ItemSellswordTwinblades uint32 = 0x00F42400
+	DS3ItemDagger              uint32 = 0x000F4240
+	DS3ItemShortsword          uint32 = 0x001E8480
 )
 
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).

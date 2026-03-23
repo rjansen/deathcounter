@@ -279,6 +279,8 @@ func allItemIDs() []struct {
 		{"GraveWardenAshes", DS3ItemGraveWardenAshes},
 		{"MorticiansAshes", DS3ItemMorticiansAshes},
 		{"SharpGem", DS3ItemSharpGem},
+		{"AshenEstusFlask", DS3ItemAshenEstusFlask},
+		{"FarronCoal", DS3ItemFarronCoal},
 		// Rings
 		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing},
 		{"ChloranthyRing", DS3ItemChloranthyRing},
@@ -286,13 +288,15 @@ func allItemIDs() []struct {
 		{"PontiffsRightEye", DS3ItemPontiffsRightEye},
 		// Weapons
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades},
+		{"Dagger", DS3ItemDagger},
+		{"Shortsword", DS3ItemShortsword},
 	}
 }
 
 func TestDS3ItemIDs_Count(t *testing.T) {
 	items := allItemIDs()
-	if len(items) != 18 {
-		t.Errorf("expected 18 item ID constants, got %d", len(items))
+	if len(items) != 22 {
+		t.Errorf("expected 22 item ID constants, got %d", len(items))
 	}
 }
 
@@ -326,6 +330,8 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"MorticiansAshes", DS3ItemMorticiansAshes, 0x4000083B},
 		{"Firebomb", DS3ItemFirebomb, 0x40000124},
 		{"SharpGem", DS3ItemSharpGem, 0x40000456},
+		{"AshenEstusFlask", DS3ItemAshenEstusFlask, 0x400000BE},
+		{"FarronCoal", DS3ItemFarronCoal, 0x40000837},
 		// Rings
 		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing, 0x20004FB0},
 		{"ChloranthyRing", DS3ItemChloranthyRing, 0x20004E2A},
@@ -333,6 +339,8 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"PontiffsRightEye", DS3ItemPontiffsRightEye, 0x2000510E},
 		// Weapons
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades, 0x00F42400},
+		{"Dagger", DS3ItemDagger, 0x000F4240},
+		{"Shortsword", DS3ItemShortsword, 0x001E8480},
 	}
 
 	for _, tc := range expected {
@@ -351,7 +359,7 @@ func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
 	for _, item := range goods {
 		prefix := item.id & 0xFFFF0000
 		switch prefix {
-		case 0x00F40000: // weapon
+		case 0x00F40000, 0x000F0000, 0x001E0000: // weapon
 			continue
 		case 0x20000000: // ring
 			continue
