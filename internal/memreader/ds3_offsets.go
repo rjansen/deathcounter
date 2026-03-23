@@ -130,7 +130,7 @@ const (
 	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
 	DS3ItemMorticiansAshes    uint32 = 0x4000083B
 	DS3ItemSharpGem           uint32 = 0x40000456
-	DS3ItemAshenEstusFlask    uint32 = 0x400000BE
+	DS3ItemAshenEstusFlask    uint32 = 0x400000BF
 	DS3ItemFarronCoal         uint32 = 0x40000837
 )
 

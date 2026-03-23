@@ -330,7 +330,7 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"MorticiansAshes", DS3ItemMorticiansAshes, 0x4000083B},
 		{"Firebomb", DS3ItemFirebomb, 0x40000124},
 		{"SharpGem", DS3ItemSharpGem, 0x40000456},
-		{"AshenEstusFlask", DS3ItemAshenEstusFlask, 0x400000BE},
+		{"AshenEstusFlask", DS3ItemAshenEstusFlask, 0x400000BF},
 		{"FarronCoal", DS3ItemFarronCoal, 0x40000837},
 		// Rings
 		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing, 0x20004FB0},
