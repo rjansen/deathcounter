@@ -3,8 +3,14 @@
   "name": "DS3 Glitchless Any% - e2e",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "8",
+  "version": "9",
   "checkpoints": [
+    {
+      "id": "ashen-estus-flask-1",
+      "name": "Ashen Estus Flask",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073741502, "comparison": "eq", "value": 1}
+    },
     {
       "id": "titanite-shard-1",
       "name": "Titanite Shard",
@@ -59,6 +65,18 @@
       "name": "Covetous Silver Serpent Ring",
       "event_type": "inventory_check",
       "inventory_check": {"item_id": 536889776, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "dagger-1",
+      "name": "Dagger",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1000512, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "shortsword-1",
+      "name": "Shortsword",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 2000000, "comparison": "gte", "value": 1}
     },
     {
       "id": "end-13",
