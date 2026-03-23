@@ -328,6 +328,7 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 	mon := NewRouteMonitor(reader, tracker, routes, nil)
 
 	// First tick: attach → Connected, detect save → Loaded → start route
+	// CatchUp can't succeed (no event flag memory in mock), so phase stays Loaded
 	mon.Tick()
 
 	select {
@@ -336,8 +337,8 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 		if routeName != "DS3 Any%" {
 			t.Errorf("expected route name 'DS3 Any%%', got %q", routeName)
 		}
-		if update.Status != "Tracking route" {
-			t.Errorf("expected 'Tracking route' status, got %q", update.Status)
+		if update.Status != "Loaded" {
+			t.Errorf("expected 'Loaded' status (CatchUp pending), got %q", update.Status)
 		}
 	default:
 		t.Fatal("expected a display update")

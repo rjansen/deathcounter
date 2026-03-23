@@ -257,6 +257,119 @@ func TestDS3BossFlags_KnownEncounteredValues(t *testing.T) {
 	}
 }
 
+func allItemIDs() []struct {
+	name string
+	id   uint32
+} {
+	return []struct {
+		name string
+		id   uint32
+	}{
+		// Goods
+		{"Ember", DS3ItemEmber},
+		{"GoldPineResin", DS3ItemGoldPineResin},
+		{"CarthusRouge", DS3ItemCarthusRouge},
+		{"HomewardBone", DS3ItemHomewardBone},
+		{"Firebomb", DS3ItemFirebomb},
+		{"TitaniteShard", DS3ItemTitaniteShard},
+		{"LargeTitaniteShard", DS3ItemLargeTitaniteShard},
+		{"TitaniteChunk", DS3ItemTitaniteChunk},
+		{"TitaniteSlab", DS3ItemTitaniteSlab},
+		{"EstusShard", DS3ItemEstusShard},
+		{"GraveWardenAshes", DS3ItemGraveWardenAshes},
+		{"MorticiansAshes", DS3ItemMorticiansAshes},
+		{"SharpGem", DS3ItemSharpGem},
+		{"AshenEstusFlask", DS3ItemAshenEstusFlask},
+		{"FarronCoal", DS3ItemFarronCoal},
+		// Rings
+		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing},
+		{"ChloranthyRing", DS3ItemChloranthyRing},
+		{"LloydsSwordRing", DS3ItemLloydsSwordRing},
+		{"PontiffsRightEye", DS3ItemPontiffsRightEye},
+		// Weapons
+		{"SellswordTwinblades", DS3ItemSellswordTwinblades},
+		{"Dagger", DS3ItemDagger},
+		{"Shortsword", DS3ItemShortsword},
+	}
+}
+
+func TestDS3ItemIDs_Count(t *testing.T) {
+	items := allItemIDs()
+	if len(items) != 22 {
+		t.Errorf("expected 22 item ID constants, got %d", len(items))
+	}
+}
+
+func TestDS3ItemIDs_NoDuplicates(t *testing.T) {
+	seen := make(map[uint32]string)
+	for _, item := range allItemIDs() {
+		if prev, ok := seen[item.id]; ok {
+			t.Errorf("duplicate item ID 0x%X: %s and %s", item.id, prev, item.name)
+		}
+		seen[item.id] = item.name
+	}
+}
+
+func TestDS3ItemIDs_KnownValues(t *testing.T) {
+	// Verify item ID values against the cheat table (DS3_TGA_v3.4.0.CT).
+	expected := []struct {
+		name string
+		id   uint32
+		want uint32
+	}{
+		{"Ember", DS3ItemEmber, 0x400001F4},
+		{"GoldPineResin", DS3ItemGoldPineResin, 0x4000014B},
+		{"CarthusRouge", DS3ItemCarthusRouge, 0x4000014F},
+		{"HomewardBone", DS3ItemHomewardBone, 0x4000015E},
+		{"TitaniteShard", DS3ItemTitaniteShard, 0x400003E8},
+		{"LargeTitaniteShard", DS3ItemLargeTitaniteShard, 0x400003E9},
+		{"TitaniteChunk", DS3ItemTitaniteChunk, 0x400003EA},
+		{"TitaniteSlab", DS3ItemTitaniteSlab, 0x400003EB},
+		{"EstusShard", DS3ItemEstusShard, 0x4000085D},
+		{"GraveWardenAshes", DS3ItemGraveWardenAshes, 0x4000083E},
+		{"MorticiansAshes", DS3ItemMorticiansAshes, 0x4000083B},
+		{"Firebomb", DS3ItemFirebomb, 0x40000124},
+		{"SharpGem", DS3ItemSharpGem, 0x40000456},
+		{"AshenEstusFlask", DS3ItemAshenEstusFlask, 0x400000BF},
+		{"FarronCoal", DS3ItemFarronCoal, 0x40000837},
+		// Rings
+		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing, 0x20004FB0},
+		{"ChloranthyRing", DS3ItemChloranthyRing, 0x20004E2A},
+		{"LloydsSwordRing", DS3ItemLloydsSwordRing, 0x200050B4},
+		{"PontiffsRightEye", DS3ItemPontiffsRightEye, 0x2000510E},
+		// Weapons
+		{"SellswordTwinblades", DS3ItemSellswordTwinblades, 0x00F42400},
+		{"Dagger", DS3ItemDagger, 0x000F4240},
+		{"Shortsword", DS3ItemShortsword, 0x001E8480},
+	}
+
+	for _, tc := range expected {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.id != tc.want {
+				t.Errorf("DS3Item%s = 0x%X, want 0x%X", tc.name, tc.id, tc.want)
+			}
+		})
+	}
+}
+
+func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
+	// All goods items should have the 0x4000xxxx prefix.
+	// Skip non-goods categories (weapons, rings).
+	goods := allItemIDs()
+	for _, item := range goods {
+		prefix := item.id & 0xFFFF0000
+		switch prefix {
+		case 0x00F40000, 0x000F0000, 0x001E0000: // weapon
+			continue
+		case 0x20000000: // ring
+			continue
+		}
+		if prefix != 0x40000000 {
+			t.Errorf("DS3Item%s = 0x%X, expected goods prefix 0x4000xxxx", item.name, item.id)
+		}
+	}
+}
+
 func TestDS3BossFlags_FlagDecomposition(t *testing.T) {
 	// Verify that each defeated flag can be decomposed using the DS3 event flag algorithm
 	// without producing invalid intermediate values.

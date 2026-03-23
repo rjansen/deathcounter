@@ -603,6 +603,352 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 	}
 }
 
+func TestStateVar_Accumulation(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-sv",
+		Name: "StateVar Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-4", Name: "4 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 4, StateVar: "embers"},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+
+	// Tick 1: pick up 2 embers (initialize)
+	reader.invQuantities[0x400001F4] = 2
+	reader.igt = 10000
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
+	}
+	if runner.stateVars["embers"].Accumulated != 2 {
+		t.Errorf("tick 1: expected accumulated=2, got %d", runner.stateVars["embers"].Accumulated)
+	}
+
+	// Tick 2: spend 1 ember (qty drops to 1, accumulated stays 2)
+	reader.invQuantities[0x400001F4] = 1
+	reader.igt = 20000
+	events, err = runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 2: expected 0 events, got %d", len(events))
+	}
+	if runner.stateVars["embers"].Accumulated != 2 {
+		t.Errorf("tick 2: expected accumulated=2, got %d", runner.stateVars["embers"].Accumulated)
+	}
+
+	// Tick 3: pick up 3 more (qty goes 1→4, delta=+3, accumulated=2+3=5)
+	reader.invQuantities[0x400001F4] = 4
+	reader.igt = 30000
+	events, err = runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 3: expected 1 event (gte 4 met with accumulated=5), got %d", len(events))
+	}
+	if runner.stateVars["embers"].Accumulated != 5 {
+		t.Errorf("tick 3: expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	}
+}
+
+func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-sv-shared",
+		Name: "Shared StateVar Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "embers-4", Name: "4 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 4, StateVar: "embers"},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+
+	// Pick up 2 embers
+	reader.invQuantities[0x400001F4] = 2
+	reader.igt = 10000
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 1: expected 1 event (embers-2), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "embers-2" {
+		t.Errorf("tick 1: expected embers-2, got %s", events[0].Checkpoint.ID)
+	}
+
+	// Spend 1, then pick up 3 more (qty: 2→1→4, delta from 2→1 = no change, delta from 1→4 = +3)
+	reader.invQuantities[0x400001F4] = 1
+	reader.igt = 20000
+	runner.Tick(reader, 0) // spend 1
+
+	reader.invQuantities[0x400001F4] = 4
+	reader.igt = 30000
+	events, err = runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 3: expected 1 event (embers-4), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "embers-4" {
+		t.Errorf("tick 3: expected embers-4, got %s", events[0].Checkpoint.ID)
+	}
+	if runner.stateVars["embers"].Accumulated != 5 {
+		t.Errorf("expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	}
+}
+
+func TestStateVar_MixedWithRawInventory(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-sv-mixed",
+		Name: "Mixed Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-3", Name: "3 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 3, StateVar: "embers"},
+			},
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.invQuantities[0x400001F4] = 2 // embers (state_var)
+	reader.invQuantities[0x400003E8] = 5 // shards (raw)
+	reader.igt = 10000
+
+	events, err := runner.Tick(reader, 0)
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	// shards-5 should trigger (raw qty 5 >= 5), embers-3 should not (accumulated 2 < 3)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "shards-5" {
+		t.Errorf("expected shards-5, got %s", events[0].Checkpoint.ID)
+	}
+}
+
+func TestStateVar_CatchUp(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-sv-catchup",
+		Name: "CatchUp StateVar Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "embers-10", Name: "10 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 10, StateVar: "embers"},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.invQuantities[0x400001F4] = 5 // have 5 embers at route start
+
+	if !runner.CatchUp(reader) {
+		t.Fatal("expected CatchUp to succeed")
+	}
+	// embers-2 should be completed (5 >= 2), embers-10 should not (5 < 10)
+	if !runner.state.CompletedFlags["embers-2"] {
+		t.Error("expected embers-2 to be completed in catchup")
+	}
+	if runner.state.CompletedFlags["embers-10"] {
+		t.Error("expected embers-10 to NOT be completed in catchup")
+	}
+	// state var should be initialized with accumulated=5
+	if runner.stateVars["embers"].Accumulated != 5 {
+		t.Errorf("expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	}
+}
+
+func TestStateVar_Persistence(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-sv-persist",
+		Name: "Persist Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-5", Name: "5 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 5, StateVar: "embers"},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.invQuantities[0x400001F4] = 3
+	reader.igt = 10000
+
+	runner.Tick(reader, 0)
+
+	// Verify state var was persisted
+	rows, err := tracker.LoadStateVars(runner.runID)
+	if err != nil {
+		t.Fatalf("LoadStateVars: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 state var, got %d", len(rows))
+	}
+	if rows[0].VarName != "embers" {
+		t.Errorf("expected var_name 'embers', got %q", rows[0].VarName)
+	}
+	if rows[0].Accumulated != 3 {
+		t.Errorf("expected accumulated 3, got %d", rows[0].Accumulated)
+	}
+	if rows[0].LastQuantity != 3 {
+		t.Errorf("expected last_quantity 3, got %d", rows[0].LastQuantity)
+	}
+}
+
+func TestCatchUp_PersistsToDB(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-catchup-db",
+		Name: "CatchUp DB Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100, BackupFlagID: 101},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 200},
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.flags[100] = true              // boss1 already killed
+	reader.invQuantities[0x400003E8] = 7  // already have 7 shards
+
+	if !runner.CatchUp(reader) {
+		t.Fatal("expected CatchUp to return true")
+	}
+
+	// Verify caught-up checkpoints are persisted to DB with IGT=0
+	ids, err := tracker.LoadCompletedCheckpoints(runner.runID)
+	if err != nil {
+		t.Fatalf("LoadCompletedCheckpoints: %v", err)
+	}
+	found := map[string]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found["boss1"] {
+		t.Error("expected boss1 in DB")
+	}
+	if !found["shards-5"] {
+		t.Error("expected shards-5 in DB")
+	}
+	if found["boss2"] {
+		t.Error("boss2 should NOT be in DB")
+	}
+
+	// Verify caught-up records have zero IGT (not real splits)
+	var igtMs int64
+	err = tracker.DB().QueryRow(
+		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
+		runner.runID,
+	).Scan(&igtMs)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if igtMs != 0 {
+		t.Errorf("expected IGT=0 for caught-up checkpoint, got %d", igtMs)
+	}
+}
+
+func TestRestoreFromDB(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-restore",
+		Name: "Restore Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100, BackupFlagID: 101},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 200},
+			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagID: 300, BackupFlagID: 301},
+		},
+	}
+
+	// Create a run and record some checkpoints
+	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
+	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	tracker.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
+
+	// Create a new runner and restore from DB
+	runner := NewRunner(r, tracker, nil)
+	runner.state.Start()
+	runner.runID = runID
+
+	if err := runner.RestoreFromDB(); err != nil {
+		t.Fatalf("RestoreFromDB: %v", err)
+	}
+
+	// Verify CompletedFlags restored
+	if !runner.state.CompletedFlags["boss1"] {
+		t.Error("expected boss1 to be completed after restore")
+	}
+	if !runner.state.CompletedFlags["boss2"] {
+		t.Error("expected boss2 to be completed after restore")
+	}
+	if runner.state.CompletedFlags["boss3"] {
+		t.Error("expected boss3 to NOT be completed after restore")
+	}
+
+	// Verify BackupDone set for completed checkpoints with BackupFlagID
+	if !runner.state.BackupDone["boss1"] {
+		t.Error("expected boss1 backup to be marked done after restore")
+	}
+	if runner.state.BackupDone["boss2"] {
+		t.Error("boss2 has no BackupFlagID, backup should not be marked done")
+	}
+	if runner.state.BackupDone["boss3"] {
+		t.Error("boss3 is not completed, backup should not be marked done")
+	}
+}
+
 func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 	tracker := newTestTracker(t)
 	r := &Route{

@@ -15,7 +15,6 @@ type RouteMonitor struct {
 	runner      *route.Runner
 	routes      []*route.Route
 	backupMgr   *backup.Manager
-	caughtUp    bool
 	backupCount int
 }
 
@@ -62,22 +61,24 @@ func (m *RouteMonitor) Tick() {
 		m.startMatchingRoute()
 	}
 
+	// Phase-based CatchUp retry: stay in PhaseLoaded until CatchUp succeeds
+	if m.Phase == PhaseLoaded && m.runner != nil && m.runner.IsActive() {
+		if m.runner.CatchUp(m.Reader) {
+			m.Phase = PhaseRouteRunning
+		}
+	}
+
 	count, ok := m.ReadDeathCount()
 	if !ok {
 		m.publishRouteState()
 		return
 	}
 
-	// Catch up on pre-existing progress (only until first success)
-	if m.runner != nil && m.runner.IsActive() && !m.caughtUp {
-		m.caughtUp = m.runner.CatchUp(m.Reader)
-	}
-
 	m.RecordDeathIfChanged(count)
 	m.ReadHollowing()
 
-	// Tick route runner if active
-	if m.runner != nil && m.runner.IsActive() {
+	// Tick route runner if active and CatchUp is done
+	if m.Phase == PhaseRouteRunning && m.runner != nil && m.runner.IsActive() {
 		events, err := m.runner.Tick(m.Reader, m.LastCount)
 		if err != nil {
 			log.Printf("Route tracking error: %v", err)
@@ -101,9 +102,12 @@ func (m *RouteMonitor) startMatchingRoute() {
 				m.runner = nil
 			} else {
 				log.Printf("[Route] Started route: %s", r.Name)
-				m.Phase = PhaseRouteRunning
-				m.caughtUp = false
 				m.backupCount = 0
+				// Attempt CatchUp immediately; if it fails, Phase stays PhaseLoaded
+				// and Tick will retry on subsequent cycles
+				if m.runner.CatchUp(m.Reader) {
+					m.Phase = PhaseRouteRunning
+				}
 			}
 			return
 		}

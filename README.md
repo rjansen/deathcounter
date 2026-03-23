@@ -96,6 +96,7 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 - **Per-checkpoint timing** (IGT-based)
 - **Per-segment death counts**
 - **Personal best tracking** with automatic comparison
+- **Inventory item tracking** via inventory quantity checks (with optional cumulative `state_var` tracking)
 - **Save file backup** on boss encounter (or boss kill if no encounter flag configured)
 
 ### Included Routes
@@ -135,9 +136,20 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
         "size": 4
       },
       "optional": true
+    },
+    {
+      "id": "ember-4",
+      "name": "Ember x4 (cumulative)",
+      "event_type": "inventory_check",
+      "inventory_check": {
+        "item_id": 1073741300,
+        "comparison": "gte",
+        "value": 4,
+        "state_var": "embers"
+      }
     }
   ],
-  "reference_times": [225000, 500000]
+  "reference_times": [225000, 500000, 600000]
 }
 ```
 
@@ -148,6 +160,7 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
 | Event flag | `event_flag_id` | Game memory flag ID (boss kills, bonfires, item pickups) |
 | Backup trigger | `backup_flag_id` | Event flag that triggers a save backup (e.g. boss encounter) |
 | Memory value | `mem_check` | Read a value from a named memory path and compare it |
+| Inventory check | `inventory_check` | Check item quantity in player inventory |
 
 #### Memory Check Fields
 
@@ -158,6 +171,15 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
 | `comparison` | string | `"gte"` (>=), `"gt"` (>), or `"eq"` (==) |
 | `value` | int | Target value to compare against |
 | `size` | int | Bytes to read: `1`, `2`, or `4` (default `4`) |
+
+#### Inventory Check Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `item_id` | int | Full TypeId of the item (decimal, e.g. `1073741300` = `0x400001F4` for Ember) |
+| `comparison` | string | `"gte"` (>=), `"gt"` (>), or `"eq"` (==) |
+| `value` | int | Target quantity |
+| `state_var` | string | (Optional) Cumulative tracking variable name — only net positive inventory changes accumulate, so spending items doesn't regress progress |
 
 #### DS3 Player Stats Offsets
 

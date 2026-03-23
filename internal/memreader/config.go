@@ -10,14 +10,19 @@ type AOBPointerConfig struct {
 }
 
 // InventoryConfig describes the layout of the in-game inventory array.
+// The array is split into two regions: normal items (0..count-1) and
+// key items (keyItemStartOffset..capacity-1). Both regions share the
+// same list pointer and entry layout.
 type InventoryConfig struct {
-	PathKey        string // MemoryPaths key for base (e.g. "player_game_data")
-	DataOffset     int64  // offset to EquipInventoryData struct
-	ListPtrOffset  int64  // offset within struct to list pointer (dereference)
-	CountOffset    int64  // offset within struct to item count (uint32)
-	ItemStride     int64  // size of each item entry
-	TypeIdOffset   int64  // offset within entry to TypeId
-	QuantityOffset int64  // offset within entry to Quantity
+	PathKey             string // MemoryPaths key for base (e.g. "player_game_data")
+	DataOffset          int64  // offset to EquipInventoryData struct
+	CapacityOffset      int64  // offset within struct to total array capacity (uint32)
+	KeyItemStartOffset  int64  // offset within struct to key item region start index (uint32)
+	ListPtrOffset       int64  // offset within struct to list pointer (dereference)
+	CountOffset         int64  // offset within struct to normal item count (uint32)
+	ItemStride          int64  // size of each item entry
+	TypeIdOffset        int64  // offset within entry to TypeId
+	QuantityOffset      int64  // offset within entry to Quantity
 }
 
 // GameConfig holds the configuration for a specific FromSoftware game
@@ -96,12 +101,14 @@ var supportedGames = []GameConfig{
 		SaveSlotPathKey: "game_man",
 		SaveSlotOffset:  DS3OffsetSaveSlot,
 		Inventory: &InventoryConfig{
-			PathKey:        "player_game_data",
-			DataOffset:     DS3OffsetEquipInventoryData,
-			ListPtrOffset:  DS3OffsetInvListPtr,
-			CountOffset:    DS3OffsetInvCount,
-			ItemStride:     DS3InvItemStride,
-			TypeIdOffset:   DS3InvItemTypeIdOffset,
+			PathKey:            "player_game_data",
+			DataOffset:         DS3OffsetEquipInventoryData,
+			CapacityOffset:     DS3OffsetInvCapacity,
+			KeyItemStartOffset: DS3OffsetInvKeyItemStart,
+			ListPtrOffset:      DS3OffsetInvListPtr,
+			CountOffset:        DS3OffsetInvCount,
+			ItemStride:         DS3InvItemStride,
+			TypeIdOffset:       DS3InvItemTypeIdOffset,
 			QuantityOffset: DS3InvItemQuantityOffset,
 		},
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,

@@ -31,8 +31,10 @@ const (
 // DS3 EquipInventoryData offsets (from PlayerGameData).
 const (
 	DS3OffsetEquipInventoryData int64 = 0x3D0 // PlayerGameData → EquipInventoryData inline struct
+	DS3OffsetInvCapacity        int64 = 0x10  // EquipInventoryData → total array capacity (uint32)
+	DS3OffsetInvKeyItemStart    int64 = 0x14  // EquipInventoryData → key item region start index (uint32)
 	DS3OffsetInvListPtr         int64 = 0x18  // EquipInventoryData → list pointer (dereference)
-	DS3OffsetInvCount           int64 = 0x20  // EquipInventoryData → item count (uint32)
+	DS3OffsetInvCount           int64 = 0x20  // EquipInventoryData → normal item count (uint32)
 	DS3InvItemStride            int64 = 0x10  // Size of each inventory item entry
 	DS3InvItemTypeIdOffset      int64 = 0x4   // TypeId within item entry
 	DS3InvItemQuantityOffset    int64 = 0x8   // Quantity within item entry
@@ -111,6 +113,40 @@ const (
 	DS3FlagHalflightEnc        uint32 = 15100801
 	DS3FlagMidirEnc            uint32 = 15100851
 	DS3FlagGaelEnc             uint32 = 15110801
+)
+
+// DS3 item IDs — Goods (prefix 0x4000, from TGA CT v3.4.0).
+const (
+	DS3ItemEmber              uint32 = 0x400001F4
+	DS3ItemGoldPineResin      uint32 = 0x4000014B
+	DS3ItemCarthusRouge       uint32 = 0x4000014F
+	DS3ItemHomewardBone       uint32 = 0x4000015E
+	DS3ItemFirebomb           uint32 = 0x40000124
+	DS3ItemTitaniteShard      uint32 = 0x400003E8
+	DS3ItemLargeTitaniteShard uint32 = 0x400003E9
+	DS3ItemTitaniteChunk      uint32 = 0x400003EA
+	DS3ItemTitaniteSlab       uint32 = 0x400003EB
+	DS3ItemEstusShard         uint32 = 0x4000085D
+	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
+	DS3ItemMorticiansAshes    uint32 = 0x4000083B
+	DS3ItemSharpGem           uint32 = 0x40000456
+	DS3ItemAshenEstusFlask    uint32 = 0x400000BF
+	DS3ItemFarronCoal         uint32 = 0x40000837
+)
+
+// DS3 item IDs — Rings/Accessories (prefix 0x2000, from TGA CT v3.4.0).
+const (
+	DS3ItemCovetousSilverSerpentRing uint32 = 0x20004FB0
+	DS3ItemChloranthyRing            uint32 = 0x20004E2A
+	DS3ItemLloydsSwordRing           uint32 = 0x200050B4
+	DS3ItemPontiffsRightEye          uint32 = 0x2000510E
+)
+
+// DS3 item IDs — Weapons (from TGA CT v3.4.0).
+const (
+	DS3ItemSellswordTwinblades uint32 = 0x00F42400
+	DS3ItemDagger              uint32 = 0x000F4240
+	DS3ItemShortsword          uint32 = 0x001E8480
 )
 
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).

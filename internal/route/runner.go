@@ -19,14 +19,24 @@ type GameReader interface {
 	ReadInventoryItemQuantity(itemID uint32) (uint32, error)
 }
 
+// stateVarData tracks cumulative inventory pickup counts.
+type stateVarData struct {
+	ItemID       uint32
+	LastQuantity uint32
+	Accumulated  uint32
+	Initialized  bool
+	Dirty        bool
+}
+
 // Runner orchestrates a route run, connecting the state machine to memory reading,
 // persistence, and save backups.
 type Runner struct {
-	state   *RunState
-	route   *Route
-	tracker *stats.Tracker
-	backup  *backup.Manager
-	runID   int64
+	state     *RunState
+	route     *Route
+	tracker   *stats.Tracker
+	backup    *backup.Manager
+	runID     int64
+	stateVars map[string]*stateVarData // state_var name → tracking data
 }
 
 // NewRunner creates a new route runner.
@@ -51,7 +61,40 @@ func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
 	r.runID = runID
 	r.state.Start()
 	r.state.LastDeathCount = initialDeathCount
+	r.initStateVars()
 	return nil
+}
+
+// initStateVars registers all unique state_var names from the route checkpoints.
+func (r *Runner) initStateVars() {
+	r.stateVars = make(map[string]*stateVarData)
+	for _, cp := range r.route.Checkpoints {
+		if cp.InventoryCheck == nil || cp.InventoryCheck.StateVar == "" {
+			continue
+		}
+		name := cp.InventoryCheck.StateVar
+		if _, exists := r.stateVars[name]; !exists {
+			r.stateVars[name] = &stateVarData{
+				ItemID: cp.InventoryCheck.ItemID,
+			}
+		}
+	}
+
+	// Try to restore persisted state vars (for future run resumption)
+	if len(r.stateVars) > 0 {
+		rows, err := r.tracker.LoadStateVars(r.runID)
+		if err != nil {
+			log.Printf("[Route] Failed to load state vars: %v", err)
+			return
+		}
+		for _, row := range rows {
+			if sv, ok := r.stateVars[row.VarName]; ok {
+				sv.LastQuantity = row.LastQuantity
+				sv.Accumulated = row.Accumulated
+				sv.Initialized = true
+			}
+		}
+	}
 }
 
 // Abandon marks the current run as abandoned.
@@ -126,6 +169,9 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
+				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
+				}
 			}
 		}
 
@@ -134,9 +180,25 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			if err != nil {
 				return false
 			}
-			if compareValue(qty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
+			checkQty := qty
+			// Initialize state_var with current quantity as seed
+			if cp.InventoryCheck.StateVar != "" {
+				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok && !sv.Initialized {
+					sv.LastQuantity = qty
+					sv.Accumulated = qty
+					sv.Initialized = true
+					sv.Dirty = true
+				}
+				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok {
+					checkQty = sv.Accumulated
+				}
+			}
+			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
+				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
+				}
 			}
 		}
 
@@ -145,7 +207,30 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			r.state.BackupDone[cp.ID] = true
 		}
 	}
+
+	// Persist dirty state vars after catchup
+	r.persistDirtyStateVars()
+
 	return true
+}
+
+// RestoreFromDB restores completed checkpoint state from the database
+// instead of re-scanning game memory via CatchUp.
+func (r *Runner) RestoreFromDB() error {
+	ids, err := r.tracker.LoadCompletedCheckpoints(r.runID)
+	if err != nil {
+		return fmt.Errorf("failed to restore from DB: %w", err)
+	}
+	for _, id := range ids {
+		r.state.CompletedFlags[id] = true
+	}
+	// Mark backup as done for completed checkpoints that have a backup flag
+	for _, cp := range r.route.Checkpoints {
+		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
+			r.state.BackupDone[cp.ID] = true
+		}
+	}
+	return nil
 }
 
 // Tick is called every poll cycle. It reads event flags and IGT from the reader,
@@ -162,6 +247,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 		InventoryValues: make(map[string]uint32),
 		DeathCount:      deathCount,
 	}
+	stateVarUpdated := make(map[string]bool) // track which state vars already processed this tick
 
 	for _, cp := range r.route.Checkpoints {
 		// Read backup flag even if checkpoint is already completed
@@ -217,16 +303,46 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 
 		// Inventory item quantity checkpoint
 		if cp.InventoryCheck != nil {
-			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
-			if err != nil {
-				if !errors.Is(err, memreader.ErrNullPointer) {
-					return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
+			if cp.InventoryCheck.StateVar != "" {
+				svName := cp.InventoryCheck.StateVar
+				sv := r.stateVars[svName]
+				// Only read and accumulate once per state_var per tick
+				if !stateVarUpdated[svName] {
+					qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+					if err != nil {
+						if !errors.Is(err, memreader.ErrNullPointer) {
+							return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
+						}
+						continue
+					}
+					if !sv.Initialized {
+						sv.LastQuantity = qty
+						sv.Accumulated = qty
+						sv.Initialized = true
+						sv.Dirty = true
+					} else if qty > sv.LastQuantity {
+						sv.Accumulated += qty - sv.LastQuantity
+						sv.Dirty = true
+					}
+					sv.LastQuantity = qty
+					stateVarUpdated[svName] = true
 				}
-				continue
+				input.InventoryValues[cp.ID] = sv.Accumulated
+			} else {
+				qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+				if err != nil {
+					if !errors.Is(err, memreader.ErrNullPointer) {
+						return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
+					}
+					continue
+				}
+				input.InventoryValues[cp.ID] = qty
 			}
-			input.InventoryValues[cp.ID] = qty
 		}
 	}
+
+	// Persist dirty state vars
+	r.persistDirtyStateVars()
 
 	// Read IGT (fall back to last known value if transient failure)
 	igt, err := reader.ReadIGT()
@@ -276,6 +392,19 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 	}
 
 	return result.Checkpoints, nil
+}
+
+// persistDirtyStateVars saves any state vars that changed since last persist.
+func (r *Runner) persistDirtyStateVars() {
+	for name, sv := range r.stateVars {
+		if !sv.Dirty {
+			continue
+		}
+		if err := r.tracker.SaveStateVar(r.runID, name, sv.ItemID, sv.LastQuantity, sv.Accumulated); err != nil {
+			log.Printf("[Route] Failed to save state var %s: %v", name, err)
+		}
+		sv.Dirty = false
+	}
 }
 
 func (r *Runner) triggerBackup(checkpointID string) {

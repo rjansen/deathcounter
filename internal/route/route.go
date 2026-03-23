@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
 )
+
+var validStateVarName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // Route defines a speedrun route with ordered checkpoints.
 type Route struct {
@@ -44,9 +48,10 @@ type MemCheck struct {
 
 // InventoryCheck defines a condition based on an item's quantity in the inventory.
 type InventoryCheck struct {
-	ItemID     uint32 `json:"item_id"`    // full TypeId (e.g. 0x400003E8 = 1073742824)
-	Comparison string `json:"comparison"` // "gte", "gt", "eq"
-	Value      uint32 `json:"value"`      // target quantity
+	ItemID     uint32 `json:"item_id"`              // full TypeId (e.g. 0x400003E8 = 1073742824)
+	Comparison string `json:"comparison"`            // "gte", "gt", "eq"
+	Value      uint32 `json:"value"`                 // target quantity
+	StateVar   string `json:"state_var,omitempty"`   // cumulative tracking variable name
 }
 
 // LoadRoute parses and validates a route JSON file.
@@ -155,6 +160,29 @@ func (r *Route) validate() error {
 	if len(r.ReferenceTimes) > 0 && len(r.ReferenceTimes) != len(r.Checkpoints) {
 		return fmt.Errorf("reference_times length (%d) must match checkpoints length (%d)",
 			len(r.ReferenceTimes), len(r.Checkpoints))
+	}
+
+	// Validate state_var: same name must map to same item_id
+	stateVarItems := make(map[string]uint32) // state_var name → item_id
+	for i, cp := range r.Checkpoints {
+		if cp.InventoryCheck == nil || cp.InventoryCheck.StateVar == "" {
+			continue
+		}
+		name := strings.TrimSpace(cp.InventoryCheck.StateVar)
+		if name == "" {
+			return fmt.Errorf("checkpoint %d (%s): state_var is empty after trim", i, cp.ID)
+		}
+		if !validStateVarName.MatchString(name) {
+			return fmt.Errorf("checkpoint %d (%s): state_var %q must be alphanumeric/underscores", i, cp.ID, name)
+		}
+		if existing, ok := stateVarItems[name]; ok {
+			if existing != cp.InventoryCheck.ItemID {
+				return fmt.Errorf("checkpoint %d (%s): state_var %q uses item_id %d but was previously defined with item_id %d",
+					i, cp.ID, name, cp.InventoryCheck.ItemID, existing)
+			}
+		} else {
+			stateVarItems[name] = cp.InventoryCheck.ItemID
+		}
 	}
 
 	return nil
