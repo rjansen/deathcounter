@@ -673,6 +673,58 @@ func TestLoadStateVars_Empty(t *testing.T) {
 	}
 }
 
+func TestLoadCompletedCheckpoints(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+
+	// No checkpoints yet
+	ids, err := tracker.LoadCompletedCheckpoints(runID)
+	if err != nil {
+		t.Fatalf("LoadCompletedCheckpoints: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 checkpoints, got %d", len(ids))
+	}
+
+	// Record some checkpoints
+	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	tracker.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
+
+	ids, err = tracker.LoadCompletedCheckpoints(runID)
+	if err != nil {
+		t.Fatalf("LoadCompletedCheckpoints: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 checkpoints, got %d", len(ids))
+	}
+
+	found := map[string]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found["boss1"] || !found["boss2"] {
+		t.Errorf("expected boss1 and boss2, got %v", ids)
+	}
+}
+
+func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+
+	// Caught-up checkpoints have IGT=0, duration=0, deaths=0
+	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 0, 0, 0)
+
+	ids, err := tracker.LoadCompletedCheckpoints(runID)
+	if err != nil {
+		t.Fatalf("LoadCompletedCheckpoints: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "boss1" {
+		t.Errorf("expected [boss1], got %v", ids)
+	}
+}
+
 func TestMigration(t *testing.T) {
 	// Verify that creating a tracker runs migration without error
 	tracker := newTestTracker(t)

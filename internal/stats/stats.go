@@ -532,6 +532,27 @@ func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
 	return result, rows.Err()
 }
 
+// LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
+func (t *Tracker) LoadCompletedCheckpoints(runID int64) ([]string, error) {
+	rows, err := t.db.Query(
+		"SELECT checkpoint_id FROM route_checkpoints WHERE run_id = ?", runID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load completed checkpoints: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // DB returns the underlying database connection for advanced queries.
 func (t *Tracker) DB() *sql.DB {
 	return t.db

@@ -840,6 +840,115 @@ func TestStateVar_Persistence(t *testing.T) {
 	}
 }
 
+func TestCatchUp_PersistsToDB(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-catchup-db",
+		Name: "CatchUp DB Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100, BackupFlagID: 101},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 200},
+			{
+				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
+			},
+		},
+	}
+	runner := NewRunner(r, tracker, nil)
+	_ = runner.Start(0, 0)
+
+	reader := newMockGameReader()
+	reader.flags[100] = true              // boss1 already killed
+	reader.invQuantities[0x400003E8] = 7  // already have 7 shards
+
+	if !runner.CatchUp(reader) {
+		t.Fatal("expected CatchUp to return true")
+	}
+
+	// Verify caught-up checkpoints are persisted to DB with IGT=0
+	ids, err := tracker.LoadCompletedCheckpoints(runner.runID)
+	if err != nil {
+		t.Fatalf("LoadCompletedCheckpoints: %v", err)
+	}
+	found := map[string]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found["boss1"] {
+		t.Error("expected boss1 in DB")
+	}
+	if !found["shards-5"] {
+		t.Error("expected shards-5 in DB")
+	}
+	if found["boss2"] {
+		t.Error("boss2 should NOT be in DB")
+	}
+
+	// Verify caught-up records have zero IGT (not real splits)
+	var igtMs int64
+	err = tracker.DB().QueryRow(
+		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
+		runner.runID,
+	).Scan(&igtMs)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if igtMs != 0 {
+		t.Errorf("expected IGT=0 for caught-up checkpoint, got %d", igtMs)
+	}
+}
+
+func TestRestoreFromDB(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-restore",
+		Name: "Restore Route",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 100, BackupFlagID: 101},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 200},
+			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagID: 300, BackupFlagID: 301},
+		},
+	}
+
+	// Create a run and record some checkpoints
+	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
+	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	tracker.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
+
+	// Create a new runner and restore from DB
+	runner := NewRunner(r, tracker, nil)
+	runner.state.Start()
+	runner.runID = runID
+
+	if err := runner.RestoreFromDB(); err != nil {
+		t.Fatalf("RestoreFromDB: %v", err)
+	}
+
+	// Verify CompletedFlags restored
+	if !runner.state.CompletedFlags["boss1"] {
+		t.Error("expected boss1 to be completed after restore")
+	}
+	if !runner.state.CompletedFlags["boss2"] {
+		t.Error("expected boss2 to be completed after restore")
+	}
+	if runner.state.CompletedFlags["boss3"] {
+		t.Error("expected boss3 to NOT be completed after restore")
+	}
+
+	// Verify BackupDone set for completed checkpoints with BackupFlagID
+	if !runner.state.BackupDone["boss1"] {
+		t.Error("expected boss1 backup to be marked done after restore")
+	}
+	if runner.state.BackupDone["boss2"] {
+		t.Error("boss2 has no BackupFlagID, backup should not be marked done")
+	}
+	if runner.state.BackupDone["boss3"] {
+		t.Error("boss3 is not completed, backup should not be marked done")
+	}
+}
+
 func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 	tracker := newTestTracker(t)
 	r := &Route{

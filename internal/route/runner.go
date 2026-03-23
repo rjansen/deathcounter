@@ -169,6 +169,9 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
+				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
+				}
 			}
 		}
 
@@ -193,6 +196,9 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
+				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
+				}
 			}
 		}
 
@@ -206,6 +212,25 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 	r.persistDirtyStateVars()
 
 	return true
+}
+
+// RestoreFromDB restores completed checkpoint state from the database
+// instead of re-scanning game memory via CatchUp.
+func (r *Runner) RestoreFromDB() error {
+	ids, err := r.tracker.LoadCompletedCheckpoints(r.runID)
+	if err != nil {
+		return fmt.Errorf("failed to restore from DB: %w", err)
+	}
+	for _, id := range ids {
+		r.state.CompletedFlags[id] = true
+	}
+	// Mark backup as done for completed checkpoints that have a backup flag
+	for _, cp := range r.route.Checkpoints {
+		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
+			r.state.BackupDone[cp.ID] = true
+		}
+	}
+	return nil
 }
 
 // Tick is called every poll cycle. It reads event flags and IGT from the reader,
