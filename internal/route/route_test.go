@@ -359,6 +359,83 @@ func TestLoadRoute_InventoryCheckInvalidComparison(t *testing.T) {
 	}
 }
 
+func TestValidate_StateVar_SameItemID(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "embers-4", Name: "4 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 4, StateVar: "embers"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("expected valid route, got error: %v", err)
+	}
+}
+
+func TestValidate_StateVar_ConflictingItemID(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "firebombs-3", Name: "3 Firebombs", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x40000124, Comparison: "gte", Value: 3, StateVar: "embers"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for conflicting item_id on same state_var")
+	}
+}
+
+func TestValidate_StateVar_InvalidName(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "Dark Souls III",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "em bers!"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid state_var name")
+	}
+}
+
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
 
