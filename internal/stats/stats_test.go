@@ -595,6 +595,84 @@ func TestGetOrCreateSessionForSave(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoadStateVars(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+
+	if err := tracker.SaveStateVar(runID, "embers", 0x400001F4, 3, 5); err != nil {
+		t.Fatalf("SaveStateVar: %v", err)
+	}
+	if err := tracker.SaveStateVar(runID, "firebombs", 0x40000124, 2, 2); err != nil {
+		t.Fatalf("SaveStateVar: %v", err)
+	}
+
+	rows, err := tracker.LoadStateVars(runID)
+	if err != nil {
+		t.Fatalf("LoadStateVars: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 state vars, got %d", len(rows))
+	}
+
+	// Find the embers row
+	var embers *StateVarRow
+	for i := range rows {
+		if rows[i].VarName == "embers" {
+			embers = &rows[i]
+		}
+	}
+	if embers == nil {
+		t.Fatal("embers state var not found")
+	}
+	if embers.ItemID != 0x400001F4 {
+		t.Errorf("expected item_id %d, got %d", 0x400001F4, embers.ItemID)
+	}
+	if embers.LastQuantity != 3 {
+		t.Errorf("expected last_quantity 3, got %d", embers.LastQuantity)
+	}
+	if embers.Accumulated != 5 {
+		t.Errorf("expected accumulated 5, got %d", embers.Accumulated)
+	}
+}
+
+func TestSaveStateVar_Upsert(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+
+	tracker.SaveStateVar(runID, "embers", 0x400001F4, 2, 2)
+	tracker.SaveStateVar(runID, "embers", 0x400001F4, 5, 7) // update
+
+	rows, err := tracker.LoadStateVars(runID)
+	if err != nil {
+		t.Fatalf("LoadStateVars: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 state var after upsert, got %d", len(rows))
+	}
+	if rows[0].LastQuantity != 5 {
+		t.Errorf("expected last_quantity 5, got %d", rows[0].LastQuantity)
+	}
+	if rows[0].Accumulated != 7 {
+		t.Errorf("expected accumulated 7, got %d", rows[0].Accumulated)
+	}
+}
+
+func TestLoadStateVars_Empty(t *testing.T) {
+	tracker := newTestTracker(t)
+
+	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+
+	rows, err := tracker.LoadStateVars(runID)
+	if err != nil {
+		t.Fatalf("LoadStateVars: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("expected 0 state vars, got %d", len(rows))
+	}
+}
+
 func TestMigration(t *testing.T) {
 	// Verify that creating a tracker runs migration without error
 	tracker := newTestTracker(t)
