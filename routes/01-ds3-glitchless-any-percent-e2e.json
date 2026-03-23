@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - e2e",
   "game": "Dark Souls III",
   "category": "Any% Glitchless",
-  "version": "7",
+  "version": "8",
   "checkpoints": [
     {
       "id": "titanite-shard-1",
@@ -28,7 +28,7 @@
       "id": "ember-2",
       "name": "Ember x2",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073741300, "comparison": "gte", "value": 2}
+      "inventory_check": {"item_id": 1073741300, "comparison": "gte", "value": 2, "state_var": "embers"}
     },
     {
       "id": "homeward-bone-3",
@@ -77,6 +77,12 @@
       "name": "Golden Pine Resin x2",
       "event_type": "inventory_check",
       "inventory_check": {"item_id": 1073741131, "comparison": "gte", "value": 2}
+    },
+    {
+      "id": "ember-4",
+      "name": "Ember x4",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073741300, "comparison": "gte", "value": 4, "state_var": "embers"}
     },
     {
       "id": "vordt",

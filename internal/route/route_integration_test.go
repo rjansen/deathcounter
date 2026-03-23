@@ -30,8 +30,8 @@ func TestDS3Route_LoadsSuccessfully(t *testing.T) {
 	if route.Game != "Dark Souls III" {
 		t.Errorf("game = %q, want %q", route.Game, "Dark Souls III")
 	}
-	if route.Version != "7" {
-		t.Errorf("version = %q, want %q", route.Version, "7")
+	if route.Version != "8" {
+		t.Errorf("version = %q, want %q", route.Version, "8")
 	}
 }
 
