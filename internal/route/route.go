@@ -73,6 +73,27 @@ func LoadRoute(path string) (*Route, error) {
 	return &route, nil
 }
 
+// LoadRouteByID scans dir for JSON files and returns the route whose ID matches routeID.
+func LoadRouteByID(routeID, dir string) (*Route, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read routes directory: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		r, err := LoadRoute(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue // skip invalid files
+		}
+		if r.ID == routeID {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("route %q not found in %s", routeID, dir)
+}
+
 // LoadRoutesDir scans a directory for route JSON files and loads them.
 func LoadRoutesDir(dir string) ([]*Route, error) {
 	entries, err := os.ReadDir(dir)
