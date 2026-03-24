@@ -77,47 +77,64 @@ func LoadRoute(path string) (*Route, error) {
 	return &route, nil
 }
 
-// LoadRouteByID scans dir for JSON files and returns the route whose ID matches routeID.
-func LoadRouteByID(routeID, dir string) (*Route, error) {
-	entries, err := os.ReadDir(dir)
+// LoadRouteByID scans the game-specific subdirectory dir/<gameID>/ for a route
+// whose ID matches routeID. Validates that the route's Game field matches gameID.
+func LoadRouteByID(gameID, routeID, dir string) (*Route, error) {
+	gameDir := filepath.Join(dir, gameID)
+	entries, err := os.ReadDir(gameDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read routes directory: %w", err)
+		return nil, fmt.Errorf("failed to read routes for game %q: %w", gameID, err)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		r, err := LoadRoute(filepath.Join(dir, entry.Name()))
+		r, err := LoadRoute(filepath.Join(gameDir, entry.Name()))
 		if err != nil {
 			continue // skip invalid files
 		}
 		if r.ID == routeID {
+			if r.Game != gameID {
+				return nil, fmt.Errorf("route %q has game %q but is in %q directory", routeID, r.Game, gameID)
+			}
 			return r, nil
 		}
 	}
-	return nil, fmt.Errorf("route %q not found in %s", routeID, dir)
+	return nil, fmt.Errorf("route %q not found for game %q in %s", routeID, gameID, dir)
 }
 
-// LoadRoutesDir scans a directory for route JSON files and loads them.
-func LoadRoutesDir(dir string) ([]*Route, error) {
+// LoadRoutesDir scans subdirectories of dir, treating each subdirectory name
+// as a game ID. Returns a map of gameID to routes found in that subdirectory.
+func LoadRoutesDir(dir string) (map[string][]*Route, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read routes directory: %w", err)
 	}
 
-	var routes []*Route
+	result := make(map[string][]*Route)
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		if !entry.IsDir() {
 			continue
 		}
-		route, err := LoadRoute(filepath.Join(dir, entry.Name()))
+		gameID := entry.Name()
+		gameDir := filepath.Join(dir, gameID)
+		gameEntries, err := os.ReadDir(gameDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load route %s: %w", entry.Name(), err)
+			continue
 		}
-		routes = append(routes, route)
+		for _, ge := range gameEntries {
+			if ge.IsDir() || filepath.Ext(ge.Name()) != ".json" {
+				continue
+			}
+			r, err := LoadRoute(filepath.Join(gameDir, ge.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("failed to load route %s/%s: %w", gameID, ge.Name(), err)
+			}
+			result[gameID] = append(result[gameID], r)
+		}
 	}
 
-	return routes, nil
+	return result, nil
 }
 
 func (r *Route) validate() error {

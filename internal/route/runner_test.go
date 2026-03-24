@@ -98,8 +98,7 @@ func testRunnerRoute() *Route {
 func TestNewRunner(t *testing.T) {
 	r := testRunnerRoute()
 	tracker := newTestTracker(t)
-	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 
 	if runner.route != r {
 		t.Error("expected route to be set")
@@ -117,7 +116,7 @@ func TestNewRunner(t *testing.T) {
 
 func TestRunner_Start(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader())
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 
 	if err := runner.Start(42, 0); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -136,7 +135,7 @@ func TestRunner_Start(t *testing.T) {
 
 func TestRunner_Abandon(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader())
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	if err := runner.Abandon(); err != nil {
@@ -150,7 +149,7 @@ func TestRunner_Abandon(t *testing.T) {
 func TestRunner_Accessors(t *testing.T) {
 	tracker := newTestTracker(t)
 	r := testRunnerRoute()
-	runner := NewRunner(r, tracker, nil, newMockGameReader())
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	if runner.GetRoute() != r {
@@ -178,11 +177,11 @@ func TestRunner_Accessors(t *testing.T) {
 func TestRunner_CatchUp_AllNew(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	// No flags set
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Errorf("expected CatchUp to succeed when all flags unset, got %v", err)
 	}
 	if runner.CompletedCount() != 0 {
@@ -202,12 +201,12 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true // boss1 already killed
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Errorf("expected CatchUp to succeed, got %v", err)
 	}
 	if !runner.state.CompletedFlags["boss1"] {
@@ -224,32 +223,34 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 func TestRunner_CatchUp_ReadError(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = errors.New("not ready")
 
-	if err := runner.CatchUp(); err == nil {
+	if err := runner.CatchUp(reader); err == nil {
 		t.Error("expected CatchUp to return error on read failure")
 	}
 }
 
 func TestRunner_CatchUp_NotActive(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader())
+	reader := newMockGameReader()
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	// Not started
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Errorf("expected CatchUp to succeed when not active, got %v", err)
 	}
 }
 
 func TestRunner_Tick_NotActive(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader())
+	reader := newMockGameReader()
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	// Not started
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,14 +262,14 @@ func TestRunner_Tick_NotActive(t *testing.T) {
 func TestRunner_Tick_Checkpoint(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true // boss1 killed
 	reader.igt = 60000
 	reader.deathCount = 3
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -292,12 +293,12 @@ func TestRunner_Tick_Checkpoint(t *testing.T) {
 func TestRunner_Tick_NullPointer(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = memreader.ErrNullPointer
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("expected nil error for ErrNullPointer, got %v", err)
 	}
@@ -309,12 +310,12 @@ func TestRunner_Tick_NullPointer(t *testing.T) {
 func TestRunner_Tick_FatalError(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = errors.New("process gone")
 
-	_, err := runner.Tick()
+	_, err := runner.Tick(reader)
 	if err == nil {
 		t.Error("expected error for fatal read failure")
 	}
@@ -334,13 +335,13 @@ func TestRunner_Tick_MemCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.memValues["player_stats"] = 10
 	reader.igt = 30000
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -363,13 +364,13 @@ func TestRunner_Tick_RunCompletion(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
 	reader.igt = 120000
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -393,14 +394,14 @@ func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader) // nil backup manager
+	runner := NewRunner(r, tracker, nil) // nil backup manager
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
 	reader.igt = 10000
 
 	// Should not panic with nil backup manager
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -411,7 +412,7 @@ func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
 
 func TestRunner_findGameConfig(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader()) // Game: "ds3"
+	runner := NewRunner(testRunnerRoute(), tracker, nil) // Game: "ds3"
 
 	cfg := runner.findGameConfig()
 	if cfg == nil {
@@ -422,7 +423,7 @@ func TestRunner_findGameConfig(t *testing.T) {
 	}
 
 	// Unknown game
-	runner2 := NewRunner(&Route{Game: "Unknown Game"}, tracker, nil, newMockGameReader())
+	runner2 := NewRunner(&Route{Game: "Unknown Game"}, tracker, nil)
 	if runner2.findGameConfig() != nil {
 		t.Error("expected nil for unknown game")
 	}
@@ -430,7 +431,7 @@ func TestRunner_findGameConfig(t *testing.T) {
 
 func TestRunner_triggerBackup_NilManager(t *testing.T) {
 	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil, newMockGameReader())
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 
 	// Should not panic
 	runner.triggerBackup("boss1")
@@ -452,7 +453,7 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true                 // boss1 killed
@@ -461,7 +462,7 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 	reader.igt = 60000
 	reader.deathCount = 2
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -488,14 +489,14 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 	runner.state.LastIGT = 50000 // simulate prior tick with valid IGT
 
 	reader.flags[100] = true
 	reader.igtErr = memreader.ErrNullPointer
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -510,13 +511,13 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 func TestRunner_Tick_IGTError(t *testing.T) {
 	tracker := newTestTracker(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil, reader)
+	runner := NewRunner(testRunnerRoute(), tracker, nil)
 	_ = runner.Start(0, 0)
 
 	// No flags set, so event flag reads succeed but return false
 	reader.igtErr = memreader.ErrNullPointer
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("expected nil error for IGT ErrNullPointer, got %v", err)
 	}
@@ -539,13 +540,13 @@ func TestRunner_Tick_InventoryCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400003E8] = 3 // only 3 shards
 	reader.igt = 30000
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -557,7 +558,7 @@ func TestRunner_Tick_InventoryCheck(t *testing.T) {
 	reader.invQuantities[0x400003E8] = 5
 	reader.igt = 60000
 
-	events, err = runner.Tick()
+	events, err = runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -585,14 +586,14 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
 	reader.invErr = memreader.ErrNullPointer
 	reader.igt = 60000
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -621,13 +622,13 @@ func TestStateVar_Accumulation(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	// Tick 1: pick up 2 embers (initialize)
 	reader.invQuantities[0x400001F4] = 2
 	reader.igt = 10000
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
@@ -641,7 +642,7 @@ func TestStateVar_Accumulation(t *testing.T) {
 	// Tick 2: spend 1 ember (qty drops to 1, accumulated stays 2)
 	reader.invQuantities[0x400001F4] = 1
 	reader.igt = 20000
-	events, err = runner.Tick()
+	events, err = runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick 2: %v", err)
 	}
@@ -655,7 +656,7 @@ func TestStateVar_Accumulation(t *testing.T) {
 	// Tick 3: pick up 3 more (qty goes 1→4, delta=+3, accumulated=2+3=5)
 	reader.invQuantities[0x400001F4] = 4
 	reader.igt = 30000
-	events, err = runner.Tick()
+	events, err = runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick 3: %v", err)
 	}
@@ -685,13 +686,13 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	// Pick up 2 embers
 	reader.invQuantities[0x400001F4] = 2
 	reader.igt = 10000
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
@@ -705,11 +706,11 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 	// Spend 1, then pick up 3 more
 	reader.invQuantities[0x400001F4] = 1
 	reader.igt = 20000
-	runner.Tick() // spend 1
+	runner.Tick(reader) // spend 1
 
 	reader.invQuantities[0x400001F4] = 4
 	reader.igt = 30000
-	events, err = runner.Tick()
+	events, err = runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick 3: %v", err)
 	}
@@ -742,14 +743,14 @@ func TestStateVar_MixedWithRawInventory(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 2 // embers (state_var)
 	reader.invQuantities[0x400003E8] = 5 // shards (raw)
 	reader.igt = 10000
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("tick: %v", err)
 	}
@@ -780,12 +781,12 @@ func TestStateVar_CatchUp(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 5 // have 5 embers at route start
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Fatalf("expected CatchUp to succeed, got %v", err)
 	}
 	if !runner.state.CompletedFlags["embers-2"] {
@@ -813,13 +814,13 @@ func TestStateVar_Persistence(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 3
 	reader.igt = 10000
 
-	runner.Tick()
+	runner.Tick(reader)
 
 	// Verify state var was persisted
 	rows, err := tracker.LoadStateVars(runner.runID)
@@ -856,13 +857,13 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true             // boss1 already killed
 	reader.invQuantities[0x400003E8] = 7 // already have 7 shards
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Fatalf("expected CatchUp to succeed, got %v", err)
 	}
 
@@ -918,7 +919,7 @@ func TestRestoreFromDB(t *testing.T) {
 	tracker.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
 
 	// Create a new runner and restore from DB
-	runner := NewRunner(r, tracker, nil, newMockGameReader())
+	runner := NewRunner(r, tracker, nil)
 	runner.state.Start()
 	runner.runID = runID
 
@@ -965,7 +966,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 
 	// Resume the run (RestoreFromDB marks boss1 as completed)
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	if err := runner.Resume(runID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -977,7 +978,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 	reader.flags[100] = true // boss1 — already restored from DB
 	reader.flags[200] = true // boss2 — newly completed in memory
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Fatalf("CatchUp: %v", err)
 	}
 
@@ -1032,12 +1033,12 @@ func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400003E8] = 7 // already have 7 shards
 
-	if err := runner.CatchUp(); err != nil {
+	if err := runner.CatchUp(reader); err != nil {
 		t.Errorf("expected CatchUp to succeed, got %v", err)
 	}
 	if !runner.state.CompletedFlags["shards-5"] {
@@ -1067,7 +1068,7 @@ func TestRunner_Resume(t *testing.T) {
 
 	// Resume the run with a new runner
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil, reader)
+	runner := NewRunner(r, tracker, nil)
 	if err := runner.Resume(runID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -1096,7 +1097,7 @@ func TestRunner_Resume(t *testing.T) {
 	reader.igt = 120000
 	reader.deathCount = 8
 
-	events, err := runner.Tick()
+	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("Tick after Resume: %v", err)
 	}

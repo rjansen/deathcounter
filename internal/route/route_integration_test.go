@@ -22,7 +22,7 @@ func routesDir(t *testing.T) string {
 
 func TestDS3Route_LoadsSuccessfully(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestDS3Route_LoadsSuccessfully(t *testing.T) {
 
 func TestDS3Route_CheckpointFlagsMatchConstants(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestDS3Route_CheckpointFlagsMatchConstants(t *testing.T) {
 
 func TestDS3Route_BackupFlagsMatchEncounteredConstants(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestDS3Route_BackupFlagsMatchEncounteredConstants(t *testing.T) {
 
 func TestDS3Route_NoDuplicateEventFlags(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestDS3Route_NoDuplicateEventFlags(t *testing.T) {
 
 func TestDS3Route_NoDuplicateBackupFlags(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestDS3Route_NoDuplicateBackupFlags(t *testing.T) {
 
 func TestDS3Route_AllBossCheckpointsHaveEventFlags(t *testing.T) {
 	dir := routesDir(t)
-	route, err := LoadRoute(filepath.Join(dir, "01-ds3-glitchless-any-percent-e2e.json"))
+	route, err := LoadRoute(filepath.Join(dir, "ds3", "01-glitchless-any-percent-e2e.json"))
 	if err != nil {
 		t.Fatalf("failed to load DS3 route: %v", err)
 	}
@@ -179,16 +179,18 @@ func TestDS3Route_AllBossCheckpointsHaveEventFlags(t *testing.T) {
 
 func TestAllRoutes_LoadSuccessfully(t *testing.T) {
 	dir := routesDir(t)
-	routes, err := LoadRoutesDir(dir)
+	routeMap, err := LoadRoutesDir(dir)
 	if err != nil {
 		t.Fatalf("LoadRoutesDir: %v", err)
 	}
 
-	if len(routes) == 0 {
-		t.Fatal("no routes found in routes/ directory")
+	if len(routeMap) == 0 {
+		t.Fatal("no game directories found in routes/")
 	}
 
-	for _, r := range routes {
-		t.Logf("Loaded route: %s (%s) — %d checkpoints", r.Name, r.Game, len(r.Checkpoints))
+	for gameID, routes := range routeMap {
+		for _, r := range routes {
+			t.Logf("Loaded route: %s (%s) game=%s — %d checkpoints", r.Name, r.ID, gameID, len(r.Checkpoints))
+		}
 	}
 }

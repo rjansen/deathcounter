@@ -414,8 +414,69 @@ func TestValidate_StateVar_InvalidName(t *testing.T) {
 	}
 }
 
+func TestLoadRouteByID_WithGameID(t *testing.T) {
+	dir := t.TempDir()
+	gameDir := filepath.Join(dir, "ds3")
+	os.MkdirAll(gameDir, 0755)
+
+	route := Route{
+		ID:   "test-route",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+		},
+	}
+	data, _ := json.Marshal(route)
+	os.WriteFile(filepath.Join(gameDir, "test.json"), data, 0644)
+
+	loaded, err := LoadRouteByID("ds3", "test-route", dir)
+	if err != nil {
+		t.Fatalf("LoadRouteByID: %v", err)
+	}
+	if loaded.ID != "test-route" {
+		t.Errorf("got ID %q, want %q", loaded.ID, "test-route")
+	}
+}
+
+func TestLoadRouteByID_GameMismatch(t *testing.T) {
+	dir := t.TempDir()
+	gameDir := filepath.Join(dir, "sekiro")
+	os.MkdirAll(gameDir, 0755)
+
+	// Route says game is "ds3" but is in "sekiro" directory
+	route := Route{
+		ID:   "misplaced",
+		Name: "Misplaced",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+		},
+	}
+	data, _ := json.Marshal(route)
+	os.WriteFile(filepath.Join(gameDir, "misplaced.json"), data, 0644)
+
+	_, err := LoadRouteByID("sekiro", "misplaced", dir)
+	if err == nil {
+		t.Fatal("expected error for game mismatch")
+	}
+}
+
+func TestLoadRouteByID_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	gameDir := filepath.Join(dir, "ds3")
+	os.MkdirAll(gameDir, 0755)
+
+	_, err := LoadRouteByID("ds3", "nonexistent", dir)
+	if err == nil {
+		t.Fatal("expected error for route not found")
+	}
+}
+
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
+	gameDir := filepath.Join(dir, "ds3")
+	os.MkdirAll(gameDir, 0755)
 
 	for _, id := range []string{"route1", "route2"} {
 		route := Route{
@@ -427,29 +488,62 @@ func TestLoadRoutesDir(t *testing.T) {
 			},
 		}
 		data, _ := json.Marshal(route)
-		os.WriteFile(filepath.Join(dir, id+".json"), data, 0644)
+		os.WriteFile(filepath.Join(gameDir, id+".json"), data, 0644)
 	}
 
 	// Non-JSON file should be skipped
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore"), 0644)
+	os.WriteFile(filepath.Join(gameDir, "readme.txt"), []byte("ignore"), 0644)
 
-	routes, err := LoadRoutesDir(dir)
+	routeMap, err := LoadRoutesDir(dir)
 	if err != nil {
 		t.Fatalf("LoadRoutesDir: %v", err)
 	}
-	if len(routes) != 2 {
-		t.Errorf("got %d routes, want 2", len(routes))
+	ds3Routes := routeMap["ds3"]
+	if len(ds3Routes) != 2 {
+		t.Errorf("got %d ds3 routes, want 2", len(ds3Routes))
+	}
+}
+
+func TestLoadRoutesDir_MultipleGames(t *testing.T) {
+	dir := t.TempDir()
+	for _, gameID := range []string{"ds3", "er"} {
+		gameDir := filepath.Join(dir, gameID)
+		os.MkdirAll(gameDir, 0755)
+		route := Route{
+			ID:   gameID + "-route",
+			Name: gameID + " Route",
+			Game: gameID,
+			Checkpoints: []Checkpoint{
+				{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+			},
+		}
+		data, _ := json.Marshal(route)
+		os.WriteFile(filepath.Join(gameDir, "route.json"), data, 0644)
+	}
+
+	routeMap, err := LoadRoutesDir(dir)
+	if err != nil {
+		t.Fatalf("LoadRoutesDir: %v", err)
+	}
+	if len(routeMap) != 2 {
+		t.Errorf("got %d game keys, want 2", len(routeMap))
+	}
+	if len(routeMap["ds3"]) != 1 {
+		t.Errorf("got %d ds3 routes, want 1", len(routeMap["ds3"]))
+	}
+	if len(routeMap["er"]) != 1 {
+		t.Errorf("got %d er routes, want 1", len(routeMap["er"]))
 	}
 }
 
 func TestLoadRoutesDir_Empty(t *testing.T) {
 	dir := t.TempDir()
-	routes, err := LoadRoutesDir(dir)
+	routeMap, err := LoadRoutesDir(dir)
 	if err != nil {
 		t.Fatalf("LoadRoutesDir: %v", err)
 	}
-	if len(routes) != 0 {
-		t.Errorf("got %d routes, want 0", len(routes))
+	if len(routeMap) != 0 {
+		t.Errorf("got %d game keys, want 0", len(routeMap))
 	}
 }
 
