@@ -83,12 +83,13 @@ func (r *GameReader) Attach() error {
 			continue
 		}
 
+		gameCopy := game
 		r.processHandle = handle
 		r.baseAddress = baseAddr
-		r.game = &game
+		r.game = &gameCopy
 		r.is64Bit = is64Bit
 		r.attached = true
-		r.currentGame = game.Name
+		r.currentGame = game.ID
 
 		return nil
 	}
@@ -885,7 +886,7 @@ func (r *GameReader) ReadInventoryItemQuantity(itemID uint32) (uint32, error) {
 		return 0, ErrNullPointer
 	}
 
-	// Read item count
+	// Read normal item count
 	count, err := r.readUint32(equipInvData + inv.CountOffset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read inventory count: %w", err)
@@ -894,18 +895,37 @@ func (r *GameReader) ReadInventoryItemQuantity(itemID uint32) (uint32, error) {
 		count = 8192
 	}
 
-	// Scan entries for matching TypeId
-	for i := uint32(0); i < count; i++ {
-		entryBase := listPtr + int64(i)*inv.ItemStride
-		typeId, err := r.readUint32(entryBase + inv.TypeIdOffset)
-		if err != nil {
-			continue
-		}
-		if typeId == itemID {
-			qty, err := r.readUint32(entryBase + inv.QuantityOffset)
+	// Read capacity and key item start for the key item region
+	capacity, _ := r.readUint32(equipInvData + inv.CapacityOffset)
+	keyStart, _ := r.readUint32(equipInvData + inv.KeyItemStartOffset)
+
+	// scanRange searches entries [start, start+length) for matching TypeId.
+	scanRange := func(start, length uint32) (uint32, bool) {
+		for i := uint32(0); i < length; i++ {
+			entryBase := listPtr + int64(start+i)*inv.ItemStride
+			typeId, err := r.readUint32(entryBase + inv.TypeIdOffset)
 			if err != nil {
-				return 0, fmt.Errorf("failed to read quantity at entry %d: %w", i, err)
+				continue
 			}
+			if typeId == itemID {
+				qty, err := r.readUint32(entryBase + inv.QuantityOffset)
+				if err != nil {
+					return 0, false
+				}
+				return qty, true
+			}
+		}
+		return 0, false
+	}
+
+	// Scan normal items region (0..count-1)
+	if qty, found := scanRange(0, count); found {
+		return qty, nil
+	}
+
+	// Scan key items region (keyStart..capacity-1)
+	if capacity > 0 && keyStart > 0 && keyStart < capacity {
+		if qty, found := scanRange(keyStart, capacity-keyStart); found {
 			return qty, nil
 		}
 	}

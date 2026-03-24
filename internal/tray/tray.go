@@ -5,7 +5,6 @@ package tray
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/lxn/walk"
 	"github.com/rjansen/deathcounter/internal/monitor"
@@ -16,8 +15,6 @@ import (
 type App struct {
 	monitor           monitor.Monitor
 	tracker           *stats.Tracker
-	ticker            *time.Ticker
-	stopCh            chan struct{}
 	mainWindow        *walk.MainWindow
 	ni                *walk.NotifyIcon
 	menuTitle         *walk.Action
@@ -84,34 +81,13 @@ func (a *App) Run() error {
 		return fmt.Errorf("failed to show notify icon: %w", err)
 	}
 
-	// Start tick loop
-	a.ticker = time.NewTicker(500 * time.Millisecond)
-	a.stopCh = make(chan struct{})
+	// Start monitor tick loop and consume display updates
+	a.monitor.Start()
 	go func() {
-		for {
-			select {
-			case <-a.ticker.C:
-				a.monitor.Tick()
-			case <-a.stopCh:
-				return
-			}
-		}
-	}()
-
-	// Listen for display updates
-	go func() {
-		for {
-			select {
-			case update, ok := <-a.monitor.DisplayUpdates():
-				if !ok {
-					return
-				}
-				a.mainWindow.Synchronize(func() {
-					a.refreshDisplay(update)
-				})
-			case <-a.stopCh:
-				return
-			}
+		for update := range a.monitor.DisplayUpdates() {
+			a.mainWindow.Synchronize(func() {
+				a.refreshDisplay(update)
+			})
 		}
 	}()
 
@@ -249,12 +225,7 @@ func (a *App) buildMenu() error {
 // onExit is called when the application is shutting down.
 func (a *App) onExit() {
 	log.Println("Shutting down...")
-	if a.ticker != nil {
-		a.ticker.Stop()
-	}
-	if a.stopCh != nil {
-		close(a.stopCh)
-	}
+	a.monitor.Stop()
 }
 
 // refreshDisplay updates all tray menu items from a DisplayUpdate.

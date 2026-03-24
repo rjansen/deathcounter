@@ -106,6 +106,17 @@ func (t *Tracker) initDB() error {
 		UNIQUE(route_id, checkpoint_id)
 	);
 
+	CREATE TABLE IF NOT EXISTS route_state_vars (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id INTEGER NOT NULL,
+		var_name TEXT NOT NULL,
+		item_id INTEGER NOT NULL,
+		last_quantity INTEGER NOT NULL DEFAULT 0,
+		accumulated INTEGER NOT NULL DEFAULT 0,
+		FOREIGN KEY (run_id) REFERENCES route_runs(id),
+		UNIQUE(run_id, var_name)
+	);
+
 	CREATE TABLE IF NOT EXISTS saves (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		game TEXT NOT NULL,
@@ -388,11 +399,11 @@ func (t *Tracker) GetSessionHistory(limit int) ([]Session, error) {
 
 // RouteCheckpoint represents a recorded checkpoint in a route run.
 type RouteCheckpoint struct {
-	CheckpointID       string
-	CheckpointName     string
-	IGTMs              int64
+	CheckpointID         string
+	CheckpointName       string
+	IGTMs                int64
 	CheckpointDurationMs int64
-	Deaths             uint32
+	Deaths               uint32
 }
 
 // StartRouteRun creates a new route run record and returns its ID.
@@ -472,6 +483,91 @@ func (t *Tracker) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitM
 			best_split_ms = MIN(best_split_ms, excluded.best_split_ms)
 	`, routeID, checkpointID, igtMs, splitMs)
 	return err
+}
+
+// StateVarRow represents a persisted state variable for cumulative inventory tracking.
+type StateVarRow struct {
+	VarName      string
+	ItemID       uint32
+	LastQuantity uint32
+	Accumulated  uint32
+}
+
+// SaveStateVar upserts a state variable for the given run.
+func (t *Tracker) SaveStateVar(runID int64, varName string, itemID, lastQty, accumulated uint32) error {
+	_, err := t.db.Exec(`
+		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, accumulated)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(run_id, var_name) DO UPDATE SET
+			item_id = excluded.item_id,
+			last_quantity = excluded.last_quantity,
+			accumulated = excluded.accumulated`,
+		runID, varName, itemID, lastQty, accumulated,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save state var: %w", err)
+	}
+	return nil
+}
+
+// LoadStateVars loads all state variables for a run.
+func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
+	rows, err := t.db.Query(
+		"SELECT var_name, item_id, last_quantity, accumulated FROM route_state_vars WHERE run_id = ?",
+		runID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state vars: %w", err)
+	}
+	defer rows.Close()
+
+	var result []StateVarRow
+	for rows.Next() {
+		var r StateVarRow
+		if err := rows.Scan(&r.VarName, &r.ItemID, &r.LastQuantity, &r.Accumulated); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// FindInProgressRun returns the ID of the most recent in-progress route run
+// for the given route and save. Returns (0, false, nil) if no such run exists.
+func (t *Tracker) FindInProgressRun(routeID string, saveID int64) (int64, bool, error) {
+	var runID int64
+	err := t.db.QueryRow(
+		"SELECT id FROM route_runs WHERE route_id = ? AND save_id = ? AND status = 'in_progress' ORDER BY start_time DESC LIMIT 1",
+		routeID, saveID,
+	).Scan(&runID)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to find in-progress run: %w", err)
+	}
+	return runID, true, nil
+}
+
+// LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
+func (t *Tracker) LoadCompletedCheckpoints(runID int64) ([]string, error) {
+	rows, err := t.db.Query(
+		"SELECT checkpoint_id FROM route_checkpoints WHERE run_id = ?", runID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load completed checkpoints: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // DB returns the underlying database connection for advanced queries.

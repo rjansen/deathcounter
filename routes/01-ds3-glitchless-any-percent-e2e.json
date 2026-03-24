@@ -1,0 +1,221 @@
+{
+  "id": "ds3-glitchless-any-percent-e2e",
+  "name": "DS3 Glitchless Any% - e2e",
+  "game": "ds3",
+  "category": "Any% Glitchless",
+  "version": "9",
+  "checkpoints": [
+    {
+      "id": "ashen-estus-flask-1",
+      "name": "Ashen Estus Flask",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742015, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "titanite-shard-1",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "firebomb-1",
+      "name": "Firebomb",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742116, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "iudex-gundyr",
+      "name": "Iudex Gundyr",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 14000800},
+      "backup_flag_check": {"flag_id": 14000801}
+    },
+    {
+      "id": "ember-2",
+      "name": "Ember x2",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 2, "state_var": "embers"}
+    },
+    {
+      "id": "homeward-bone-3",
+      "name": "Homeward Bone x3",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742174, "comparison": "eq", "value": 3}
+    },
+    {
+      "id": "estus-shard-1",
+      "name": "Estus Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "large-titanite-shard-1",
+      "name": "Large Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742825, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "titanite-chunk-1",
+      "name": "Titanite Chunk",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742826, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "covetous-silver-serpent-ring",
+      "name": "Covetous Silver Serpent Ring",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 536891312, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "dagger-1",
+      "name": "Dagger",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1000000, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "shortsword-1",
+      "name": "Shortsword",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 2000000, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "end-13",
+      "name": "Endurance 13",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 76, "comparison": "gte", "value": 13, "size": 4}
+    },
+    {
+      "id": "dex-16",
+      "name": "Dexterity 16",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 16, "size": 4}
+    },
+    {
+      "id": "golden-pine-resin-2",
+      "name": "Golden Pine Resin x2",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742155, "comparison": "gte", "value": 2}
+    },
+    {
+      "id": "ember-4",
+      "name": "Ember x4",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 4, "state_var": "embers"}
+    },
+    {
+      "id": "vordt",
+      "name": "Vordt of the Boreal Valley",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13000800},
+      "backup_flag_check": {"flag_id": 13000801}
+    },
+    {
+      "id": "abyss-watchers",
+      "name": "Abyss Watchers",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13300800},
+      "backup_flag_check": {"flag_id": 13300801}
+    },
+    {
+      "id": "wolnir",
+      "name": "High Lord Wolnir",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13800800},
+      "backup_flag_check": {"flag_id": 13800801}
+    },
+    {
+      "id": "twinblades-plus3",
+      "name": "Sellsword Twinblades +3",
+      "event_type": "weapon_upgrade",
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 3, "size": 1},
+      "optional": true
+    },
+    {
+      "id": "dex-33",
+      "name": "Level DEX to 33",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 33, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "crystal-sage",
+      "name": "Crystal Sage",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13300850},
+      "backup_flag_check": {"flag_id": 13300852}
+    },
+    {
+      "id": "deacons",
+      "name": "Deacons of the Deep",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13500800},
+      "backup_flag_check": {"flag_id": 13500801}
+    },
+    {
+      "id": "yhorm",
+      "name": "Yhorm the Giant",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13900800},
+      "backup_flag_check": {"flag_id": 13900801}
+    },
+    {
+      "id": "pontiff",
+      "name": "Pontiff Sulyvahn",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13700850}
+    },
+    {
+      "id": "aldrich",
+      "name": "Aldrich, Devourer of Gods",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13700800}
+    },
+    {
+      "id": "twinblades-plus6",
+      "name": "Sellsword Twinblades +6",
+      "event_type": "weapon_upgrade",
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 6, "size": 1},
+      "optional": true
+    },
+    {
+      "id": "dex-38",
+      "name": "Level DEX to 38",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 38, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "dancer",
+      "name": "Dancer of the Boreal Valley",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13000890}
+    },
+    {
+      "id": "dragonslayer-armour",
+      "name": "Dragonslayer Armour",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13010800}
+    },
+    {
+      "id": "twin-princes",
+      "name": "Twin Princes",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 13410830},
+      "backup_flag_check": {"flag_id": 13410831}
+    },
+    {
+      "id": "dex-47",
+      "name": "Level DEX to 47",
+      "event_type": "level_up",
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 47, "size": 4},
+      "optional": true
+    },
+    {
+      "id": "soul-of-cinder",
+      "name": "Soul of Cinder",
+      "event_type": "boss_kill",
+      "event_flag_check": {"flag_id": 14100800},
+      "backup_flag_check": {"flag_id": 14100801}
+    }
+  ]
+}

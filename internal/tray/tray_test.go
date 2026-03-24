@@ -4,7 +4,6 @@ package tray
 
 import (
 	"testing"
-	"time"
 
 	"github.com/lxn/walk"
 	"github.com/rjansen/deathcounter/internal/monitor"
@@ -13,7 +12,6 @@ import (
 
 // mockMonitor implements monitor.Monitor for testing.
 type mockMonitor struct {
-	tickCount int
 	updatesCh chan monitor.DisplayUpdate
 }
 
@@ -23,7 +21,8 @@ func newMockMonitor() *mockMonitor {
 	}
 }
 
-func (m *mockMonitor) Tick()                                       { m.tickCount++ }
+func (m *mockMonitor) Start()                                      {}
+func (m *mockMonitor) Stop()                                       {}
 func (m *mockMonitor) DisplayUpdates() <-chan monitor.DisplayUpdate { return m.updatesCh }
 
 func TestNewApp(t *testing.T) {
@@ -377,30 +376,7 @@ func TestRefreshDisplay_NilRouteFieldsResetsDefaults(t *testing.T) {
 	}
 }
 
-func TestOnExit_StopsTickerAndClosesChannel(t *testing.T) {
-	mon := newMockMonitor()
-	tracker, err := stats.NewTracker(":memory:")
-	if err != nil {
-		t.Fatalf("failed to create tracker: %v", err)
-	}
-	defer tracker.Close()
-
-	app := NewApp(mon, tracker)
-	app.ticker = time.NewTicker(time.Hour)
-	app.stopCh = make(chan struct{})
-
-	app.onExit()
-
-	// Verify stopCh is closed
-	select {
-	case <-app.stopCh:
-		// expected
-	default:
-		t.Error("stopCh was not closed")
-	}
-}
-
-func TestOnExit_NilTickerAndChannel(t *testing.T) {
+func TestOnExit_DoesNotPanic(t *testing.T) {
 	mon := newMockMonitor()
 	tracker, err := stats.NewTracker(":memory:")
 	if err != nil {
@@ -410,6 +386,6 @@ func TestOnExit_NilTickerAndChannel(t *testing.T) {
 
 	app := NewApp(mon, tracker)
 
-	// Should not panic with nil ticker/stopCh
+	// Should not panic
 	app.onExit()
 }

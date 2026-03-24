@@ -12,14 +12,13 @@ func TestLoadRoute_Valid(t *testing.T) {
 	route := Route{
 		ID:       "test-route",
 		Name:     "Test Route",
-		Game:     "Dark Souls III",
+		Game:     "ds3",
 		Category: "Any%",
 		Version:  "1",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 13000800},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 13100800},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 13000800}},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 13100800}},
 		},
-		ReferenceTimes: []int64{95000, 225000},
 	}
 
 	data, _ := json.Marshal(route)
@@ -42,8 +41,8 @@ func TestLoadRoute_MissingID(t *testing.T) {
 	dir := t.TempDir()
 	route := Route{
 		Name:        "Test",
-		Game:        "Dark Souls III",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
+		Game:        "ds3",
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -59,8 +58,8 @@ func TestLoadRoute_MissingName(t *testing.T) {
 	dir := t.TempDir()
 	route := Route{
 		ID:          "test",
-		Game:        "Dark Souls III",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
+		Game:        "ds3",
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -77,7 +76,7 @@ func TestLoadRoute_EmptyCheckpoints(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -95,7 +94,7 @@ func TestLoadRoute_UnknownGame(t *testing.T) {
 		ID:          "test",
 		Name:        "Test",
 		Game:        "Bloodborne",
-		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000}},
+		Checkpoints: []Checkpoint{{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}}},
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
@@ -107,33 +106,12 @@ func TestLoadRoute_UnknownGame(t *testing.T) {
 	}
 }
 
-func TestLoadRoute_MismatchedReferenceTimes(t *testing.T) {
-	dir := t.TempDir()
-	route := Route{
-		ID:   "test",
-		Name: "Test",
-		Game: "Dark Souls III",
-		Checkpoints: []Checkpoint{
-			{ID: "a", Name: "A", EventType: "boss_kill"},
-		},
-		ReferenceTimes: []int64{100, 200}, // 2 times for 1 checkpoint
-	}
-	data, _ := json.Marshal(route)
-	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
-
-	_, err := LoadRoute(path)
-	if err == nil {
-		t.Fatal("expected error for mismatched reference_times")
-	}
-}
-
 func TestLoadRoute_CheckpointMissingFields(t *testing.T) {
 	dir := t.TempDir()
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{ID: "", Name: "A", EventType: "boss_kill"},
 		},
@@ -171,7 +149,7 @@ func TestLoadRoute_MemCheckValid(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "level-20", Name: "Level 20", EventType: "level_up",
@@ -200,7 +178,7 @@ func TestLoadRoute_MemCheckMissingPath(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "a", Name: "A", EventType: "level_up",
@@ -223,7 +201,7 @@ func TestLoadRoute_MemCheckInvalidComparison(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "a", Name: "A", EventType: "level_up",
@@ -246,7 +224,7 @@ func TestLoadRoute_MemCheckInvalidSize(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "a", Name: "A", EventType: "level_up",
@@ -269,7 +247,7 @@ func TestLoadRoute_NoCondition(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{ID: "a", Name: "A", EventType: "boss_kill"}, // no flag_id, no mem_check
 		},
@@ -289,7 +267,7 @@ func TestLoadRoute_InventoryCheckValid(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
@@ -318,7 +296,7 @@ func TestLoadRoute_InventoryCheckMissingItemID(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "a", Name: "A", EventType: "item_pickup",
@@ -341,7 +319,7 @@ func TestLoadRoute_InventoryCheckInvalidComparison(t *testing.T) {
 	route := Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "a", Name: "A", EventType: "item_pickup",
@@ -359,6 +337,83 @@ func TestLoadRoute_InventoryCheckInvalidComparison(t *testing.T) {
 	}
 }
 
+func TestValidate_StateVar_SameItemID(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "embers-4", Name: "4 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 4, StateVar: "embers"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("expected valid route, got error: %v", err)
+	}
+}
+
+func TestValidate_StateVar_ConflictingItemID(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers"},
+			},
+			{
+				ID: "firebombs-3", Name: "3 Firebombs", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x40000124, Comparison: "gte", Value: 3, StateVar: "embers"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for conflicting item_id on same state_var")
+	}
+}
+
+func TestValidate_StateVar_InvalidName(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "em bers!"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	os.WriteFile(path, data, 0644)
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid state_var name")
+	}
+}
+
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
 
@@ -366,9 +421,9 @@ func TestLoadRoutesDir(t *testing.T) {
 		route := Route{
 			ID:   id,
 			Name: id,
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []Checkpoint{
-				{ID: "a", Name: "A", EventType: "boss_kill", EventFlagID: 1000},
+				{ID: "a", Name: "A", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
 			},
 		}
 		data, _ := json.Marshal(route)

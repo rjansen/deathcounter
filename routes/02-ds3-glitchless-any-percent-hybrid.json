@@ -1,132 +1,131 @@
 {
   "id": "ds3-glitchless-any-percent-hybrid",
   "name": "DS3 Glitchless Any% - Hybrid Route",
-  "game": "Dark Souls III",
+  "game": "ds3",
   "category": "Any% Glitchless",
-  "version": "6",
+  "version": "7",
   "checkpoints": [
     {
       "id": "iudex-gundyr",
       "name": "Iudex Gundyr",
       "event_type": "boss_kill",
-      "event_flag_id": 14000800,
-      "backup_flag_id": 14000801
+      "event_flag_check": {"flag_id": 14000800},
+      "backup_flag_check": {"flag_id": 14000801}
     },
     {
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13000800,
-      "backup_flag_id": 13000801
+      "event_flag_check": {"flag_id": 13000800},
+      "backup_flag_check": {"flag_id": 13000801}
     },
     {
       "id": "abyss-watchers",
       "name": "Abyss Watchers",
       "event_type": "boss_kill",
-      "event_flag_id": 13300800,
-      "backup_flag_id": 13300801
+      "event_flag_check": {"flag_id": 13300800},
+      "backup_flag_check": {"flag_id": 13300801}
     },
     {
       "id": "wolnir",
       "name": "High Lord Wolnir",
       "event_type": "boss_kill",
-      "event_flag_id": 13800800,
-      "backup_flag_id": 13800801
+      "event_flag_check": {"flag_id": 13800800},
+      "backup_flag_check": {"flag_id": 13800801}
     },
     {
       "id": "twinblades-plus3",
       "name": "Sellsword Twinblades +3",
       "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 3, "size": 1},
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 3, "size": 1},
       "optional": true
     },
     {
       "id": "dex-33",
       "name": "Level DEX to 33",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 33, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 33, "size": 4},
       "optional": true
     },
     {
       "id": "crystal-sage",
       "name": "Crystal Sage",
       "event_type": "boss_kill",
-      "event_flag_id": 13300850,
-      "backup_flag_id": 13300852
+      "event_flag_check": {"flag_id": 13300850},
+      "backup_flag_check": {"flag_id": 13300852}
     },
     {
       "id": "deacons",
       "name": "Deacons of the Deep",
       "event_type": "boss_kill",
-      "event_flag_id": 13500800,
-      "backup_flag_id": 13500801
+      "event_flag_check": {"flag_id": 13500800},
+      "backup_flag_check": {"flag_id": 13500801}
     },
     {
       "id": "yhorm",
       "name": "Yhorm the Giant",
       "event_type": "boss_kill",
-      "event_flag_id": 13900800,
-      "backup_flag_id": 13900801
+      "event_flag_check": {"flag_id": 13900800},
+      "backup_flag_check": {"flag_id": 13900801}
     },
     {
       "id": "pontiff",
       "name": "Pontiff Sulyvahn",
       "event_type": "boss_kill",
-      "event_flag_id": 13700850
+      "event_flag_check": {"flag_id": 13700850}
     },
     {
       "id": "aldrich",
       "name": "Aldrich, Devourer of Gods",
       "event_type": "boss_kill",
-      "event_flag_id": 13700800
+      "event_flag_check": {"flag_id": 13700800}
     },
     {
       "id": "twinblades-plus6",
       "name": "Sellsword Twinblades +6",
       "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 162, "comparison": "gte", "value": 6, "size": 1},
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 6, "size": 1},
       "optional": true
     },
     {
       "id": "dex-38",
       "name": "Level DEX to 38",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 38, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 38, "size": 4},
       "optional": true
     },
     {
       "id": "dancer",
       "name": "Dancer of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13000890
+      "event_flag_check": {"flag_id": 13000890}
     },
     {
       "id": "dragonslayer-armour",
       "name": "Dragonslayer Armour",
       "event_type": "boss_kill",
-      "event_flag_id": 13010800
+      "event_flag_check": {"flag_id": 13010800}
     },
     {
       "id": "twin-princes",
       "name": "Twin Princes",
       "event_type": "boss_kill",
-      "event_flag_id": 13410830,
-      "backup_flag_id": 13410831
+      "event_flag_check": {"flag_id": 13410830},
+      "backup_flag_check": {"flag_id": 13410831}
     },
     {
       "id": "dex-47",
       "name": "Level DEX to 47",
       "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 128, "comparison": "gte", "value": 47, "size": 4},
+      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 47, "size": 4},
       "optional": true
     },
     {
       "id": "soul-of-cinder",
       "name": "Soul of Cinder",
       "event_type": "boss_kill",
-      "event_flag_id": 14100800,
-      "backup_flag_id": 14100801
+      "event_flag_check": {"flag_id": 14100800},
+      "backup_flag_check": {"flag_id": 14100801}
     }
-  ],
-  "reference_times": [95000, 225000, 480000, 630000, 680000, 690000, 870000, 1020000, 1170000, 1320000, 1470000, 1510000, 1530000, 1680000, 1830000, 2010000, 2070000, 2400000]
+  ]
 }

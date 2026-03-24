@@ -1,5 +1,7 @@
 package memreader
 
+import "sort"
+
 // AOBPointerConfig describes how to find a pointer via AOB (Array of Bytes) scanning.
 type AOBPointerConfig struct {
 	Pattern           string   // Primary hex byte pattern with ? wildcards, e.g. "48 c7 05 ? ? ? ?"
@@ -10,19 +12,25 @@ type AOBPointerConfig struct {
 }
 
 // InventoryConfig describes the layout of the in-game inventory array.
+// The array is split into two regions: normal items (0..count-1) and
+// key items (keyItemStartOffset..capacity-1). Both regions share the
+// same list pointer and entry layout.
 type InventoryConfig struct {
-	PathKey        string // MemoryPaths key for base (e.g. "player_game_data")
-	DataOffset     int64  // offset to EquipInventoryData struct
-	ListPtrOffset  int64  // offset within struct to list pointer (dereference)
-	CountOffset    int64  // offset within struct to item count (uint32)
-	ItemStride     int64  // size of each item entry
-	TypeIdOffset   int64  // offset within entry to TypeId
-	QuantityOffset int64  // offset within entry to Quantity
+	PathKey            string // MemoryPaths key for base (e.g. "player_game_data")
+	DataOffset         int64  // offset to EquipInventoryData struct
+	CapacityOffset     int64  // offset within struct to total array capacity (uint32)
+	KeyItemStartOffset int64  // offset within struct to key item region start index (uint32)
+	ListPtrOffset      int64  // offset within struct to list pointer (dereference)
+	CountOffset        int64  // offset within struct to normal item count (uint32)
+	ItemStride         int64  // size of each item entry
+	TypeIdOffset       int64  // offset within entry to TypeId
+	QuantityOffset     int64  // offset within entry to Quantity
 }
 
 // GameConfig holds the configuration for a specific FromSoftware game
 type GameConfig struct {
-	Name                string
+	ID                  string // short identifier (e.g. "ds3")
+	Label               string // full display name (e.g. "Dark Souls III")
 	ProcessName         string
 	Offsets32           []int64            // Offsets for 32-bit version (if exists)
 	Offsets64           []int64            // Offsets for 64-bit version
@@ -44,21 +52,24 @@ type GameConfig struct {
 	Inventory           *InventoryConfig   // Inventory array layout (nil if not supported)
 }
 
-var supportedGames = []GameConfig{
-	{
-		Name:        "Dark Souls: Prepare To Die Edition",
+var supportedGames = map[string]GameConfig{
+	"ds1": {
+		ID:          "ds1",
+		Label:       "Dark Souls: Prepare To Die Edition",
 		ProcessName: "DARKSOULS",
 		Offsets32:   []int64{0xF78700, 0x5C},
 		Offsets64:   nil,
 	},
-	{
-		Name:        "Dark Souls II",
+	"ds2": {
+		ID:          "ds2",
+		Label:       "Dark Souls II",
 		ProcessName: "DarkSoulsII",
 		Offsets32:   []int64{0x1150414, 0x74, 0xB8, 0x34, 0x4, 0x28C, 0x100},
 		Offsets64:   []int64{0x16148F0, 0xD0, 0x490, 0x104},
 	},
-	{
-		Name:               "Dark Souls III",
+	"ds3": {
+		ID:                 "ds3",
+		Label:              "Dark Souls III",
 		ProcessName:        "DarkSoulsIII",
 		Offsets32:          nil,
 		Offsets64:          []int64{0x47572B8, 0x98},
@@ -96,13 +107,15 @@ var supportedGames = []GameConfig{
 		SaveSlotPathKey: "game_man",
 		SaveSlotOffset:  DS3OffsetSaveSlot,
 		Inventory: &InventoryConfig{
-			PathKey:        "player_game_data",
-			DataOffset:     DS3OffsetEquipInventoryData,
-			ListPtrOffset:  DS3OffsetInvListPtr,
-			CountOffset:    DS3OffsetInvCount,
-			ItemStride:     DS3InvItemStride,
-			TypeIdOffset:   DS3InvItemTypeIdOffset,
-			QuantityOffset: DS3InvItemQuantityOffset,
+			PathKey:            "player_game_data",
+			DataOffset:         DS3OffsetEquipInventoryData,
+			CapacityOffset:     DS3OffsetInvCapacity,
+			KeyItemStartOffset: DS3OffsetInvKeyItemStart,
+			ListPtrOffset:      DS3OffsetInvListPtr,
+			CountOffset:        DS3OffsetInvCount,
+			ItemStride:         DS3InvItemStride,
+			TypeIdOffset:       DS3InvItemTypeIdOffset,
+			QuantityOffset:     DS3InvItemQuantityOffset,
 		},
 		SaveFilePattern: `%APPDATA%\DarkSoulsIII\*\DS30000.sl2`,
 		SprjEventFlagManAOB: &AOBPointerConfig{
@@ -145,38 +158,61 @@ var supportedGames = []GameConfig{
 			Dereference:       true,
 		},
 	},
-	{
-		Name:        "Dark Souls Remastered",
+	"dsr": {
+		ID:          "dsr",
+		Label:       "Dark Souls Remastered",
 		ProcessName: "DarkSoulsRemastered",
 		Offsets32:   nil,
 		Offsets64:   []int64{0x1C8A530, 0x98},
 	},
-	{
-		Name:        "Sekiro: Shadows Die Twice",
+	"sekiro": {
+		ID:          "sekiro",
+		Label:       "Sekiro: Shadows Die Twice",
 		ProcessName: "sekiro",
 		Offsets32:   nil,
 		Offsets64:   []int64{0x3D5AAC0, 0x90},
 	},
-	{
-		Name:        "Elden Ring",
+	"er": {
+		ID:          "er",
+		Label:       "Elden Ring",
 		ProcessName: "eldenring",
 		Offsets32:   nil,
 		Offsets64:   []int64{0x3D5DF38, 0x94},
 	},
 }
 
-// GetSupportedGames returns a list of all supported game names.
+// GetSupportedGames returns a sorted list of all supported game IDs.
 func GetSupportedGames() []string {
-	games := make([]string, len(supportedGames))
-	for i, game := range supportedGames {
-		games[i] = game.Name
+	games := make([]string, 0, len(supportedGames))
+	for id := range supportedGames {
+		games = append(games, id)
 	}
+	sort.Strings(games)
 	return games
+}
+
+// GetGameLabel returns the display label for a game ID, or the ID itself if not found.
+func GetGameLabel(id string) string {
+	if game, ok := supportedGames[id]; ok {
+		return game.Label
+	}
+	return id
+}
+
+// GetGameConfig returns the game configuration for the given ID.
+func GetGameConfig(id string) (*GameConfig, bool) {
+	game, ok := supportedGames[id]
+	if !ok {
+		return nil, false
+	}
+	return &game, true
 }
 
 // GetSupportedGameConfigs returns a copy of all supported game configurations.
 func GetSupportedGameConfigs() []GameConfig {
-	configs := make([]GameConfig, len(supportedGames))
-	copy(configs, supportedGames)
+	configs := make([]GameConfig, 0, len(supportedGames))
+	for _, game := range supportedGames {
+		configs = append(configs, game)
+	}
 	return configs
 }

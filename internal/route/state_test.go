@@ -8,11 +8,11 @@ func testRoute() *Route {
 	return &Route{
 		ID:   "test",
 		Name: "Test Route",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000},
-			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagID: 3000},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
+			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 3000}},
 		},
 	}
 }
@@ -183,11 +183,11 @@ func TestOptionalCheckpoints(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000},
-			{ID: "optional1", Name: "Optional", EventType: "boss_kill", EventFlagID: 5000, Optional: true},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+			{ID: "optional1", Name: "Optional", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 5000}, Optional: true},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
 		},
 	}
 
@@ -243,7 +243,7 @@ func TestMemCheck_LevelUp(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "level-20", Name: "Reach Level 20", EventType: "level_up",
@@ -258,7 +258,7 @@ func TestMemCheck_LevelUp(t *testing.T) {
 	// Level 15: not triggered
 	result := rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"level-20": 15},
-		IGT: 60000, DeathCount: 0,
+		IGT:       60000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Fatalf("got %d events at level 15, want 0", len(result.Checkpoints))
@@ -267,7 +267,7 @@ func TestMemCheck_LevelUp(t *testing.T) {
 	// Level 20: triggered
 	result = rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"level-20": 20},
-		IGT: 120000, DeathCount: 1,
+		IGT:       120000, DeathCount: 1,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at level 20, want 1", len(result.Checkpoints))
@@ -281,7 +281,7 @@ func TestMemCheck_WeaponUpgrade(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "weapon-plus5", Name: "Weapon +5", EventType: "weapon_upgrade",
@@ -296,7 +296,7 @@ func TestMemCheck_WeaponUpgrade(t *testing.T) {
 	// +3: not triggered
 	result := rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"weapon-plus5": 3},
-		IGT: 60000, DeathCount: 0,
+		IGT:       60000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Errorf("got %d events at +3, want 0", len(result.Checkpoints))
@@ -305,7 +305,7 @@ func TestMemCheck_WeaponUpgrade(t *testing.T) {
 	// +5: exact match triggered
 	result = rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"weapon-plus5": 5},
-		IGT: 180000, DeathCount: 0,
+		IGT:       180000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at +5, want 1", len(result.Checkpoints))
@@ -316,7 +316,7 @@ func TestMemCheck_GreaterThan(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "souls-1000", Name: "Over 1000 Souls", EventType: "item_pickup",
@@ -331,7 +331,7 @@ func TestMemCheck_GreaterThan(t *testing.T) {
 	// Exactly 1000: gt means strictly greater
 	result := rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"souls-1000": 1000},
-		IGT: 10000, DeathCount: 0,
+		IGT:       10000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Errorf("got %d events at 1000, want 0 (gt, not gte)", len(result.Checkpoints))
@@ -340,7 +340,7 @@ func TestMemCheck_GreaterThan(t *testing.T) {
 	// 1001: triggered
 	result = rs.ProcessTick(TickInput{
 		MemValues: map[string]uint32{"souls-1000": 1001},
-		IGT: 20000, DeathCount: 0,
+		IGT:       20000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at 1001, want 1", len(result.Checkpoints))
@@ -351,14 +351,14 @@ func TestMixedFlagAndMemCheckpoints(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
 			{
 				ID: "level-30", Name: "Reach Level 30", EventType: "level_up",
 				MemCheck: &MemCheck{Path: "player_stats", Offset: 0x68, Comparison: "gte", Value: 30},
 			},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
 		},
 	}
 
@@ -369,7 +369,7 @@ func TestMixedFlagAndMemCheckpoints(t *testing.T) {
 	result := rs.ProcessTick(TickInput{
 		Flags:     map[uint32]bool{1000: true},
 		MemValues: map[string]uint32{"level-30": 25},
-		IGT: 95000, DeathCount: 2,
+		IGT:       95000, DeathCount: 2,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events, want 1 (boss1 only)", len(result.Checkpoints))
@@ -382,7 +382,7 @@ func TestMixedFlagAndMemCheckpoints(t *testing.T) {
 	result = rs.ProcessTick(TickInput{
 		Flags:     map[uint32]bool{1000: true, 2000: true},
 		MemValues: map[string]uint32{"level-30": 30},
-		IGT: 300000, DeathCount: 5,
+		IGT:       300000, DeathCount: 5,
 	})
 	if len(result.Checkpoints) != 2 {
 		t.Fatalf("got %d events, want 2 (level-30 + boss2)", len(result.Checkpoints))
@@ -402,7 +402,7 @@ func TestInventoryCheck_Gte(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
@@ -417,7 +417,7 @@ func TestInventoryCheck_Gte(t *testing.T) {
 	// 3 shards: not triggered
 	result := rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-5": 3},
-		IGT: 30000, DeathCount: 0,
+		IGT:             30000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Fatalf("got %d events at qty 3, want 0", len(result.Checkpoints))
@@ -426,7 +426,7 @@ func TestInventoryCheck_Gte(t *testing.T) {
 	// 5 shards: triggered
 	result = rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-5": 5},
-		IGT: 60000, DeathCount: 0,
+		IGT:             60000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at qty 5, want 1", len(result.Checkpoints))
@@ -440,7 +440,7 @@ func TestInventoryCheck_Gt(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "shards-gt5", Name: "Over 5 Shards", EventType: "item_pickup",
@@ -455,7 +455,7 @@ func TestInventoryCheck_Gt(t *testing.T) {
 	// Exactly 5: not triggered (gt, not gte)
 	result := rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-gt5": 5},
-		IGT: 10000, DeathCount: 0,
+		IGT:             10000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Errorf("got %d events at qty 5, want 0 (gt)", len(result.Checkpoints))
@@ -464,7 +464,7 @@ func TestInventoryCheck_Gt(t *testing.T) {
 	// 6: triggered
 	result = rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-gt5": 6},
-		IGT: 20000, DeathCount: 0,
+		IGT:             20000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at qty 6, want 1", len(result.Checkpoints))
@@ -475,7 +475,7 @@ func TestInventoryCheck_Eq(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{
 				ID: "shards-eq3", Name: "Exactly 3 Shards", EventType: "item_pickup",
@@ -489,7 +489,7 @@ func TestInventoryCheck_Eq(t *testing.T) {
 
 	result := rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-eq3": 2},
-		IGT: 10000, DeathCount: 0,
+		IGT:             10000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 0 {
 		t.Errorf("got %d events at qty 2, want 0", len(result.Checkpoints))
@@ -497,7 +497,7 @@ func TestInventoryCheck_Eq(t *testing.T) {
 
 	result = rs.ProcessTick(TickInput{
 		InventoryValues: map[string]uint32{"shards-eq3": 3},
-		IGT: 20000, DeathCount: 0,
+		IGT:             20000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events at qty 3, want 1", len(result.Checkpoints))
@@ -508,14 +508,14 @@ func TestMixedFlagAndInventoryCheckpoints(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
 			{
 				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
 				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
 			},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
 		},
 	}
 
@@ -526,7 +526,7 @@ func TestMixedFlagAndInventoryCheckpoints(t *testing.T) {
 	result := rs.ProcessTick(TickInput{
 		Flags:           map[uint32]bool{1000: true},
 		InventoryValues: map[string]uint32{"shards-5": 2},
-		IGT: 95000, DeathCount: 0,
+		IGT:             95000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d events, want 1 (boss1 only)", len(result.Checkpoints))
@@ -536,7 +536,7 @@ func TestMixedFlagAndInventoryCheckpoints(t *testing.T) {
 	result = rs.ProcessTick(TickInput{
 		Flags:           map[uint32]bool{1000: true, 2000: true},
 		InventoryValues: map[string]uint32{"shards-5": 5},
-		IGT: 300000, DeathCount: 0,
+		IGT:             300000, DeathCount: 0,
 	})
 	if len(result.Checkpoints) != 2 {
 		t.Fatalf("got %d events, want 2 (shards-5 + boss2)", len(result.Checkpoints))
@@ -550,10 +550,10 @@ func TestProcessTick_BackupOnEncounter(t *testing.T) {
 	route := &Route{
 		ID:   "test",
 		Name: "Test",
-		Game: "Dark Souls III",
+		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagID: 1000, BackupFlagID: 1001},
-			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagID: 2000, BackupFlagID: 2001},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}, BackupFlagCheck: &EventFlagCheck{FlagID: 1001}},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}, BackupFlagCheck: &EventFlagCheck{FlagID: 2001}},
 		},
 	}
 

@@ -14,32 +14,32 @@ const (
 
 // RunState tracks the progress of a single route run.
 type RunState struct {
-	Route          *Route
-	Status         RunStatus
-	StartTime      time.Time
-	CompletedFlags map[string]bool   // checkpoint ID -> done
-	BackupDone     map[string]bool   // checkpoint ID -> backup already triggered
+	Route            *Route
+	Status           RunStatus
+	StartTime        time.Time
+	CompletedFlags   map[string]bool   // checkpoint ID -> done
+	BackupDone       map[string]bool   // checkpoint ID -> backup already triggered
 	CheckpointTimes  map[string]int64  // checkpoint ID -> IGT ms
 	CheckpointDeaths map[string]uint32 // checkpoint ID -> deaths in segment
-	LastDeathCount uint32
-	LastIGT        int64
+	LastDeathCount   uint32
+	LastIGT          int64
 }
 
 // CheckpointEvent is emitted when a checkpoint is completed.
 type CheckpointEvent struct {
-	Checkpoint    Checkpoint
-	IGT           int64  // IGT at completion (ms)
+	Checkpoint         Checkpoint
+	IGT                int64  // IGT at completion (ms)
 	CheckpointDuration int64  // time for this segment (ms)
-	Deaths        uint32 // deaths in this segment
+	Deaths             uint32 // deaths in this segment
 }
 
 // NewRunState creates a new run state for the given route.
 func NewRunState(route *Route) *RunState {
 	return &RunState{
-		Route:          route,
-		Status:         RunNotStarted,
-		CompletedFlags: make(map[string]bool),
-		BackupDone:     make(map[string]bool),
+		Route:            route,
+		Status:           RunNotStarted,
+		CompletedFlags:   make(map[string]bool),
+		BackupDone:       make(map[string]bool),
 		CheckpointTimes:  make(map[string]int64),
 		CheckpointDeaths: make(map[string]uint32),
 	}
@@ -87,8 +87,8 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 
 	for _, cp := range rs.Route.Checkpoints {
 		// Check backup flag (boss encounter) independently from checkpoint completion
-		if cp.BackupFlagID != 0 && !rs.BackupDone[cp.ID] {
-			if input.Flags[cp.BackupFlagID] {
+		if cp.BackupFlagCheck != nil && !rs.BackupDone[cp.ID] {
+			if input.Flags[cp.BackupFlagCheck.FlagID] {
 				rs.BackupDone[cp.ID] = true
 				result.Backups = append(result.Backups, BackupEvent{Checkpoint: cp})
 			}
@@ -136,8 +136,8 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 // checkCondition returns true if the checkpoint's condition is met.
 func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 	// Flag-based check
-	if cp.EventFlagID != 0 {
-		return input.Flags[cp.EventFlagID]
+	if cp.EventFlagCheck != nil {
+		return input.Flags[cp.EventFlagCheck.FlagID]
 	}
 
 	// Memory value check

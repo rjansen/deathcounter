@@ -2,17 +2,27 @@ package monitor
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
 
+// Sentinel errors for monitor state transitions.
+var (
+	ErrNoGame           = errors.New("no game found")
+	ErrSaveNotSupported = errors.New("save detection not supported")
+	ErrSavePending      = errors.New("save detection pending")
+	ErrSaveChanged      = errors.New("save identity changed")
+)
+
 // Monitor is the interface tray.App uses to drive the monitoring lifecycle.
 type Monitor interface {
-	Tick()
-	// DisplayUpdates returns a channel that receives display-ready state
-	// each time Tick produces new information.
+	Start()
+	Stop()
 	DisplayUpdates() <-chan DisplayUpdate
 }
 
@@ -43,6 +53,10 @@ type GameMonitor[S Displayable] struct {
 
 	updates   chan S
 	displayCh chan DisplayUpdate
+
+	ticker   *time.Ticker
+	stopCh   chan struct{}
+	stopOnce sync.Once
 
 	LastCount uint32
 	LastGame  string
@@ -80,9 +94,17 @@ func (m *GameMonitor[S]) TypedUpdates() <-chan S {
 	return m.updates
 }
 
-// GameName returns the current game name.
+// GameName returns the current game ID.
 func (m *GameMonitor[S]) GameName() string {
 	return m.LastGame
+}
+
+// GameLabel returns the display label for the current game.
+func (m *GameMonitor[S]) GameLabel() string {
+	if m.LastGame == "" {
+		return ""
+	}
+	return memreader.GetGameLabel(m.LastGame)
 }
 
 // StatusText returns the current status string derived from the Phase.
@@ -95,9 +117,10 @@ func (m *GameMonitor[S]) IsAttached() bool {
 	return m.Reader.IsAttached()
 }
 
-// TryAttach attempts to attach to a game process, detects game changes,
-// and updates status. Returns true if the game changed.
-func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
+// Attach attempts to attach to a game process, detects game changes,
+// and updates status. Returns the game ID and nil on success, or ErrNoGame
+// if no supported game is running.
+func (m *GameMonitor[S]) Attach() (string, error) {
 	if !m.Reader.IsAttached() {
 		if err := m.Reader.Attach(); err != nil {
 			if m.LastGame != "" {
@@ -106,7 +129,7 @@ func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
 				m.LastGame = ""
 				m.LastCount = 0
 			}
-			return false
+			return "", ErrNoGame
 		}
 	}
 
@@ -121,52 +144,23 @@ func (m *GameMonitor[S]) TryAttach() (gameChanged bool) {
 		m.CurrentCharName = ""
 		m.saveLoggedOnce = false
 		m.loadLoggedOnce = false
-		return true
 	}
-	return false
+	return m.LastGame, nil
 }
 
-// ReadDeathCount reads the death count, handling transient and fatal errors.
-// Returns the count and true on success, or 0 and false on failure.
-func (m *GameMonitor[S]) ReadDeathCount() (uint32, bool) {
-	count, err := m.Reader.ReadDeathCount()
-	if err != nil {
-		if errors.Is(err, memreader.ErrNullPointer) {
-			if !m.loadLoggedOnce {
-				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
-				m.loadLoggedOnce = true
-			}
-			return 0, false
-		}
-
-		// Fatal error: process likely gone, detach
-		log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), err)
-		m.Reader.Detach()
-		m.Phase = PhaseDisconnected
-		m.LastGame = ""
-		return 0, false
-	}
-
-	return count, true
-}
-
-// TryDetectSave attempts to read the save slot identity from game memory.
-// Returns (changed, ok): changed is true if the save identity changed from a
-// previously detected save; ok is true if save detection succeeded or is not
-// supported (transparent pass-through for non-DS3 games).
-// This method never detaches the reader — callers should treat failures as
-// transient and keep ticking.
-func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
+// DetectSave attempts to read the save slot identity from game memory.
+// Returns the save ID and nil on success (same save or first detection),
+// ErrSaveNotSupported if the game doesn't support save detection,
+// ErrSavePending for transient failures, ErrSaveChanged when identity changes,
+// or a wrapped error for DB failures.
+// Phase transitions (Connected → Loaded) are left to callers.
+func (m *GameMonitor[S]) DetectSave() (int64, error) {
 	charName, nameErr := m.Reader.ReadCharacterName()
 	slotIdx, slotErr := m.Reader.ReadSaveSlotIndex()
 
 	// If character name is not supported, skip save detection entirely
-	// (save slot alone is not enough to identify a character)
 	if isUnsupportedErr(nameErr) {
-		if m.Phase == PhaseConnected {
-			m.Phase = PhaseLoaded
-		}
-		return false, true
+		return 0, ErrSaveNotSupported
 	}
 
 	// Null pointer or read error means game data is not yet loaded — retry later
@@ -175,7 +169,7 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 			log.Printf("[%s] Save detection pending: %v", m.Reader.GetCurrentGame(), nameErr)
 			m.saveLoggedOnce = true
 		}
-		return false, false
+		return 0, ErrSavePending
 	}
 
 	// Empty name means the structure exists but save data isn't populated yet
@@ -184,7 +178,7 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 			log.Printf("[%s] Save detection pending: empty character name", m.Reader.GetCurrentGame())
 			m.saveLoggedOnce = true
 		}
-		return false, false
+		return 0, ErrSavePending
 	}
 
 	// Save slot is optional — use 0 if unavailable
@@ -198,43 +192,33 @@ func (m *GameMonitor[S]) TryDetectSave() (changed bool, ok bool) {
 			log.Printf("[%s] Save detection pending: uninitialized slot (255)", m.Reader.GetCurrentGame())
 			m.saveLoggedOnce = true
 		}
-		return false, false
+		return 0, ErrSavePending
 	}
 
 	// Check if save identity changed
-	previouslyLoaded := m.Phase >= PhaseLoaded
 	if slotIdx != m.CurrentSlotIdx || charName != m.CurrentCharName {
 		saveID, err := m.Tracker.FindOrCreateSave(m.Reader.GetCurrentGame(), slotIdx, charName)
 		if err != nil {
 			log.Printf("[%s] Failed to create save record: %v", m.Reader.GetCurrentGame(), err)
-			return false, false
+			return 0, fmt.Errorf("failed to create save record: %w", err)
 		}
+
+		previouslyLoaded := m.Phase >= PhaseLoaded
 		m.CurrentSaveID = saveID
 		m.CurrentSlotIdx = slotIdx
 		m.CurrentCharName = charName
 
-		if m.Phase == PhaseConnected {
-			m.Phase = PhaseLoaded
+		if !previouslyLoaded {
 			log.Printf("[%s] Save detected: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
 			log.Printf("[%s] Game loaded successfully", m.Reader.GetCurrentGame())
 		} else {
 			log.Printf("[%s] Save changed: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
+			return saveID, ErrSaveChanged
 		}
-
-		return previouslyLoaded, true
+		return saveID, nil
 	}
 
-	return false, true
-}
-
-// ReadHollowing reads the hollowing level, returning 0 on any error.
-func (m *GameMonitor[S]) ReadHollowing() {
-	val, err := m.Reader.ReadHollowing()
-	if err != nil {
-		m.CurrentHollowing = 0
-		return
-	}
-	m.CurrentHollowing = val
+	return m.CurrentSaveID, nil
 }
 
 // RecordDeathIfChanged checks if the death count changed and records it.
@@ -259,6 +243,35 @@ func isUnsupportedErr(err error) bool {
 		return false
 	}
 	return errors.Is(err, memreader.ErrNotSupported)
+}
+
+// StartLoop creates a 500ms ticker and runs tickFn on each tick in a goroutine.
+func (m *GameMonitor[S]) StartLoop(tickFn func() error) {
+	m.stopCh = make(chan struct{})
+	m.ticker = time.NewTicker(500 * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-m.ticker.C:
+				tickFn()
+			case <-m.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// Stop halts the tick loop and closes the display channel.
+func (m *GameMonitor[S]) Stop() {
+	m.stopOnce.Do(func() {
+		if m.ticker != nil {
+			m.ticker.Stop()
+		}
+		if m.stopCh != nil {
+			close(m.stopCh)
+		}
+		close(m.displayCh)
+	})
 }
 
 // PublishState sends state on both the typed and display channels.

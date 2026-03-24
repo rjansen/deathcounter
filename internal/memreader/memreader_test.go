@@ -145,12 +145,12 @@ func TestGetSupportedGames(t *testing.T) {
 	}
 
 	expected := []string{
-		"Dark Souls: Prepare To Die Edition",
-		"Dark Souls II",
-		"Dark Souls III",
-		"Dark Souls Remastered",
-		"Sekiro: Shadows Die Twice",
-		"Elden Ring",
+		"ds1",
+		"ds2",
+		"ds3",
+		"dsr",
+		"er",
+		"sekiro",
 	}
 	for i, name := range expected {
 		if games[i] != name {
@@ -224,8 +224,8 @@ func TestAttach_64BitGame(t *testing.T) {
 	if !reader.IsAttached() {
 		t.Error("should be attached")
 	}
-	if reader.GetCurrentGame() != "Dark Souls III" {
-		t.Errorf("expected Dark Souls III, got %q", reader.GetCurrentGame())
+	if reader.GetCurrentGame() != "ds3" {
+		t.Errorf("expected ds3, got %q", reader.GetCurrentGame())
 	}
 }
 
@@ -244,8 +244,8 @@ func TestAttach_32BitGame(t *testing.T) {
 	if !reader.IsAttached() {
 		t.Error("should be attached")
 	}
-	if reader.GetCurrentGame() != "Dark Souls: Prepare To Die Edition" {
-		t.Errorf("expected Dark Souls: Prepare To Die Edition, got %q", reader.GetCurrentGame())
+	if reader.GetCurrentGame() != "ds1" {
+		t.Errorf("expected ds1, got %q", reader.GetCurrentGame())
 	}
 }
 
@@ -262,8 +262,8 @@ func TestAttach_ScansMultipleGames(t *testing.T) {
 		t.Fatalf("attach failed: %v", err)
 	}
 
-	if reader.GetCurrentGame() != "Elden Ring" {
-		t.Errorf("expected Elden Ring, got %q", reader.GetCurrentGame())
+	if reader.GetCurrentGame() != "er" {
+		t.Errorf("expected er, got %q", reader.GetCurrentGame())
 	}
 }
 
@@ -621,7 +621,7 @@ func setupAreaFlag(mock *mockProcessOps, flagID uint32, category int32) {
 	mock.setMemory64(uintptr(0xA0500000+DS3OffsetFieldAreaPtr), 0xA1000000) // worldInfoOwner
 
 	// worldInfoOwner + DS3OffsetWorldInfoSize = size, + DS3OffsetWorldInfoVector = pointer to vector
-	mock.setMemory32(uintptr(0xA1000000+DS3OffsetWorldInfoSize), 1)          // 1 world info entry
+	mock.setMemory32(uintptr(0xA1000000+DS3OffsetWorldInfoSize), 1)            // 1 world info entry
 	mock.setMemory64(uintptr(0xA1000000+DS3OffsetWorldInfoVector), 0xA2000000) // vector pointer
 
 	// Entry 0 at vectorBase(0xA2000000): area byte at +DS3OffsetWorldInfoArea
@@ -777,7 +777,7 @@ func setupGameDataManChain(mock *mockProcessOps, reader *GameReader) uintptr {
 	// GameDataMan global pointer at AOB-resolved address
 	gameDataManGlobal := uintptr(0x800000000)
 	mock.setMemory64(gameDataManGlobal, 0x30000000) // GameDataMan object
-	mock.setMemory64(0x30000010, 0x40000000)         // PlayerGameData
+	mock.setMemory64(0x30000010, 0x40000000)        // PlayerGameData
 	reader.SetTestAOBAddresses(int64(gameDataManGlobal), 0)
 	return 0x40000000
 }

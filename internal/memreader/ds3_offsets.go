@@ -31,8 +31,10 @@ const (
 // DS3 EquipInventoryData offsets (from PlayerGameData).
 const (
 	DS3OffsetEquipInventoryData int64 = 0x3D0 // PlayerGameData → EquipInventoryData inline struct
+	DS3OffsetInvCapacity        int64 = 0x10  // EquipInventoryData → total array capacity (uint32)
+	DS3OffsetInvKeyItemStart    int64 = 0x14  // EquipInventoryData → key item region start index (uint32)
 	DS3OffsetInvListPtr         int64 = 0x18  // EquipInventoryData → list pointer (dereference)
-	DS3OffsetInvCount           int64 = 0x20  // EquipInventoryData → item count (uint32)
+	DS3OffsetInvCount           int64 = 0x20  // EquipInventoryData → normal item count (uint32)
 	DS3InvItemStride            int64 = 0x10  // Size of each inventory item entry
 	DS3InvItemTypeIdOffset      int64 = 0x4   // TypeId within item entry
 	DS3InvItemQuantityOffset    int64 = 0x8   // Quantity within item entry
@@ -61,25 +63,25 @@ const (
 
 // DS3 boss defeated event flag IDs — base game.
 const (
-	DS3FlagIudexGundyr      uint32 = 14000800
-	DS3FlagVordt            uint32 = 13000800
-	DS3FlagGreatwood        uint32 = 13100800
-	DS3FlagCrystalSage      uint32 = 13300850
-	DS3FlagAbyssWatcher     uint32 = 13300800
-	DS3FlagDeacons          uint32 = 13500800
-	DS3FlagWolnir           uint32 = 13800800
-	DS3FlagOldDemonKing     uint32 = 13800830
-	DS3FlagPontiff          uint32 = 13700850
-	DS3FlagAldrich          uint32 = 13700800
-	DS3FlagYhorm            uint32 = 13900800
-	DS3FlagDancer           uint32 = 13000890
-	DS3FlagOceiros          uint32 = 13000830
-	DS3FlagChampionGundyr   uint32 = 14000830
-	DS3FlagAncientWyvern    uint32 = 13200800
-	DS3FlagNamelessKing     uint32 = 13200850
-	DS3FlagDragonslayer     uint32 = 13010800
-	DS3FlagTwinPrinces      uint32 = 13410830
-	DS3FlagSoulOfCinder     uint32 = 14100800
+	DS3FlagIudexGundyr    uint32 = 14000800
+	DS3FlagVordt          uint32 = 13000800
+	DS3FlagGreatwood      uint32 = 13100800
+	DS3FlagCrystalSage    uint32 = 13300850
+	DS3FlagAbyssWatcher   uint32 = 13300800
+	DS3FlagDeacons        uint32 = 13500800
+	DS3FlagWolnir         uint32 = 13800800
+	DS3FlagOldDemonKing   uint32 = 13800830
+	DS3FlagPontiff        uint32 = 13700850
+	DS3FlagAldrich        uint32 = 13700800
+	DS3FlagYhorm          uint32 = 13900800
+	DS3FlagDancer         uint32 = 13000890
+	DS3FlagOceiros        uint32 = 13000830
+	DS3FlagChampionGundyr uint32 = 14000830
+	DS3FlagAncientWyvern  uint32 = 13200800
+	DS3FlagNamelessKing   uint32 = 13200850
+	DS3FlagDragonslayer   uint32 = 13010800
+	DS3FlagTwinPrinces    uint32 = 13410830
+	DS3FlagSoulOfCinder   uint32 = 14100800
 )
 
 // DS3 boss defeated event flag IDs — DLC.
@@ -94,24 +96,156 @@ const (
 
 // DS3 boss encountered event flag IDs (backup/encounter flags).
 const (
-	DS3FlagIudexGundyrEnc      uint32 = 14000801
-	DS3FlagVordtEnc            uint32 = 13000801
-	DS3FlagGreatwoodEnc        uint32 = 13100801
-	DS3FlagCrystalSageEnc      uint32 = 13300852
-	DS3FlagAbyssWatcherEnc     uint32 = 13300801
-	DS3FlagDeaconsEnc          uint32 = 13500801
-	DS3FlagWolnirEnc           uint32 = 13800801
-	DS3FlagYhormEnc            uint32 = 13900801
-	DS3FlagOceirosEnc          uint32 = 13000831
-	DS3FlagChampionGundyrEnc   uint32 = 14000831
-	DS3FlagTwinPrincesEnc      uint32 = 13410831
-	DS3FlagSoulOfCinderEnc     uint32 = 14100801
+	DS3FlagIudexGundyrEnc         uint32 = 14000801
+	DS3FlagVordtEnc               uint32 = 13000801
+	DS3FlagGreatwoodEnc           uint32 = 13100801
+	DS3FlagCrystalSageEnc         uint32 = 13300852
+	DS3FlagAbyssWatcherEnc        uint32 = 13300801
+	DS3FlagDeaconsEnc             uint32 = 13500801
+	DS3FlagWolnirEnc              uint32 = 13800801
+	DS3FlagYhormEnc               uint32 = 13900801
+	DS3FlagOceirosEnc             uint32 = 13000831
+	DS3FlagChampionGundyrEnc      uint32 = 14000831
+	DS3FlagTwinPrincesEnc         uint32 = 13410831
+	DS3FlagSoulOfCinderEnc        uint32 = 14100801
 	DS3FlagChampionGravetenderEnc uint32 = 14500801
-	DS3FlagFriedeEnc           uint32 = 14500861
-	DS3FlagHalflightEnc        uint32 = 15100801
-	DS3FlagMidirEnc            uint32 = 15100851
-	DS3FlagGaelEnc             uint32 = 15110801
+	DS3FlagFriedeEnc              uint32 = 14500861
+	DS3FlagHalflightEnc           uint32 = 15100801
+	DS3FlagMidirEnc               uint32 = 15100851
+	DS3FlagGaelEnc                uint32 = 15110801
 )
+
+// DS3 item IDs — Goods (prefix 0x4000, from TGA CT v3.4.0).
+const (
+	DS3ItemEmber              uint32 = 0x400001F4
+	DS3ItemGoldPineResin      uint32 = 0x4000014B
+	DS3ItemCarthusRouge       uint32 = 0x4000014F
+	DS3ItemHomewardBone       uint32 = 0x4000015E
+	DS3ItemFirebomb           uint32 = 0x40000124
+	DS3ItemTitaniteShard      uint32 = 0x400003E8
+	DS3ItemLargeTitaniteShard uint32 = 0x400003E9
+	DS3ItemTitaniteChunk      uint32 = 0x400003EA
+	DS3ItemTitaniteSlab       uint32 = 0x400003EB
+	DS3ItemEstusShard         uint32 = 0x4000085D
+	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
+	DS3ItemMorticiansAshes    uint32 = 0x4000083B
+	DS3ItemSharpGem           uint32 = 0x40000456
+	DS3ItemAshenEstusFlask    uint32 = 0x400000BF
+	DS3ItemFarronCoal         uint32 = 0x40000837
+)
+
+// DS3 item IDs — Rings/Accessories (prefix 0x2000, from TGA CT v3.4.0).
+const (
+	DS3ItemCovetousSilverSerpentRing uint32 = 0x20004FB0
+	DS3ItemChloranthyRing            uint32 = 0x20004E2A
+	DS3ItemLloydsSwordRing           uint32 = 0x200050B4
+	DS3ItemPontiffsRightEye          uint32 = 0x2000510E
+)
+
+// DS3 item IDs — Weapons (from TGA CT v3.4.0).
+const (
+	DS3ItemSellswordTwinblades uint32 = 0x00F42400
+	DS3ItemDagger              uint32 = 0x000F4240
+	DS3ItemShortsword          uint32 = 0x001E8480
+)
+
+// DS3BossNames maps defeated boss event flag IDs to display names.
+var DS3BossNames = map[uint32]string{
+	DS3FlagIudexGundyr:         "Iudex Gundyr",
+	DS3FlagVordt:               "Vordt of the Boreal Valley",
+	DS3FlagGreatwood:           "Curse-Rotted Greatwood",
+	DS3FlagCrystalSage:         "Crystal Sage",
+	DS3FlagAbyssWatcher:        "Abyss Watchers",
+	DS3FlagDeacons:             "Deacons of the Deep",
+	DS3FlagWolnir:              "High Lord Wolnir",
+	DS3FlagOldDemonKing:        "Old Demon King",
+	DS3FlagPontiff:             "Pontiff Sulyvahn",
+	DS3FlagAldrich:             "Aldrich, Devourer of Gods",
+	DS3FlagYhorm:               "Yhorm the Giant",
+	DS3FlagDancer:              "Dancer of the Boreal Valley",
+	DS3FlagOceiros:             "Oceiros, the Consumed King",
+	DS3FlagChampionGundyr:      "Champion Gundyr",
+	DS3FlagAncientWyvern:       "Ancient Wyvern",
+	DS3FlagNamelessKing:        "Nameless King",
+	DS3FlagDragonslayer:        "Dragonslayer Armour",
+	DS3FlagTwinPrinces:         "Twin Princes",
+	DS3FlagSoulOfCinder:        "Soul of Cinder",
+	DS3FlagChampionGravetender: "Champion's Gravetender",
+	DS3FlagFriede:              "Sister Friede",
+	DS3FlagDemonPrince:         "Demon Prince",
+	DS3FlagHalflight:           "Halflight, Spear of the Church",
+	DS3FlagMidir:               "Darkeater Midir",
+	DS3FlagGael:                "Slave Knight Gael",
+}
+
+// DS3BossEncounteredNames maps encountered boss event flag IDs to display names.
+var DS3BossEncounteredNames = map[uint32]string{
+	DS3FlagIudexGundyrEnc:         "Iudex Gundyr",
+	DS3FlagVordtEnc:               "Vordt of the Boreal Valley",
+	DS3FlagGreatwoodEnc:           "Curse-Rotted Greatwood",
+	DS3FlagCrystalSageEnc:         "Crystal Sage",
+	DS3FlagAbyssWatcherEnc:        "Abyss Watchers",
+	DS3FlagDeaconsEnc:             "Deacons of the Deep",
+	DS3FlagWolnirEnc:              "High Lord Wolnir",
+	DS3FlagYhormEnc:               "Yhorm the Giant",
+	DS3FlagOceirosEnc:             "Oceiros, the Consumed King",
+	DS3FlagChampionGundyrEnc:      "Champion Gundyr",
+	DS3FlagTwinPrincesEnc:         "Twin Princes",
+	DS3FlagSoulOfCinderEnc:        "Soul of Cinder",
+	DS3FlagChampionGravetenderEnc: "Champion's Gravetender",
+	DS3FlagFriedeEnc:              "Sister Friede",
+	DS3FlagHalflightEnc:           "Halflight, Spear of the Church",
+	DS3FlagMidirEnc:               "Darkeater Midir",
+	DS3FlagGaelEnc:                "Slave Knight Gael",
+}
+
+// DS3GoodsNames maps goods item IDs to display names.
+var DS3GoodsNames = map[uint32]string{
+	DS3ItemEmber:              "Ember",
+	DS3ItemGoldPineResin:      "Gold Pine Resin",
+	DS3ItemCarthusRouge:       "Carthus Rouge",
+	DS3ItemHomewardBone:       "Homeward Bone",
+	DS3ItemFirebomb:           "Firebomb",
+	DS3ItemTitaniteShard:      "Titanite Shard",
+	DS3ItemLargeTitaniteShard: "Large Titanite Shard",
+	DS3ItemTitaniteChunk:      "Titanite Chunk",
+	DS3ItemTitaniteSlab:       "Titanite Slab",
+	DS3ItemEstusShard:         "Estus Shard",
+	DS3ItemGraveWardenAshes:   "Grave Warden Ashes",
+	DS3ItemMorticiansAshes:    "Mortician's Ashes",
+	DS3ItemSharpGem:           "Sharp Gem",
+	DS3ItemAshenEstusFlask:    "Ashen Estus Flask",
+	DS3ItemFarronCoal:         "Farron Coal",
+}
+
+// DS3RingNames maps ring item IDs to display names.
+var DS3RingNames = map[uint32]string{
+	DS3ItemCovetousSilverSerpentRing: "Covetous Silver Serpent Ring",
+	DS3ItemChloranthyRing:            "Chloranthy Ring",
+	DS3ItemLloydsSwordRing:           "Lloyd's Sword Ring",
+	DS3ItemPontiffsRightEye:          "Pontiff's Right Eye",
+}
+
+// DS3WeaponNames maps weapon item IDs to display names.
+var DS3WeaponNames = map[uint32]string{
+	DS3ItemSellswordTwinblades: "Sellsword Twinblades",
+	DS3ItemDagger:              "Dagger",
+	DS3ItemShortsword:          "Shortsword",
+}
+
+// DS3StatNames maps player stat offsets to display names.
+var DS3StatNames = map[int64]string{
+	DS3OffsetSoulLevel:    "Soul Level",
+	DS3OffsetAttunement:   "Attunement",
+	DS3OffsetEndurance:    "Endurance",
+	DS3OffsetVigor:        "Vigor",
+	DS3OffsetDexterity:    "Dexterity",
+	DS3OffsetIntelligence: "Intelligence",
+	DS3OffsetFaith:        "Faith",
+	DS3OffsetLuck:         "Luck",
+	DS3OffsetStrength:     "Strength",
+	DS3OffsetVitality:     "Vitality",
+}
 
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).
 var DS3BonfireNames = map[uint32]string{
