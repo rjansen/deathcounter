@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/lxn/walk"
+	"github.com/lxn/win"
 	"github.com/rjansen/deathcounter/internal/monitor"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
@@ -67,7 +68,7 @@ func (a *App) Run() error {
 	}
 
 	// Set tooltip
-	if err := a.ni.SetToolTip("FromSoftware Death Counter"); err != nil {
+	if err := a.ni.SetToolTip("Death Counter"); err != nil {
 		log.Printf("Warning: could not set tooltip: %v", err)
 	}
 
@@ -75,6 +76,16 @@ func (a *App) Run() error {
 	if err := a.buildMenu(); err != nil {
 		return fmt.Errorf("failed to build menu: %w", err)
 	}
+
+	// Show context menu on left-click (right-click is handled by walk automatically)
+	a.ni.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+		if button != walk.LeftButton {
+			return
+		}
+		// Walk dispatches WM_APP messages to notifyIconWndProc, which handles
+		// WM_CONTEXTMENU by showing TrackPopupMenuEx at cursor position.
+		win.SendMessage(a.mainWindow.Handle(), win.WM_APP, 0, win.WM_CONTEXTMENU)
+	})
 
 	// Show notify icon
 	if err := a.ni.SetVisible(true); err != nil {
@@ -108,7 +119,7 @@ func (a *App) buildMenu() error {
 
 	// Title
 	a.menuTitle = walk.NewAction()
-	a.menuTitle.SetText("FromSoftware Death Counter")
+	a.menuTitle.SetText("Death Counter")
 	a.menuTitle.SetEnabled(false)
 	menu.Actions().Add(a.menuTitle)
 

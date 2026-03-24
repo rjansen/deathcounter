@@ -41,9 +41,9 @@ func TestFormatGameText(t *testing.T) {
 
 func TestFormatCharacterText(t *testing.T) {
 	tests := []struct {
-		name  string
-		slot  int
-		want  string
+		name string
+		slot int
+		want string
 	}{
 		{"", 0, "Character: -"},
 		{"", 5, "Character: -"},
@@ -157,7 +157,7 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 		"total_count":        10,
 		"completion_percent": 30.0,
 		"current_checkpoint": "Abyss Watchers",
-		"segment_deaths":       uint32(5),
+		"segment_deaths":     uint32(5),
 	}
 	got := resolveRouteTexts(fields)
 
@@ -182,7 +182,7 @@ func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
 		"total_count":        19,
 		"completion_percent": 100.0,
 		"current_checkpoint": "", // empty = complete
-		"segment_deaths":       uint32(0),
+		"segment_deaths":     uint32(0),
 	}
 	got := resolveRouteTexts(fields)
 
