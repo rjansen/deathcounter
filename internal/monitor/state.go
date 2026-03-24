@@ -4,10 +4,10 @@ package monitor
 type MonitorPhase int
 
 const (
-	PhaseDisconnected  MonitorPhase = iota // No game process found
-	PhaseConnected                         // Game process attached, AOB scanning
-	PhaseLoaded                            // Save detected, DB record created
-	PhaseRouteRunning                      // Route started with valid saveID
+	PhaseDisconnected MonitorPhase = iota // No game process found
+	PhaseConnected                        // Game process attached, AOB scanning
+	PhaseLoaded                           // Save detected, DB record created
+	PhaseRouteRunning                     // Route started with valid saveID
 )
 
 // String returns the phase name.

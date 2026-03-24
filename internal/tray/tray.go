@@ -24,7 +24,7 @@ type App struct {
 	menuRouteProgress *systray.MenuItem
 	menuRouteCurrent  *systray.MenuItem
 	menuHollowing     *systray.MenuItem
-	menuRouteSegmentD   *systray.MenuItem
+	menuRouteSegmentD *systray.MenuItem
 }
 
 // NewApp creates a new system tray application
