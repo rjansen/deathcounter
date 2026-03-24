@@ -136,6 +136,16 @@ func (m *mockProcessOps) setMemoryByte(address uintptr, value byte) {
 	m.memory[address] = b
 }
 
+// attachGame is a test helper that finds and creates a GameReader for the given game.
+func attachGame(t *testing.T, mock ProcessOps, gameID string) *GameReader {
+	t.Helper()
+	cfg, proc, err := FindGame(mock, gameID)
+	if err != nil {
+		t.Fatalf("FindGame(%s): %v", gameID, err)
+	}
+	return NewGameReader(mock, cfg, proc)
+}
+
 // --- State management tests ---
 
 func TestGetSupportedGames(t *testing.T) {
@@ -159,28 +169,13 @@ func TestGetSupportedGames(t *testing.T) {
 	}
 }
 
-func TestNewGameReaderWithOps_InitialState(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	if reader.IsAttached() {
-		t.Error("new reader should not be attached")
-	}
-	if reader.GetCurrentGame() != "" {
-		t.Errorf("new reader should have empty game name, got %q", reader.GetCurrentGame())
-	}
-}
-
 func TestDetach(t *testing.T) {
 	mock := newMockProcessOps()
 	mock.processes["DarkSoulsIII.exe"] = 1234
 	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
 	mock.architectures[1234] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	reader.Detach()
 
@@ -197,30 +192,38 @@ func TestDetach(t *testing.T) {
 
 func TestDetach_WhenNotAttached(t *testing.T) {
 	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
+	mock.processes["DarkSoulsIII.exe"] = 1234
+	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
+	mock.architectures[1234] = true
 
-	// Should not panic
+	reader := attachGame(t, mock, "ds3")
+	reader.Detach() // first detach closes handle
+
+	// Second detach should not panic and not close additional handles
 	reader.Detach()
 
-	if len(mock.closedHandles) != 0 {
-		t.Errorf("should not close any handles, got %d", len(mock.closedHandles))
+	if len(mock.closedHandles) != 1 {
+		t.Errorf("expected 1 handle closed, got %d", len(mock.closedHandles))
 	}
 }
 
 // --- Attach flow tests ---
 
-func TestAttach_64BitGame(t *testing.T) {
+func TestFindGame_64BitGame(t *testing.T) {
 	mock := newMockProcessOps()
 	mock.processes["DarkSoulsIII.exe"] = 1234
 	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
 	mock.architectures[1234] = true
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	cfg, proc, err := FindGame(mock, "ds3")
 	if err != nil {
-		t.Fatalf("attach failed: %v", err)
+		t.Fatalf("FindGame failed: %v", err)
+	}
+	if cfg.ID != "ds3" {
+		t.Errorf("expected cfg.ID ds3, got %q", cfg.ID)
 	}
 
+	reader := NewGameReader(mock, cfg, proc)
 	if !reader.IsAttached() {
 		t.Error("should be attached")
 	}
@@ -229,18 +232,21 @@ func TestAttach_64BitGame(t *testing.T) {
 	}
 }
 
-func TestAttach_32BitGame(t *testing.T) {
+func TestFindGame_32BitGame(t *testing.T) {
 	mock := newMockProcessOps()
 	mock.processes["DARKSOULS.exe"] = 5678
 	mock.modules["5678:DARKSOULS.exe"] = 0x400000
 	mock.architectures[5678] = false // 32-bit
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	cfg, proc, err := FindGame(mock, "ds1")
 	if err != nil {
-		t.Fatalf("attach failed: %v", err)
+		t.Fatalf("FindGame failed: %v", err)
+	}
+	if cfg.ID != "ds1" {
+		t.Errorf("expected cfg.ID ds1, got %q", cfg.ID)
 	}
 
+	reader := NewGameReader(mock, cfg, proc)
 	if !reader.IsAttached() {
 		t.Error("should be attached")
 	}
@@ -249,54 +255,42 @@ func TestAttach_32BitGame(t *testing.T) {
 	}
 }
 
-func TestAttach_ScansMultipleGames(t *testing.T) {
+func TestFindGame_SpecificGame(t *testing.T) {
 	mock := newMockProcessOps()
-	// Only Elden Ring running (last in supportedGames)
 	mock.processes["eldenring.exe"] = 9999
 	mock.modules["9999:eldenring.exe"] = 0x140000000
 	mock.architectures[9999] = true
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	cfg, _, err := FindGame(mock, "er")
 	if err != nil {
-		t.Fatalf("attach failed: %v", err)
+		t.Fatalf("FindGame failed: %v", err)
 	}
-
-	if reader.GetCurrentGame() != "er" {
-		t.Errorf("expected er, got %q", reader.GetCurrentGame())
+	if cfg.ID != "er" {
+		t.Errorf("expected er, got %q", cfg.ID)
 	}
 }
 
-func TestAttach_NoGameRunning(t *testing.T) {
+func TestFindGame_NoGameRunning(t *testing.T) {
 	mock := newMockProcessOps()
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	_, _, err := FindGame(mock, "ds3")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-
-	if reader.IsAttached() {
-		t.Error("should not be attached")
-	}
 }
 
-func TestAttach_SkipsGameWithoutMatchingOffsets(t *testing.T) {
+func TestFindGame_WrongArchitecture(t *testing.T) {
 	mock := newMockProcessOps()
 	// DS1 PTDE running as 64-bit, but it only has Offsets32
 	mock.processes["DARKSOULS.exe"] = 1234
 	mock.modules["1234:DARKSOULS.exe"] = 0x400000
 	mock.architectures[1234] = true // 64-bit
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	_, _, err := FindGame(mock, "ds1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 
-	if reader.IsAttached() {
-		t.Error("should not be attached")
-	}
 	// Handle should have been opened and then closed during cleanup
 	if len(mock.openedHandles) != 1 {
 		t.Errorf("expected 1 handle opened, got %d", len(mock.openedHandles))
@@ -306,14 +300,13 @@ func TestAttach_SkipsGameWithoutMatchingOffsets(t *testing.T) {
 	}
 }
 
-func TestAttach_CleansUpHandleOnModuleFailure(t *testing.T) {
+func TestFindGame_ModuleFailure(t *testing.T) {
 	mock := newMockProcessOps()
 	mock.processes["DarkSoulsIII.exe"] = 1234
 	// Don't set up module → GetModuleBaseAddress will fail
 	mock.architectures[1234] = true
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	_, _, err := FindGame(mock, "ds3")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -323,14 +316,13 @@ func TestAttach_CleansUpHandleOnModuleFailure(t *testing.T) {
 	}
 }
 
-func TestAttach_CleansUpHandleOnArchDetectFailure(t *testing.T) {
+func TestFindGame_ArchDetectFailure(t *testing.T) {
 	mock := newMockProcessOps()
 	mock.processes["DarkSoulsIII.exe"] = 1234
 	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
 	// Don't set up architecture → IsProcess64Bit will fail
 
-	reader := NewGameReaderWithOps(mock)
-	err := reader.Attach()
+	_, _, err := FindGame(mock, "ds3")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -341,16 +333,6 @@ func TestAttach_CleansUpHandleOnArchDetectFailure(t *testing.T) {
 }
 
 // --- Pointer chain traversal (ReadDeathCount) tests ---
-
-func TestReadDeathCount_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ReadDeathCount()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
 
 func TestReadDeathCount_64Bit_TwoOffsetChain(t *testing.T) {
 	// DS3 chain: {0x47572B8, 0x98}
@@ -364,10 +346,7 @@ func TestReadDeathCount_64Bit_TwoOffsetChain(t *testing.T) {
 	// 0x20000000 + 0x98 = 0x20000098 → read → death count 42
 	mock.setMemory64(0x20000098, 42)
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -390,10 +369,7 @@ func TestReadDeathCount_32Bit_TwoOffsetChain(t *testing.T) {
 	// 0x1000000 + 0x5C = 0x100005C → read → death count 7
 	mock.setMemory32(0x100005C, 7)
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds1")
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -426,10 +402,7 @@ func TestReadDeathCount_32Bit_LongChain(t *testing.T) {
 	// Step 7: 0x7000000 + 0x100 = 0x7000100 → death count 99
 	mock.setMemory32(0x7000100, 99)
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds2")
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -449,10 +422,7 @@ func TestReadDeathCount_Zero(t *testing.T) {
 	mock.setMemory64(0x1447572B8, 0x20000000)
 	mock.setMemory64(0x20000098, 0) // zero deaths (new character)
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -472,10 +442,7 @@ func TestReadDeathCount_MaxUint32(t *testing.T) {
 	mock.setMemory64(0x1447572B8, 0x20000000)
 	mock.setMemory64(0x20000098, uint64(math.MaxUint32))
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -495,10 +462,7 @@ func TestReadDeathCount_NullPointerInChain(t *testing.T) {
 	// First read returns null pointer (0)
 	mock.setMemory64(0x1447572B8, 0)
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	_, err := reader.ReadDeathCount()
 	if err == nil {
@@ -516,10 +480,7 @@ func TestReadDeathCount_MemoryReadFailure(t *testing.T) {
 	mock.setMemory64(0x1447572B8, 0x20000000)
 	// Don't set memory at 0x20000098 → read will fail
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 
 	_, err := reader.ReadDeathCount()
 	if err == nil {
@@ -536,10 +497,7 @@ func attachDS3WithEventFlags(t *testing.T) (*mockProcessOps, *GameReader) {
 	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
 	mock.architectures[1234] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "ds3")
 	return mock, reader
 }
 
@@ -701,16 +659,6 @@ func TestReadEventFlag_BitPosition(t *testing.T) {
 	}
 }
 
-func TestReadEventFlag_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ReadEventFlag(13000800)
-	if err == nil {
-		t.Fatal("expected error when not attached")
-	}
-}
-
 func TestReadEventFlag_NullPointer(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
@@ -755,16 +703,6 @@ func TestReadIGT_Zero(t *testing.T) {
 	}
 	if igt != 0 {
 		t.Errorf("got IGT %d, want 0", igt)
-	}
-}
-
-func TestReadIGT_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ReadIGT()
-	if err == nil {
-		t.Fatal("expected error when not attached")
 	}
 }
 
@@ -855,16 +793,6 @@ func TestReadMemoryValue_UnknownPath(t *testing.T) {
 	_, err := reader.ReadMemoryValue("nonexistent", 0, 4)
 	if err == nil {
 		t.Fatal("expected error for unknown path")
-	}
-}
-
-func TestReadMemoryValue_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ReadMemoryValue("player_stats", 0x68, 4)
-	if err == nil {
-		t.Fatal("expected error when not attached")
 	}
 }
 
@@ -985,10 +913,7 @@ func TestReadCharacterName_Unsupported(t *testing.T) {
 	mock.modules["9999:eldenring.exe"] = 0x140000000
 	mock.architectures[9999] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "er")
 
 	_, err := reader.ReadCharacterName()
 	if err == nil {
@@ -1053,10 +978,7 @@ func TestReadSaveSlotIndex_NonDS3_Unsupported(t *testing.T) {
 	mock.modules["7777:DarkSoulsRemastered.exe"] = 0x140000000
 	mock.architectures[7777] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "dsr")
 
 	_, err := reader.ReadSaveSlotIndex()
 	if err == nil {
@@ -1196,10 +1118,7 @@ func TestReadInventoryItemQuantity_Unsupported(t *testing.T) {
 	mock.modules["7777:DarkSoulsRemastered.exe"] = 0x140000000
 	mock.architectures[7777] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "dsr")
 
 	_, err := reader.ReadInventoryItemQuantity(0x400003E8)
 	if err == nil {
@@ -1210,16 +1129,6 @@ func TestReadInventoryItemQuantity_Unsupported(t *testing.T) {
 	}
 }
 
-func TestReadInventoryItemQuantity_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ReadInventoryItemQuantity(0x400003E8)
-	if err == nil {
-		t.Fatal("expected error when not attached")
-	}
-}
-
 func TestReadHollowing_NonDS3_Unsupported(t *testing.T) {
 	// DSR has no game_man memory path
 	mock := newMockProcessOps()
@@ -1227,10 +1136,7 @@ func TestReadHollowing_NonDS3_Unsupported(t *testing.T) {
 	mock.modules["7777:DarkSoulsRemastered.exe"] = 0x140000000
 	mock.architectures[7777] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, mock, "dsr")
 
 	_, err := reader.ReadHollowing()
 	if err == nil {

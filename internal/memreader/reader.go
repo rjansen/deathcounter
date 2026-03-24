@@ -14,6 +14,10 @@ var ErrNullPointer = errors.New("null pointer in chain")
 // ErrNotSupported is returned when a feature is not supported for the current game.
 var ErrNotSupported = errors.New("not supported for this game")
 
+// ErrGameRead is returned when a game memory read fails in a way that indicates
+// the game process is gone (not a transient null pointer during loading).
+var ErrGameRead = errors.New("game read failed")
+
 // GameReader handles reading memory from FromSoftware games.
 type GameReader struct {
 	processHandle ProcessHandle
@@ -32,10 +36,71 @@ type GameReader struct {
 	eventFlagInitDone       bool
 }
 
-// NewGameReaderWithOps creates a new GameReader with the given ProcessOps.
-// This is primarily used for testing with mock implementations.
-func NewGameReaderWithOps(ops ProcessOps) *GameReader {
-	return &GameReader{ops: ops}
+// ProcessInfo holds the result of a successful game process discovery.
+type ProcessInfo struct {
+	Handle      ProcessHandle
+	BaseAddress uintptr
+	Is64Bit     bool
+}
+
+// FindGame searches for a specific game process by game ID.
+// Returns the game config and process info needed to create a GameReader.
+func FindGame(ops ProcessOps, gameID string) (*GameConfig, *ProcessInfo, error) {
+	cfg, ok := supportedGames[gameID]
+	if !ok {
+		return nil, nil, fmt.Errorf("unknown game %q", gameID)
+	}
+
+	pid, err := ops.FindProcessByName(cfg.ProcessName + ".exe")
+	if err != nil {
+		return nil, nil, fmt.Errorf("game process not found: %w", err)
+	}
+
+	handle, err := ops.OpenProcess(PROCESS_VM_READ|PROCESS_QUERY_INFORMATION, false, pid)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open process: %w", err)
+	}
+
+	baseAddr, err := ops.GetModuleBaseAddress(pid, cfg.ProcessName+".exe")
+	if err != nil {
+		ops.CloseHandle(handle)
+		return nil, nil, fmt.Errorf("failed to get base address: %w", err)
+	}
+
+	is64Bit, err := ops.IsProcess64Bit(handle)
+	if err != nil {
+		ops.CloseHandle(handle)
+		return nil, nil, fmt.Errorf("failed to detect architecture: %w", err)
+	}
+
+	if is64Bit && cfg.Offsets64 == nil {
+		ops.CloseHandle(handle)
+		return nil, nil, fmt.Errorf("no 64-bit offsets for %s", gameID)
+	}
+	if !is64Bit && cfg.Offsets32 == nil {
+		ops.CloseHandle(handle)
+		return nil, nil, fmt.Errorf("no 32-bit offsets for %s", gameID)
+	}
+
+	return &cfg, &ProcessInfo{
+		Handle:      handle,
+		BaseAddress: baseAddr,
+		Is64Bit:     is64Bit,
+	}, nil
+}
+
+// NewGameReader creates a reader for an attached game process.
+// Requires a valid GameConfig and ProcessInfo from FindGame.
+func NewGameReader(ops ProcessOps, game *GameConfig, proc *ProcessInfo) *GameReader {
+	return &GameReader{
+		ops:           ops,
+		game:          game,
+		processHandle: proc.Handle,
+		baseAddress:   proc.BaseAddress,
+		is64Bit:       proc.Is64Bit,
+		attached:      true,
+		currentGame:   game.ID,
+	}
 }
 
 // SetTestAOBAddresses injects AOB-resolved addresses for testing, bypassing
@@ -44,57 +109,6 @@ func (r *GameReader) SetTestAOBAddresses(gameDataMan, gameMan int64) {
 	r.gameDataManAOBAddr = gameDataMan
 	r.gameManAOBAddr = gameMan
 	r.eventFlagInitDone = true
-}
-
-// Attach finds and attaches to any supported FromSoftware game process.
-func (r *GameReader) Attach() error {
-	for _, game := range supportedGames {
-		pid, err := r.ops.FindProcessByName(game.ProcessName + ".exe")
-		if err != nil {
-			continue // Try next game
-		}
-
-		handle, err := r.ops.OpenProcess(PROCESS_VM_READ|PROCESS_QUERY_INFORMATION, false, pid)
-		if err != nil {
-			continue
-		}
-
-		// Get base address
-		baseAddr, err := r.ops.GetModuleBaseAddress(pid, game.ProcessName+".exe")
-		if err != nil {
-			r.ops.CloseHandle(handle)
-			continue
-		}
-
-		// Check if process is 64-bit
-		is64Bit, err := r.ops.IsProcess64Bit(handle)
-		if err != nil {
-			r.ops.CloseHandle(handle)
-			continue
-		}
-
-		// Verify we have offsets for this architecture
-		if is64Bit && game.Offsets64 == nil {
-			r.ops.CloseHandle(handle)
-			continue
-		}
-		if !is64Bit && game.Offsets32 == nil {
-			r.ops.CloseHandle(handle)
-			continue
-		}
-
-		gameCopy := game
-		r.processHandle = handle
-		r.baseAddress = baseAddr
-		r.game = &gameCopy
-		r.is64Bit = is64Bit
-		r.attached = true
-		r.currentGame = game.ID
-
-		return nil
-	}
-
-	return fmt.Errorf("no supported game process found")
 }
 
 // Detach closes the process handle.

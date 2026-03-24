@@ -257,11 +257,6 @@ func TestScanForPointer_FindsPattern(t *testing.T) {
 	mock.modules["1234:DarkSoulsIII.exe"] = 0x140000000
 	mock.architectures[1234] = true
 
-	reader := NewGameReaderWithOps(mock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
-
 	base := uintptr(0x140000000)
 
 	// Set up a minimal PE header
@@ -318,10 +313,7 @@ func TestScanForPointer_FindsPattern(t *testing.T) {
 	cmock.contiguous[textAddr] = textContent
 
 	// Re-create reader with contiguous mock
-	reader2 := NewGameReaderWithOps(cmock)
-	if err := reader2.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader2 := attachGame(t, cmock, "ds3")
 
 	result, err := reader2.ScanForPointer(
 		"4c 8b 3d ? ? ? ? 8b 45 87",
@@ -342,24 +334,11 @@ func TestScanForPointer_FindsPattern(t *testing.T) {
 func TestScanForPointer_PatternNotFound(t *testing.T) {
 	cmock := setupScanMock(t, make([]byte, 0x1000)) // empty text section
 
-	reader := NewGameReaderWithOps(cmock)
-	if err := reader.Attach(); err != nil {
-		t.Fatalf("attach failed: %v", err)
-	}
+	reader := attachGame(t, cmock, "ds3")
 
 	_, err := reader.ScanForPointer("48 c7 05 ? ? ? ? 00 00 00 00", 3, 11)
 	if err == nil {
 		t.Fatal("expected error when pattern not found")
-	}
-}
-
-func TestScanForPointer_NotAttached(t *testing.T) {
-	mock := newMockProcessOps()
-	reader := NewGameReaderWithOps(mock)
-
-	_, err := reader.ScanForPointer("48 c7 05", 3, 7)
-	if err == nil {
-		t.Fatal("expected error when not attached")
 	}
 }
 
