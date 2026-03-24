@@ -1,6 +1,10 @@
 package tray
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rjansen/deathcounter/internal/monitor"
+)
 
 // formatStatusText returns the menu text for the status item.
 func formatStatusText(status string) string {
@@ -59,34 +63,23 @@ func defaultRouteTexts() routeDisplayTexts {
 	}
 }
 
-// resolveRouteTexts computes display texts from route Fields.
-// Returns default texts if fields is nil or route_name is empty.
-func resolveRouteTexts(fields map[string]any) routeDisplayTexts {
-	if fields == nil {
+// resolveRouteTexts computes display texts from a RouteDisplay.
+// Returns default texts if route is nil or RouteName is empty.
+func resolveRouteTexts(route *monitor.RouteDisplay) routeDisplayTexts {
+	if route == nil || route.RouteName == "" {
 		return defaultRouteTexts()
 	}
 
-	routeName, _ := fields["route_name"].(string)
-	if routeName == "" {
-		return defaultRouteTexts()
-	}
-
-	completed, _ := fields["completed_count"].(int)
-	total, _ := fields["total_count"].(int)
-	percent, _ := fields["completion_percent"].(float64)
-
-	cp, _ := fields["current_checkpoint"].(string)
+	cp := route.CurrentCheckpoint
 	if cp == "" {
 		cp = "Complete!"
 	}
 
-	deaths, _ := fields["segment_deaths"].(uint32)
-
 	return routeDisplayTexts{
-		name:     fmt.Sprintf("Route: %s", routeName),
-		progress: fmt.Sprintf("Progress: %d/%d (%.0f%%)", completed, total, percent),
+		name:     fmt.Sprintf("Route: %s", route.RouteName),
+		progress: fmt.Sprintf("Progress: %d/%d (%.0f%%)", route.CompletedCount, route.TotalCount, route.CompletionPercent),
 		current:  fmt.Sprintf("Current: %s", cp),
-		segmentD: fmt.Sprintf("Segment Deaths: %d", deaths),
+		segmentD: fmt.Sprintf("Segment Deaths: %d", route.SegmentDeaths),
 	}
 }
 

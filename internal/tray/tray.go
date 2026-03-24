@@ -254,12 +254,12 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 	}
 	a.updateTotalDeaths()
 
-	a.refreshRouteDisplay(update.Fields)
+	a.refreshRouteDisplay(update.Route)
 }
 
-// refreshRouteDisplay updates route-specific menu items from Fields map.
-func (a *App) refreshRouteDisplay(fields map[string]any) {
-	texts := resolveRouteTexts(fields)
+// refreshRouteDisplay updates route-specific menu items.
+func (a *App) refreshRouteDisplay(route *monitor.RouteDisplay) {
+	texts := resolveRouteTexts(route)
 	if a.menuRouteName != nil {
 		a.menuRouteName.SetText(texts.name)
 	}
