@@ -17,6 +17,7 @@ type GameReader interface {
 	ReadMemoryValue(pathName string, extraOffset int64, size int) (uint32, error)
 	ReadIGT() (int64, error)
 	ReadInventoryItemQuantity(itemID uint32) (uint32, error)
+	ReadDeathCount() (uint32, error)
 }
 
 // stateVarData tracks cumulative inventory pickup counts.
@@ -35,16 +36,18 @@ type Runner struct {
 	route     *Route
 	tracker   *stats.Tracker
 	backup    *backup.Manager
+	reader    GameReader
 	runID     int64
 	stateVars map[string]*stateVarData // state_var name → tracking data
 }
 
 // NewRunner creates a new route runner.
-func NewRunner(route *Route, tracker *stats.Tracker, backupMgr *backup.Manager) *Runner {
+func NewRunner(route *Route, tracker *stats.Tracker, backupMgr *backup.Manager, reader GameReader) *Runner {
 	return &Runner{
 		route:   route,
 		tracker: tracker,
 		backup:  backupMgr,
+		reader:  reader,
 		state:   NewRunState(route),
 	}
 }
@@ -62,6 +65,19 @@ func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
 	r.state.Start()
 	r.state.LastDeathCount = initialDeathCount
 	r.initStateVars()
+	return nil
+}
+
+// Resume re-attaches to an existing in-progress run from the database.
+// It restores completed checkpoints and state vars without creating a new DB record.
+func (r *Runner) Resume(runID int64, initialDeathCount uint32) error {
+	r.runID = runID
+	r.state.Start()
+	r.state.LastDeathCount = initialDeathCount
+	r.initStateVars()
+	if err := r.RestoreFromDB(); err != nil {
+		return fmt.Errorf("failed to resume route run: %w", err)
+	}
 	return nil
 }
 
@@ -149,10 +165,10 @@ func (r *Runner) SegmentDeaths() uint32 {
 }
 
 // CatchUp scans all checkpoint flags and marks any that are already set as completed.
-// Returns true when the scan completes, false if flag reading isn't ready yet (retry later).
-func (r *Runner) CatchUp(reader GameReader) bool {
+// Returns nil when the scan completes, or an error if flag reading isn't ready yet (caller retries).
+func (r *Runner) CatchUp() error {
 	if !r.IsActive() {
-		return true
+		return nil
 	}
 
 	for _, cp := range r.route.Checkpoints {
@@ -160,11 +176,11 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 			continue
 		}
 
-		if cp.EventFlagID != 0 {
-			flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
+		if cp.EventFlagCheck != nil {
+			flagSet, err := r.reader.ReadEventFlag(cp.EventFlagCheck.FlagID)
 			if err != nil {
 				// Not ready yet — caller should retry later
-				return false
+				return err
 			}
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
@@ -176,9 +192,9 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 		}
 
 		if cp.InventoryCheck != nil && !r.state.CompletedFlags[cp.ID] {
-			qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+			qty, err := r.reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
 			if err != nil {
-				return false
+				return err
 			}
 			checkQty := qty
 			// Initialize state_var with current quantity as seed
@@ -203,7 +219,7 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 		}
 
 		// Also mark backup as done for already-completed checkpoints
-		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
+		if cp.BackupFlagCheck != nil && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
 		}
 	}
@@ -211,7 +227,7 @@ func (r *Runner) CatchUp(reader GameReader) bool {
 	// Persist dirty state vars after catchup
 	r.persistDirtyStateVars()
 
-	return true
+	return nil
 }
 
 // RestoreFromDB restores completed checkpoint state from the database
@@ -226,18 +242,27 @@ func (r *Runner) RestoreFromDB() error {
 	}
 	// Mark backup as done for completed checkpoints that have a backup flag
 	for _, cp := range r.route.Checkpoints {
-		if cp.BackupFlagID != 0 && r.state.CompletedFlags[cp.ID] {
+		if cp.BackupFlagCheck != nil && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
 		}
 	}
 	return nil
 }
 
-// Tick is called every poll cycle. It reads event flags and IGT from the reader,
-// processes the state machine, records splits, and triggers backups.
-func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, error) {
+// Tick is called every poll cycle. It reads event flags, death count, and IGT
+// from the reader, processes the state machine, records splits, and triggers backups.
+func (r *Runner) Tick() ([]CheckpointEvent, error) {
 	if !r.IsActive() {
 		return nil, nil
+	}
+
+	// Read death count (fall back to last known on transient error)
+	deathCount, err := r.reader.ReadDeathCount()
+	if err != nil {
+		if !errors.Is(err, memreader.ErrNullPointer) {
+			return nil, fmt.Errorf("failed to read death count: %w", err)
+		}
+		deathCount = r.state.LastDeathCount
 	}
 
 	// Build tick input by reading all unfinished checkpoint conditions
@@ -251,16 +276,17 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 
 	for _, cp := range r.route.Checkpoints {
 		// Read backup flag even if checkpoint is already completed
-		if cp.BackupFlagID != 0 && !r.state.BackupDone[cp.ID] {
-			if _, exists := input.Flags[cp.BackupFlagID]; !exists {
-				flagSet, err := reader.ReadEventFlag(cp.BackupFlagID)
+		if cp.BackupFlagCheck != nil && !r.state.BackupDone[cp.ID] {
+			bfID := cp.BackupFlagCheck.FlagID
+			if _, exists := input.Flags[bfID]; !exists {
+				flagSet, err := r.reader.ReadEventFlag(bfID)
 				if err != nil {
 					if !errors.Is(err, memreader.ErrNullPointer) {
-						return nil, fmt.Errorf("failed to read backup flag %d: %w", cp.BackupFlagID, err)
+						return nil, fmt.Errorf("failed to read backup flag %d: %w", bfID, err)
 					}
 					// ErrNullPointer: skip this backup flag for now
 				} else {
-					input.Flags[cp.BackupFlagID] = flagSet
+					input.Flags[bfID] = flagSet
 				}
 			}
 		}
@@ -270,17 +296,18 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 		}
 
 		// Flag-based checkpoint
-		if cp.EventFlagID != 0 {
-			if _, exists := input.Flags[cp.EventFlagID]; !exists {
-				flagSet, err := reader.ReadEventFlag(cp.EventFlagID)
+		if cp.EventFlagCheck != nil {
+			efID := cp.EventFlagCheck.FlagID
+			if _, exists := input.Flags[efID]; !exists {
+				flagSet, err := r.reader.ReadEventFlag(efID)
 				if err != nil {
 					if !errors.Is(err, memreader.ErrNullPointer) {
-						return nil, fmt.Errorf("failed to read event flag %d: %w", cp.EventFlagID, err)
+						return nil, fmt.Errorf("failed to read event flag %d: %w", efID, err)
 					}
 					// ErrNullPointer: skip this checkpoint for now
 					continue
 				}
-				input.Flags[cp.EventFlagID] = flagSet
+				input.Flags[efID] = flagSet
 			}
 		}
 
@@ -290,7 +317,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 			if size == 0 {
 				size = 4
 			}
-			val, err := reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
+			val, err := r.reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
 			if err != nil {
 				if !errors.Is(err, memreader.ErrNullPointer) {
 					return nil, fmt.Errorf("failed to read memory value for %s: %w", cp.ID, err)
@@ -308,7 +335,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 				sv := r.stateVars[svName]
 				// Only read and accumulate once per state_var per tick
 				if !stateVarUpdated[svName] {
-					qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+					qty, err := r.reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
 					if err != nil {
 						if !errors.Is(err, memreader.ErrNullPointer) {
 							return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
@@ -329,7 +356,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 				}
 				input.InventoryValues[cp.ID] = sv.Accumulated
 			} else {
-				qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
+				qty, err := r.reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
 				if err != nil {
 					if !errors.Is(err, memreader.ErrNullPointer) {
 						return nil, fmt.Errorf("failed to read inventory for %s: %w", cp.ID, err)
@@ -345,7 +372,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 	r.persistDirtyStateVars()
 
 	// Read IGT (fall back to last known value if transient failure)
-	igt, err := reader.ReadIGT()
+	igt, err := r.reader.ReadIGT()
 	if err != nil {
 		if !errors.Is(err, memreader.ErrNullPointer) {
 			return nil, fmt.Errorf("failed to read IGT: %w", err)
@@ -378,7 +405,7 @@ func (r *Runner) Tick(reader GameReader, deathCount uint32) ([]CheckpointEvent, 
 		}
 
 		// Trigger save backup on kill if no encounter backup was configured
-		if evt.Checkpoint.BackupFlagID == 0 {
+		if evt.Checkpoint.BackupFlagCheck == nil {
 			r.triggerBackup(evt.Checkpoint.ID)
 		}
 	}
@@ -427,10 +454,9 @@ func (r *Runner) triggerBackup(checkpointID string) {
 }
 
 func (r *Runner) findGameConfig() *memreader.GameConfig {
-	for _, g := range memreader.GetSupportedGameConfigs() {
-		if g.Name == r.route.Game {
-			return &g
-		}
+	cfg, ok := memreader.GetGameConfig(r.route.Game)
+	if !ok {
+		return nil
 	}
-	return nil
+	return cfg
 }
