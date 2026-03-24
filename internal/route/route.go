@@ -16,25 +16,29 @@ var validStateVarName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // Route defines a speedrun route with ordered checkpoints.
 type Route struct {
-	ID             string       `json:"id"`
-	Name           string       `json:"name"`
-	Game           string       `json:"game"`     // must match GameConfig.Name
-	Category       string       `json:"category"` // e.g. "Any% Glitchless"
-	Version        string       `json:"version"`
-	Checkpoints    []Checkpoint `json:"checkpoints"`     // ordered
-	ReferenceTimes []int64      `json:"reference_times"` // IGT ms per checkpoint (optional)
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Game        string       `json:"game"`     // must match GameConfig.ID
+	Category    string       `json:"category"` // e.g. "Any% Glitchless"
+	Version     string       `json:"version"`
+	Checkpoints []Checkpoint `json:"checkpoints"` // ordered
+}
+
+// EventFlagCheck defines a condition based on a game event flag.
+type EventFlagCheck struct {
+	FlagID uint32 `json:"flag_id"`
 }
 
 // Checkpoint represents a single trackable event in a route.
 type Checkpoint struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	EventType    string    `json:"event_type"`               // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
-	EventFlagID  uint32    `json:"event_flag_id,omitempty"`  // game memory flag ID (for flag-based checks)
-	BackupFlagID uint32    `json:"backup_flag_id,omitempty"` // event flag that triggers a save backup (e.g. boss encounter)
-	MemCheck       *MemCheck       `json:"mem_check,omitempty"`       // memory value check (for value-based checks)
-	InventoryCheck *InventoryCheck `json:"inventory_check,omitempty"` // inventory item quantity check
-	Optional       bool            `json:"optional"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	EventType       string          `json:"event_type"`                  // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
+	EventFlagCheck  *EventFlagCheck `json:"event_flag_check,omitempty"`  // game memory flag check (for flag-based checks)
+	BackupFlagCheck *EventFlagCheck `json:"backup_flag_check,omitempty"` // event flag that triggers a save backup (e.g. boss encounter)
+	MemCheck        *MemCheck       `json:"mem_check,omitempty"`         // memory value check (for value-based checks)
+	InventoryCheck  *InventoryCheck `json:"inventory_check,omitempty"`   // inventory item quantity check
+	Optional        bool            `json:"optional"`
 }
 
 // MemCheck defines a condition based on reading an integer from game memory.
@@ -48,10 +52,10 @@ type MemCheck struct {
 
 // InventoryCheck defines a condition based on an item's quantity in the inventory.
 type InventoryCheck struct {
-	ItemID     uint32 `json:"item_id"`              // full TypeId (e.g. 0x400003E8 = 1073742824)
-	Comparison string `json:"comparison"`            // "gte", "gt", "eq"
-	Value      uint32 `json:"value"`                 // target quantity
-	StateVar   string `json:"state_var,omitempty"`   // cumulative tracking variable name
+	ItemID     uint32 `json:"item_id"`             // full TypeId (e.g. 0x400003E8 = 1073742824)
+	Comparison string `json:"comparison"`          // "gte", "gt", "eq"
+	Value      uint32 `json:"value"`               // target quantity
+	StateVar   string `json:"state_var,omitempty"` // cumulative tracking variable name
 }
 
 // LoadRoute parses and validates a route JSON file.
@@ -148,8 +152,8 @@ func (r *Route) validate() error {
 		if cp.EventType == "" {
 			return fmt.Errorf("checkpoint %d: missing event_type", i)
 		}
-		if cp.EventFlagID == 0 && cp.MemCheck == nil && cp.InventoryCheck == nil {
-			return fmt.Errorf("checkpoint %d (%s): must have event_flag_id, mem_check, or inventory_check", i, cp.ID)
+		if cp.EventFlagCheck == nil && cp.MemCheck == nil && cp.InventoryCheck == nil {
+			return fmt.Errorf("checkpoint %d (%s): must have event_flag_check, mem_check, or inventory_check", i, cp.ID)
 		}
 		if cp.InventoryCheck != nil {
 			if cp.InventoryCheck.ItemID == 0 {
@@ -176,11 +180,6 @@ func (r *Route) validate() error {
 				return fmt.Errorf("checkpoint %d (%s): mem_check invalid size %d (must be 1, 2, or 4)", i, cp.ID, cp.MemCheck.Size)
 			}
 		}
-	}
-
-	if len(r.ReferenceTimes) > 0 && len(r.ReferenceTimes) != len(r.Checkpoints) {
-		return fmt.Errorf("reference_times length (%d) must match checkpoints length (%d)",
-			len(r.ReferenceTimes), len(r.Checkpoints))
 	}
 
 	// Validate state_var: same name must map to same item_id
