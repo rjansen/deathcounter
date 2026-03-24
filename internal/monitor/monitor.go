@@ -246,7 +246,7 @@ func isUnsupportedErr(err error) bool {
 }
 
 // StartLoop creates a 500ms ticker and runs tickFn on each tick in a goroutine.
-func (m *GameMonitor[S]) StartLoop(tickFn func()) {
+func (m *GameMonitor[S]) StartLoop(tickFn func() error) {
 	m.stopCh = make(chan struct{})
 	m.ticker = time.NewTicker(500 * time.Millisecond)
 	go func() {

@@ -26,12 +26,12 @@ func (m *DeathCounterMonitor) Start() {
 }
 
 // Tick performs one monitoring cycle.
-func (m *DeathCounterMonitor) Tick() {
+func (m *DeathCounterMonitor) Tick() error {
 	if _, err := m.Attach(); errors.Is(err, ErrNoGame) {
 		m.PublishState(DeathCounterState{
 			Status: m.StatusText(),
 		})
-		return
+		return err
 	}
 
 	// PhaseConnected: attempt save detection before reading death count
@@ -46,7 +46,7 @@ func (m *DeathCounterMonitor) Tick() {
 			CharacterName: m.CurrentCharName,
 			SaveSlotIndex: m.CurrentSlotIdx,
 		})
-		return
+		return err
 	}
 
 	// PhaseLoaded or beyond: full tick
@@ -71,7 +71,7 @@ func (m *DeathCounterMonitor) Tick() {
 			CharacterName: m.CurrentCharName,
 			SaveSlotIndex: m.CurrentSlotIdx,
 		})
-		return
+		return err
 	}
 
 	m.RecordDeathIfChanged(count)
@@ -92,4 +92,5 @@ func (m *DeathCounterMonitor) Tick() {
 		SaveSlotIndex: m.CurrentSlotIdx,
 		Hollowing:     m.CurrentHollowing,
 	})
+	return nil
 }
