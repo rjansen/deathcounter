@@ -370,6 +370,117 @@ func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
 	}
 }
 
+func TestDS3BossNames_Count(t *testing.T) {
+	if len(DS3BossNames) != 25 {
+		t.Errorf("expected 25 entries in DS3BossNames, got %d", len(DS3BossNames))
+	}
+}
+
+func TestDS3BossNames_KeysMatchConstants(t *testing.T) {
+	for _, f := range allDefeatedFlags() {
+		if _, ok := DS3BossNames[f.flag]; !ok {
+			t.Errorf("DS3BossNames missing key for %s (%d)", f.name, f.flag)
+		}
+	}
+}
+
+func TestDS3BossEncounteredNames_Count(t *testing.T) {
+	if len(DS3BossEncounteredNames) != 17 {
+		t.Errorf("expected 17 entries in DS3BossEncounteredNames, got %d", len(DS3BossEncounteredNames))
+	}
+}
+
+func TestDS3BossEncounteredNames_KeysMatchConstants(t *testing.T) {
+	for _, f := range allEncounteredFlags() {
+		if _, ok := DS3BossEncounteredNames[f.flag]; !ok {
+			t.Errorf("DS3BossEncounteredNames missing key for %s (%d)", f.name, f.flag)
+		}
+	}
+}
+
+func TestDS3GoodsNames_Count(t *testing.T) {
+	if len(DS3GoodsNames) != 15 {
+		t.Errorf("expected 15 entries in DS3GoodsNames, got %d", len(DS3GoodsNames))
+	}
+}
+
+func TestDS3GoodsNames_KeysMatchConstants(t *testing.T) {
+	for _, item := range allItemIDs() {
+		prefix := item.id & 0xFFFF0000
+		if prefix != 0x40000000 {
+			continue // not a goods item
+		}
+		if _, ok := DS3GoodsNames[item.id]; !ok {
+			t.Errorf("DS3GoodsNames missing key for %s (0x%X)", item.name, item.id)
+		}
+	}
+}
+
+func TestDS3RingNames_Count(t *testing.T) {
+	if len(DS3RingNames) != 4 {
+		t.Errorf("expected 4 entries in DS3RingNames, got %d", len(DS3RingNames))
+	}
+}
+
+func TestDS3RingNames_KeysMatchConstants(t *testing.T) {
+	for _, item := range allItemIDs() {
+		prefix := item.id & 0xFFFF0000
+		if prefix != 0x20000000 {
+			continue
+		}
+		if _, ok := DS3RingNames[item.id]; !ok {
+			t.Errorf("DS3RingNames missing key for %s (0x%X)", item.name, item.id)
+		}
+	}
+}
+
+func TestDS3WeaponNames_Count(t *testing.T) {
+	if len(DS3WeaponNames) != 3 {
+		t.Errorf("expected 3 entries in DS3WeaponNames, got %d", len(DS3WeaponNames))
+	}
+}
+
+func TestDS3WeaponNames_KeysMatchConstants(t *testing.T) {
+	for _, item := range allItemIDs() {
+		prefix := item.id & 0xFFFF0000
+		if prefix == 0x40000000 || prefix == 0x20000000 {
+			continue // goods or ring
+		}
+		if _, ok := DS3WeaponNames[item.id]; !ok {
+			t.Errorf("DS3WeaponNames missing key for %s (0x%X)", item.name, item.id)
+		}
+	}
+}
+
+func TestDS3StatNames_Count(t *testing.T) {
+	if len(DS3StatNames) != 10 {
+		t.Errorf("expected 10 entries in DS3StatNames, got %d", len(DS3StatNames))
+	}
+}
+
+func TestDS3StatNames_KeysMatchConstants(t *testing.T) {
+	statOffsets := []struct {
+		name   string
+		offset int64
+	}{
+		{"SoulLevel", DS3OffsetSoulLevel},
+		{"Attunement", DS3OffsetAttunement},
+		{"Endurance", DS3OffsetEndurance},
+		{"Vigor", DS3OffsetVigor},
+		{"Dexterity", DS3OffsetDexterity},
+		{"Intelligence", DS3OffsetIntelligence},
+		{"Faith", DS3OffsetFaith},
+		{"Luck", DS3OffsetLuck},
+		{"Strength", DS3OffsetStrength},
+		{"Vitality", DS3OffsetVitality},
+	}
+	for _, s := range statOffsets {
+		if _, ok := DS3StatNames[s.offset]; !ok {
+			t.Errorf("DS3StatNames missing key for %s (0x%X)", s.name, s.offset)
+		}
+	}
+}
+
 func TestDS3BossFlags_FlagDecomposition(t *testing.T) {
 	// Verify that each defeated flag can be decomposed using the DS3 event flag algorithm
 	// without producing invalid intermediate values.
