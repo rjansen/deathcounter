@@ -33,91 +33,77 @@ func newE2ETracker(t *testing.T) *stats.Tracker {
 	return tracker
 }
 
-// tickDCE2E is a test helper for e2e tests: calls Attach then Tick.
+// tickDCE2E is a test helper for e2e tests: simulates one StartLoop cycle.
 func tickDCE2E(t *testing.T, mon *DeathCounterMonitor) {
 	t.Helper()
 	reader, err := mon.Attach()
 	if err != nil {
-		mon.OnDisconnect()
+		mon.OnDetach()
+		return
+	}
+	if mon.Phase == PhaseAttached {
+		mon.OnAttach(mon.attachedGameID)
+		mon.Phase = PhaseLoaded
 		return
 	}
 	mon.Tick(reader)
 }
 
-// tickRouteE2E is a test helper for e2e tests: calls Attach then Tick.
+// tickRouteE2E is a test helper for e2e tests: simulates one StartLoop cycle.
 func tickRouteE2E(t *testing.T, mon *RouteMonitor) {
 	t.Helper()
 	reader, err := mon.Attach()
 	if err != nil {
-		mon.OnDisconnect()
+		mon.OnDetach()
+		return
+	}
+	if mon.Phase == PhaseAttached {
+		mon.OnAttach(mon.attachedGameID)
+		mon.Phase = PhaseLoaded
 		return
 	}
 	mon.Tick(reader)
 }
 
 // TestE2E_DeathCounterMonitor_PhaseTransitions validates the full
-// Disconnected → Connected → Loaded state machine with a real DS3 process.
+// Detached → Attached → Loaded state machine with a real DS3 process.
 func TestE2E_DeathCounterMonitor_PhaseTransitions(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
 	tracker := newE2ETracker(t)
 
 	// We got a reader to verify DS3 is running, but the monitor
-	// starts fresh from PhaseDisconnected — detach and let the monitor attach.
+	// starts fresh from PhaseDetached — detach and let the monitor attach.
 	reader.Detach()
 
 	mon := NewDeathCounterMonitor("ds3", ops, tracker)
 
-	// Phase 1: Disconnected — no game attached yet... but since the process
+	// Phase 1: Detached — no game attached yet... but since the process
 	// IS running, Attach will succeed on first tick.
-	if mon.Phase != PhaseDisconnected {
-		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDisconnected)
+	if mon.Phase != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDetached)
 	}
 
-	// Phase 2: First tick → TryAttach succeeds → PhaseConnected,
-	// then DetectSave succeeds → PhaseLoaded.
+	// Phase 2: First tick → Attach succeeds → PhaseAttached → OnAttach → PhaseLoaded
+	tickDCE2E(t, mon)
+
+	if mon.Phase < PhaseLoaded {
+		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.Phase)
+	}
+
+	// Phase 3: Loaded — death count should now be readable on next tick
 	tickDCE2E(t, mon)
 	update := drainUpdate(t, mon)
 
-	if mon.Phase < PhaseConnected {
-		t.Fatalf("after first tick: got phase %s, want >= Connected", mon.Phase)
-	}
-
-	t.Logf("After tick 1: phase=%s, status=%q, game=%q, char=%q, slot=%d",
-		mon.Phase, update.Status, update.GameName, update.CharacterName, update.SaveSlotIndex)
+	t.Logf("After loaded tick: deaths=%d, char=%q, status=%q",
+		update.DeathCount, update.CharacterName, update.Status)
 
 	if update.GameName != "Dark Souls III" {
 		t.Errorf("expected game 'Dark Souls III', got %q", update.GameName)
 	}
 
-	// If save detection succeeded on the first tick, we're already Loaded
-	if mon.Phase == PhaseLoaded {
-		if update.CharacterName == "" {
-			t.Error("PhaseLoaded but character name is empty")
-		}
-		if update.Status != "Loaded" {
-			t.Errorf("expected status 'Loaded', got %q", update.Status)
-		}
-		t.Logf("Save detected on first tick: %q (Slot %d)", update.CharacterName, update.SaveSlotIndex)
-	} else {
-		// Still Connected — save detection may need another tick
-		t.Logf("Still Connected after first tick, ticking again for save detection...")
-		tickDCE2E(t, mon)
-		update = drainUpdate(t, mon)
-		if mon.Phase != PhaseLoaded {
-			t.Fatalf("after second tick: got phase %s, want Loaded", mon.Phase)
-		}
-	}
-
-	// Phase 3: Loaded — death count should now be readable on next tick
-	tickDCE2E(t, mon)
-	update = drainUpdate(t, mon)
-
-	t.Logf("After loaded tick: deaths=%d, char=%q",
-		update.DeathCount, update.CharacterName)
-
-	if update.CharacterName == "" {
-		t.Error("expected non-empty character name in Loaded phase")
+	if update.Status != "Loaded" {
+		t.Errorf("expected status 'Loaded', got %q", update.Status)
 	}
 
 	// Verify save ID was created in the DB
@@ -127,7 +113,7 @@ func TestE2E_DeathCounterMonitor_PhaseTransitions(t *testing.T) {
 }
 
 // TestE2E_RouteMonitor_PhaseTransitions validates the full
-// Disconnected → Connected → Loaded → RouteRunning state machine.
+// Detached → Attached → Loaded → Running state machine.
 func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
@@ -148,11 +134,11 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	}
 
 	// Initial state
-	if mon.Phase != PhaseDisconnected {
-		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDisconnected)
+	if mon.Phase != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDetached)
 	}
 
-	// Tick until we reach RouteRunning (max 5 ticks to account for slow save detection)
+	// Tick until we reach Running (max 5 ticks to account for slow save detection)
 	var update DisplayUpdate
 	for i := 0; i < 5; i++ {
 		tickRouteE2E(t, mon)
@@ -160,13 +146,13 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 		t.Logf("Tick %d: phase=%s, status=%q, char=%q",
 			i+1, mon.Phase, update.Status, update.CharacterName)
 
-		if mon.Phase == PhaseRouteRunning {
+		if mon.Phase == PhaseRunning {
 			break
 		}
 	}
 
-	if mon.Phase != PhaseRouteRunning {
-		t.Fatalf("expected PhaseRouteRunning after ticks, got %s", mon.Phase)
+	if mon.Phase != PhaseRunning {
+		t.Fatalf("expected PhaseRunning after ticks, got %s", mon.Phase)
 	}
 
 	// Verify route is active
@@ -193,7 +179,7 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	t.Logf("Route running: char=%q (Slot %d), saveID=%d",
 		update.CharacterName, update.SaveSlotIndex, mon.CurrentSaveID)
 
-	// One more tick to verify death count is readable in RouteRunning phase
+	// One more tick to verify death count is readable in Running phase
 	tickRouteE2E(t, mon)
 	update = drainUpdate(t, mon)
 

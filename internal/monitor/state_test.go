@@ -5,7 +5,7 @@ import "testing"
 func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	s := DeathCounterState{
 		GameName:      "Dark Souls III",
-		Status:        "Connected",
+		Status:        "Loaded",
 		DeathCount:    42,
 		CharacterName: "Knight",
 		SaveSlotIndex: 2,
@@ -16,8 +16,8 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	if update.GameName != "Dark Souls III" {
 		t.Errorf("expected GameName='Dark Souls III', got %q", update.GameName)
 	}
-	if update.Status != "Connected" {
-		t.Errorf("expected Status='Connected', got %q", update.Status)
+	if update.Status != "Loaded" {
+		t.Errorf("expected Status='Loaded', got %q", update.Status)
 	}
 	if update.DeathCount != 42 {
 		t.Errorf("expected DeathCount=42, got %d", update.DeathCount)
@@ -36,7 +36,7 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	s := RouteMonitorState{
 		GameName:      "Dark Souls III",
-		Status:        "Connected",
+		Status:        "Loaded",
 		DeathCount:    10,
 		CharacterName: "Knight",
 		SaveSlotIndex: 1,
@@ -56,8 +56,8 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	if update.GameName != "Dark Souls III" {
 		t.Errorf("expected GameName='Dark Souls III', got %q", update.GameName)
 	}
-	if update.Status != "Connected" {
-		t.Errorf("expected Status='Connected', got %q", update.Status)
+	if update.Status != "Loaded" {
+		t.Errorf("expected Status='Loaded', got %q", update.Status)
 	}
 	if update.DeathCount != 10 {
 		t.Errorf("expected DeathCount=10, got %d", update.DeathCount)
@@ -116,10 +116,10 @@ func TestMonitorPhase_String(t *testing.T) {
 		phase MonitorPhase
 		want  string
 	}{
-		{PhaseDisconnected, "Disconnected"},
-		{PhaseConnected, "Connected"},
+		{PhaseDetached, "Detached"},
+		{PhaseAttached, "Attached"},
 		{PhaseLoaded, "Loaded"},
-		{PhaseRouteRunning, "RouteRunning"},
+		{PhaseRunning, "Running"},
 	}
 	for _, tt := range tests {
 		if got := tt.phase.String(); got != tt.want {
@@ -133,10 +133,10 @@ func TestMonitorPhase_StatusText(t *testing.T) {
 		phase MonitorPhase
 		want  string
 	}{
-		{PhaseDisconnected, "Waiting for game..."},
-		{PhaseConnected, "Connected"},
+		{PhaseDetached, "Waiting for game..."},
+		{PhaseAttached, "Attached"},
 		{PhaseLoaded, "Loaded"},
-		{PhaseRouteRunning, "Tracking route"},
+		{PhaseRunning, "Tracking route"},
 	}
 	for _, tt := range tests {
 		if got := tt.phase.StatusText(); got != tt.want {
