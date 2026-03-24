@@ -399,11 +399,11 @@ func (t *Tracker) GetSessionHistory(limit int) ([]Session, error) {
 
 // RouteCheckpoint represents a recorded checkpoint in a route run.
 type RouteCheckpoint struct {
-	CheckpointID       string
-	CheckpointName     string
-	IGTMs              int64
+	CheckpointID         string
+	CheckpointName       string
+	IGTMs                int64
 	CheckpointDurationMs int64
-	Deaths             uint32
+	Deaths               uint32
 }
 
 // StartRouteRun creates a new route run record and returns its ID.
@@ -530,6 +530,23 @@ func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+// FindInProgressRun returns the ID of the most recent in-progress route run
+// for the given route and save. Returns (0, false, nil) if no such run exists.
+func (t *Tracker) FindInProgressRun(routeID string, saveID int64) (int64, bool, error) {
+	var runID int64
+	err := t.db.QueryRow(
+		"SELECT id FROM route_runs WHERE route_id = ? AND save_id = ? AND status = 'in_progress' ORDER BY start_time DESC LIMIT 1",
+		routeID, saveID,
+	).Scan(&runID)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to find in-progress run: %w", err)
+	}
+	return runID, true, nil
 }
 
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
