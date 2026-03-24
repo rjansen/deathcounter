@@ -21,7 +21,6 @@ type App struct {
 	menuTitle         *walk.Action
 	menuGame          *walk.Action
 	menuCharacter     *walk.Action
-	menuHollowing     *walk.Action
 	menuCount         *walk.Action
 	menuSession       *walk.Action
 	menuTotal         *walk.Action
@@ -143,12 +142,6 @@ func (a *App) buildMenu() error {
 	a.menuCharacter.SetEnabled(false)
 	menu.Actions().Add(a.menuCharacter)
 
-	// Hollowing
-	a.menuHollowing = walk.NewAction()
-	a.menuHollowing.SetText("Hollowing: -")
-	a.menuHollowing.SetEnabled(false)
-	menu.Actions().Add(a.menuHollowing)
-
 	menu.Actions().Add(walk.NewSeparatorAction())
 
 	// Death counts
@@ -249,9 +242,6 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 	}
 	if a.menuCharacter != nil {
 		a.menuCharacter.SetText(formatCharacterText(update.CharacterName, update.SaveSlotIndex))
-	}
-	if a.menuHollowing != nil {
-		a.menuHollowing.SetText(formatHollowingText(update.GameName, update.Hollowing))
 	}
 
 	a.ni.SetToolTip(formatTooltip(update.Status, update.GameName))

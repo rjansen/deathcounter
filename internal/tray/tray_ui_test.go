@@ -98,9 +98,6 @@ func TestBuildMenu(t *testing.T) {
 	if app.menuCharacter == nil {
 		t.Error("menuCharacter is nil")
 	}
-	if app.menuHollowing == nil {
-		t.Error("menuHollowing is nil")
-	}
 	if app.menuCount == nil {
 		t.Error("menuCount is nil")
 	}

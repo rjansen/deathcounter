@@ -41,14 +41,6 @@ func formatTotalDeathsText(total uint32) string {
 	return fmt.Sprintf("Total: %d", total)
 }
 
-// formatHollowingText returns the menu text for the hollowing item.
-func formatHollowingText(gameName string, hollowing uint32) string {
-	if gameName != "" {
-		return fmt.Sprintf("Hollowing: %d", hollowing)
-	}
-	return "Hollowing: -"
-}
-
 // routeDisplayTexts holds the resolved text for all route menu items.
 type routeDisplayTexts struct {
 	name     string
