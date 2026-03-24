@@ -1,8 +1,11 @@
-.PHONY: build run clean test test-ui test-e2e test-e2e-ds3 help manifest tools
+.PHONY: build run clean test test-ui test-e2e test-e2e-ds3 help manifest manifest-test tools
 
 # Embed manifest resource (required by lxn/walk)
 manifest:
 	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o rsrc.syso
+
+# Embed manifest resource for tray UI tests (separate to avoid "too many .rsrc sections" on build)
+manifest-test:
 	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o internal/tray/rsrc_test.syso
 
 # Install build tools
@@ -28,7 +31,7 @@ test:
 	go test -count=1 ./internal/...
 
 # Run UI tests — walk-based tray tests (requires Windows desktop session + manifest)
-test-ui: manifest
+test-ui: manifest-test
 	go test -tags e2e,ui -v -count=1 ./internal/tray/
 
 # Run E2E tests — game-agnostic only (requires any supported game running on Windows)
