@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"errors"
 	"log"
 
 	"github.com/rjansen/deathcounter/internal/backup"
@@ -34,10 +35,8 @@ func (m *RouteMonitor) Start() {
 
 // Tick performs one monitoring cycle with route tracking.
 func (m *RouteMonitor) Tick() {
-	m.TryAttach()
-
-	// Disconnected: abandon any active runner, publish empty state
-	if m.Phase == PhaseDisconnected {
+	if _, err := m.Attach(); errors.Is(err, ErrNoGame) {
+		// Disconnected: abandon any active runner, publish empty state
 		if m.runner != nil && m.runner.IsActive() {
 			m.runner.Abandon()
 		}
@@ -47,8 +46,9 @@ func (m *RouteMonitor) Tick() {
 
 	// PhaseConnected: attempt save detection, start route if loaded
 	if m.Phase == PhaseConnected {
-		m.TryDetectSave()
-		if m.Phase == PhaseLoaded {
+		_, err := m.DetectSave()
+		if err == nil || errors.Is(err, ErrSaveNotSupported) {
+			m.Phase = PhaseLoaded
 			m.startMatchingRoute()
 		}
 		m.publishRouteState()
@@ -56,8 +56,8 @@ func (m *RouteMonitor) Tick() {
 	}
 
 	// PhaseLoaded or PhaseRouteRunning: check for save changes
-	saveChanged, _ := m.TryDetectSave()
-	if saveChanged {
+	_, err := m.DetectSave()
+	if errors.Is(err, ErrSaveChanged) {
 		// Save identity changed: abandon active run and restart
 		if m.runner != nil && m.runner.IsActive() {
 			m.runner.Abandon()
@@ -68,23 +68,41 @@ func (m *RouteMonitor) Tick() {
 
 	// Phase-based CatchUp retry: stay in PhaseLoaded until CatchUp succeeds
 	if m.Phase == PhaseLoaded && m.runner != nil && m.runner.IsActive() {
-		if m.runner.CatchUp(m.Reader) {
+		if err := m.runner.CatchUp(); err == nil {
 			m.Phase = PhaseRouteRunning
 		}
 	}
 
-	count, ok := m.ReadDeathCount()
-	if !ok {
+	count, readErr := m.Reader.ReadDeathCount()
+	if readErr != nil {
+		if errors.Is(readErr, memreader.ErrNullPointer) {
+			if !m.loadLoggedOnce {
+				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
+				m.loadLoggedOnce = true
+			}
+		} else {
+			log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), readErr)
+			m.Reader.Detach()
+			m.Phase = PhaseDisconnected
+			m.LastGame = ""
+		}
 		m.publishRouteState()
 		return
 	}
 
 	m.RecordDeathIfChanged(count)
-	m.ReadHollowing()
+
+	// Read hollowing directly
+	val, hollowErr := m.Reader.ReadHollowing()
+	if hollowErr != nil {
+		m.CurrentHollowing = 0
+	} else {
+		m.CurrentHollowing = val
+	}
 
 	// Tick route runner if active and CatchUp is done
 	if m.Phase == PhaseRouteRunning && m.runner != nil && m.runner.IsActive() {
-		events, err := m.runner.Tick(m.Reader, m.LastCount)
+		events, err := m.runner.Tick()
 		if err != nil {
 			log.Printf("Route tracking error: %v", err)
 		}
@@ -102,28 +120,44 @@ func (m *RouteMonitor) startMatchingRoute() {
 	if m.route == nil || m.route.Game != m.GameName() {
 		return
 	}
-	m.runner = route.NewRunner(m.route, m.Tracker, m.backupMgr)
+	m.runner = route.NewRunner(m.route, m.Tracker, m.backupMgr, m.Reader)
+	m.backupCount = 0
+
+	// Check for an existing in-progress run for this route+save
+	if m.CurrentSaveID > 0 {
+		runID, found, err := m.Tracker.FindInProgressRun(m.route.ID, m.CurrentSaveID)
+		if err != nil {
+			log.Printf("[Route] Failed to check for in-progress run: %v", err)
+		} else if found {
+			if err := m.runner.Resume(runID, 0); err != nil {
+				log.Printf("[Route] Failed to resume run %d: %v", runID, err)
+			} else {
+				log.Printf("[Route] Resumed route: %s (run %d)", m.route.Name, runID)
+				if err := m.runner.CatchUp(); err == nil {
+					m.Phase = PhaseRouteRunning
+				}
+				return
+			}
+		}
+	}
+
 	if err := m.runner.Start(0, m.CurrentSaveID); err != nil {
 		log.Printf("Failed to start route run: %v", err)
 		m.runner = nil
 		return
 	}
 	log.Printf("[Route] Started route: %s", m.route.Name)
-	m.backupCount = 0
 	// Attempt CatchUp immediately; if it fails, Phase stays PhaseLoaded
 	// and Tick will retry on subsequent cycles
-	if m.runner.CatchUp(m.Reader) {
+	if err := m.runner.CatchUp(); err == nil {
 		m.Phase = PhaseRouteRunning
 	}
 }
 
 func (m *RouteMonitor) countBackups(events []route.CheckpointEvent) int {
-	// Backups are triggered inside runner.Tick, count checkpoint events
-	// that would have triggered backups
 	count := 0
 	for _, evt := range events {
-		if evt.Checkpoint.BackupFlagID == 0 {
-			// Kill-based backup
+		if evt.Checkpoint.BackupFlagCheck == nil {
 			count++
 		}
 	}
@@ -132,7 +166,7 @@ func (m *RouteMonitor) countBackups(events []route.CheckpointEvent) int {
 
 func (m *RouteMonitor) publishRouteState() {
 	state := RouteMonitorState{
-		GameName:      m.GameName(),
+		GameName:      m.GameLabel(),
 		Status:        m.StatusText(),
 		DeathCount:    m.LastCount,
 		CharacterName: m.CurrentCharName,

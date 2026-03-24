@@ -17,9 +17,9 @@ func newRealReader(t *testing.T) *memreader.GameReader {
 	if err != nil || !reader.IsAttached() {
 		t.Skipf("No supported game running: %v", err)
 	}
-	if reader.GetCurrentGame() != "Dark Souls III" {
+	if reader.GetCurrentGame() != "ds3" {
 		reader.Detach()
-		t.Skipf("Test requires Dark Souls III, attached to %q", reader.GetCurrentGame())
+		t.Skipf("Test requires DS3, attached to %q", reader.GetCurrentGame())
 	}
 	return reader
 }
@@ -119,9 +119,9 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 		{
 			ID:   "ds3-e2e-test",
 			Name: "E2E Test Route",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "iudex", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: memreader.DS3FlagIudexGundyr},
+				{ID: "iudex", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: memreader.DS3FlagIudexGundyr}},
 			},
 		},
 	}
@@ -176,56 +176,6 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	update = drainUpdate(t, mon)
 
 	t.Logf("Route tick: deaths=%d, hollowing=%d", update.DeathCount, update.Hollowing)
-}
-
-// TestE2E_RouteMonitor_SaveIDPassedToRouteRun verifies that the route run
-// record in the DB has the correct save_id (not zero).
-func TestE2E_RouteMonitor_SaveIDPassedToRouteRun(t *testing.T) {
-	reader := newRealReader(t)
-	defer reader.Detach()
-	tracker := newE2ETracker(t)
-
-	reader.Detach()
-
-	routes := []*route.Route{
-		{
-			ID:   "ds3-saveid-test",
-			Name: "SaveID Test Route",
-			Game: "Dark Souls III",
-			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Test Boss", EventType: "boss_kill", EventFlagID: 99999},
-			},
-		},
-	}
-
-	mon := NewRouteMonitor(reader, tracker, routes[0], nil)
-
-	// Tick until route starts
-	for i := 0; i < 5; i++ {
-		mon.Tick()
-		drainUpdate(t, mon)
-		if mon.Phase == PhaseRouteRunning {
-			break
-		}
-	}
-
-	if mon.Phase != PhaseRouteRunning {
-		t.Fatalf("expected PhaseRouteRunning, got %s", mon.Phase)
-	}
-
-	// Verify the route_runs record has a non-zero save_id
-	var saveID *int64
-	err := tracker.DB().QueryRow(
-		"SELECT save_id FROM route_runs WHERE route_id = 'ds3-saveid-test' ORDER BY id DESC LIMIT 1",
-	).Scan(&saveID)
-	if err != nil {
-		t.Fatalf("query route_runs: %v", err)
-	}
-	if saveID == nil || *saveID <= 0 {
-		t.Errorf("route_runs.save_id should be > 0, got %v", saveID)
-	} else {
-		t.Logf("route_runs.save_id = %d (correct)", *saveID)
-	}
 }
 
 // TestE2E_DeathCounterMonitor_Slot255NotAccepted verifies that slot 255

@@ -1,6 +1,9 @@
 package monitor
 
 import (
+	"errors"
+	"log"
+
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/stats"
 )
@@ -24,9 +27,7 @@ func (m *DeathCounterMonitor) Start() {
 
 // Tick performs one monitoring cycle.
 func (m *DeathCounterMonitor) Tick() {
-	m.TryAttach()
-
-	if m.Phase == PhaseDisconnected {
+	if _, err := m.Attach(); errors.Is(err, ErrNoGame) {
 		m.PublishState(DeathCounterState{
 			Status: m.StatusText(),
 		})
@@ -35,9 +36,12 @@ func (m *DeathCounterMonitor) Tick() {
 
 	// PhaseConnected: attempt save detection before reading death count
 	if m.Phase == PhaseConnected {
-		m.TryDetectSave()
+		_, err := m.DetectSave()
+		if err == nil || errors.Is(err, ErrSaveNotSupported) {
+			m.Phase = PhaseLoaded
+		}
 		m.PublishState(DeathCounterState{
-			GameName:      m.GameName(),
+			GameName:      m.GameLabel(),
 			Status:        m.StatusText(),
 			CharacterName: m.CurrentCharName,
 			SaveSlotIndex: m.CurrentSlotIdx,
@@ -46,12 +50,23 @@ func (m *DeathCounterMonitor) Tick() {
 	}
 
 	// PhaseLoaded or beyond: full tick
-	m.TryDetectSave() // check for save changes (best-effort)
+	m.DetectSave() // check for save changes (best-effort)
 
-	count, ok := m.ReadDeathCount()
-	if !ok {
+	count, err := m.Reader.ReadDeathCount()
+	if err != nil {
+		if errors.Is(err, memreader.ErrNullPointer) {
+			if !m.loadLoggedOnce {
+				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
+				m.loadLoggedOnce = true
+			}
+		} else {
+			log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), err)
+			m.Reader.Detach()
+			m.Phase = PhaseDisconnected
+			m.LastGame = ""
+		}
 		m.PublishState(DeathCounterState{
-			GameName:      m.GameName(),
+			GameName:      m.GameLabel(),
 			Status:        m.StatusText(),
 			CharacterName: m.CurrentCharName,
 			SaveSlotIndex: m.CurrentSlotIdx,
@@ -60,10 +75,17 @@ func (m *DeathCounterMonitor) Tick() {
 	}
 
 	m.RecordDeathIfChanged(count)
-	m.ReadHollowing()
+
+	// Read hollowing directly
+	val, hollowErr := m.Reader.ReadHollowing()
+	if hollowErr != nil {
+		m.CurrentHollowing = 0
+	} else {
+		m.CurrentHollowing = val
+	}
 
 	m.PublishState(DeathCounterState{
-		GameName:      m.GameName(),
+		GameName:      m.GameLabel(),
 		Status:        m.StatusText(),
 		DeathCount:    count,
 		CharacterName: m.CurrentCharName,

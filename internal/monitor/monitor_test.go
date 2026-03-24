@@ -101,7 +101,7 @@ func setupDS3Mock(deathCount uint32) (*mockProcessOps, *memreader.GameReader) {
 
 	// GameDataMan global pointer at a simulated AOB-resolved address
 	gameDataManGlobalAddr := uintptr(0x500000000) // address of the global pointer variable
-	gameDataManPtr := uint64(0x300000000)          // the GameDataMan object itself
+	gameDataManPtr := uint64(0x300000000)         // the GameDataMan object itself
 	gameDataManBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(gameDataManBytes, gameDataManPtr)
 	mock.memory[gameDataManGlobalAddr] = gameDataManBytes
@@ -318,9 +318,9 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 		{
 			ID:   "ds3-any",
 			Name: "DS3 Any%",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
@@ -353,9 +353,9 @@ func TestRouteMonitor_NonMatchingRoute(t *testing.T) {
 		{
 			ID:   "sekiro-any",
 			Name: "Sekiro Any%",
-			Game: "Sekiro",
+			Game: "sekiro",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Genichiro", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Genichiro", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
@@ -382,9 +382,9 @@ func TestRouteMonitor_countBackups(t *testing.T) {
 	mon := NewRouteMonitor(reader, tracker, (*route.Route)(nil), nil)
 
 	events := []route.CheckpointEvent{
-		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagID: 101}}, // has encounter flag → NOT counted
-		{Checkpoint: route.Checkpoint{ID: "boss2", BackupFlagID: 0}},   // no encounter flag → counted (kill-based)
-		{Checkpoint: route.Checkpoint{ID: "boss3", BackupFlagID: 0}},   // no encounter flag → counted
+		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagCheck: &route.EventFlagCheck{FlagID: 101}}}, // has encounter flag → NOT counted
+		{Checkpoint: route.Checkpoint{ID: "boss2"}},                                                      // no encounter flag → counted (kill-based)
+		{Checkpoint: route.Checkpoint{ID: "boss3"}},                                                      // no encounter flag → counted
 	}
 
 	count := mon.countBackups(events)
@@ -465,9 +465,9 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 		{
 			ID:   "ds3-any",
 			Name: "DS3 Any%",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
@@ -514,9 +514,9 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 		{
 			ID:   "ds3-any",
 			Name: "DS3 Any%",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
@@ -594,9 +594,9 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 		{
 			ID:   "ds3-any",
 			Name: "DS3 Any%",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
@@ -627,9 +627,9 @@ func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
 		{
 			ID:   "ds3-any",
 			Name: "DS3 Any%",
-			Game: "Dark Souls III",
+			Game: "ds3",
 			Checkpoints: []route.Checkpoint{
-				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagID: 100},
+				{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: 100}},
 			},
 		},
 	}
