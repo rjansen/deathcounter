@@ -34,89 +34,110 @@ func (m *RouteMonitor) Start() {
 }
 
 // Tick performs one monitoring cycle with route tracking.
-func (m *RouteMonitor) Tick() {
+func (m *RouteMonitor) Tick() error {
 	if _, err := m.Attach(); errors.Is(err, ErrNoGame) {
-		// Disconnected: abandon any active runner, publish empty state
-		if m.runner != nil && m.runner.IsActive() {
-			m.runner.Abandon()
-		}
-		m.publishRouteState()
-		return
+		m.abandonRun()
+		return err
 	}
 
-	// PhaseConnected: attempt save detection, start route if loaded
 	if m.Phase == PhaseConnected {
-		_, err := m.DetectSave()
-		if err == nil || errors.Is(err, ErrSaveNotSupported) {
-			m.Phase = PhaseLoaded
-			m.startMatchingRoute()
-		}
-		m.publishRouteState()
-		return
+		m.startRun()
+		return nil
 	}
 
-	// PhaseLoaded or PhaseRouteRunning: check for save changes
 	_, err := m.DetectSave()
 	if errors.Is(err, ErrSaveChanged) {
-		// Save identity changed: abandon active run and restart
-		if m.runner != nil && m.runner.IsActive() {
-			m.runner.Abandon()
-		}
-		m.Tracker.EndCurrentSession()
-		m.startMatchingRoute()
+		m.handleSaveChanged()
 	}
 
-	// Phase-based CatchUp retry: stay in PhaseLoaded until CatchUp succeeds
 	if m.Phase == PhaseLoaded && m.runner != nil && m.runner.IsActive() {
-		if err := m.runner.CatchUp(); err == nil {
-			m.Phase = PhaseRouteRunning
-		}
+		m.catchUpRun()
 	}
 
 	count, readErr := m.Reader.ReadDeathCount()
 	if readErr != nil {
-		if errors.Is(readErr, memreader.ErrNullPointer) {
-			if !m.loadLoggedOnce {
-				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
-				m.loadLoggedOnce = true
-			}
-		} else {
-			log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), readErr)
-			m.Reader.Detach()
-			m.Phase = PhaseDisconnected
-			m.LastGame = ""
-		}
-		m.publishRouteState()
-		return
+		m.handleReadError(readErr)
+		return readErr
 	}
 
 	m.RecordDeathIfChanged(count)
+	m.readHollowing()
 
-	// Read hollowing directly
-	val, hollowErr := m.Reader.ReadHollowing()
-	if hollowErr != nil {
+	if m.Phase == PhaseRouteRunning && m.runner != nil && m.runner.IsActive() {
+		m.tickRun()
+	}
+
+	m.publishRouteState()
+	return nil
+}
+
+func (m *RouteMonitor) abandonRun() {
+	if m.runner != nil && m.runner.IsActive() {
+		m.runner.Abandon()
+	}
+	m.publishRouteState()
+}
+
+func (m *RouteMonitor) startRun() {
+	_, err := m.DetectSave()
+	if err == nil || errors.Is(err, ErrSaveNotSupported) {
+		m.Phase = PhaseLoaded
+		m.startRouteRun()
+	}
+	m.publishRouteState()
+}
+
+func (m *RouteMonitor) handleSaveChanged() {
+	if m.runner != nil && m.runner.IsActive() {
+		m.runner.Abandon()
+	}
+	m.Tracker.EndCurrentSession()
+	m.startRouteRun()
+}
+
+func (m *RouteMonitor) catchUpRun() {
+	if err := m.runner.CatchUp(); err == nil {
+		m.Phase = PhaseRouteRunning
+	}
+}
+
+func (m *RouteMonitor) handleReadError(readErr error) {
+	if errors.Is(readErr, memreader.ErrNullPointer) {
+		if !m.loadLoggedOnce {
+			log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
+			m.loadLoggedOnce = true
+		}
+	} else {
+		log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), readErr)
+		m.Reader.Detach()
+		m.Phase = PhaseDisconnected
+		m.LastGame = ""
+	}
+	m.publishRouteState()
+}
+
+func (m *RouteMonitor) readHollowing() {
+	val, err := m.Reader.ReadHollowing()
+	if err != nil {
 		m.CurrentHollowing = 0
 	} else {
 		m.CurrentHollowing = val
 	}
-
-	// Tick route runner if active and CatchUp is done
-	if m.Phase == PhaseRouteRunning && m.runner != nil && m.runner.IsActive() {
-		events, err := m.runner.Tick()
-		if err != nil {
-			log.Printf("Route tracking error: %v", err)
-		}
-		for _, evt := range events {
-			log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
-				evt.Checkpoint.Name, evt.IGT, evt.Deaths)
-		}
-		m.backupCount += m.countBackups(events)
-	}
-
-	m.publishRouteState()
 }
 
-func (m *RouteMonitor) startMatchingRoute() {
+func (m *RouteMonitor) tickRun() {
+	events, err := m.runner.Tick()
+	if err != nil {
+		log.Printf("Route tracking error: %v", err)
+	}
+	for _, evt := range events {
+		log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
+			evt.Checkpoint.Name, evt.IGT, evt.Deaths)
+	}
+	m.backupCount += m.countBackups(events)
+}
+
+func (m *RouteMonitor) startRouteRun() {
 	if m.route == nil || m.route.Game != m.GameName() {
 		return
 	}
