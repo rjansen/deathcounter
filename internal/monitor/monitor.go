@@ -14,6 +14,7 @@ import (
 // Sentinel errors for monitor state transitions.
 var (
 	ErrNoGame           = errors.New("no game found")
+	ErrGameDisconnected = errors.New("game disconnected")
 	ErrSaveNotSupported = errors.New("save detection not supported")
 	ErrSavePending      = errors.New("save detection pending")
 	ErrSaveChanged      = errors.New("save identity changed")
@@ -26,6 +27,12 @@ type Monitor interface {
 	DisplayUpdates() <-chan DisplayUpdate
 }
 
+// TickMonitor is implemented by sub-monitors for the tick loop.
+type TickMonitor interface {
+	Tick(reader *memreader.GameReader) error
+	OnDisconnect()
+}
+
 // DisplayUpdate is the common display state consumed by tray.
 // Fields holds domain-specific key-value data (e.g. route progress fields)
 // so the struct stays generic without needing typed sub-structs.
@@ -35,7 +42,6 @@ type DisplayUpdate struct {
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
-	Hollowing     uint32
 	Fields        map[string]any
 }
 
@@ -48,6 +54,8 @@ type Displayable interface {
 // GameMonitor is the generic base that manages the game attach/detach
 // lifecycle, death count reading, and pushes typed state updates.
 type GameMonitor[S Displayable] struct {
+	ops     memreader.ProcessOps
+	gameID  string // target game (immutable, set at construction)
 	Reader  *memreader.GameReader
 	Tracker *stats.Tracker
 
@@ -59,24 +67,23 @@ type GameMonitor[S Displayable] struct {
 	stopOnce sync.Once
 
 	LastCount uint32
-	LastGame  string
 	Phase     MonitorPhase
 
 	// Save slot tracking
-	CurrentSaveID    int64
-	CurrentSlotIdx   int
-	CurrentCharName  string
-	CurrentHollowing uint32
+	CurrentSaveID   int64
+	CurrentSlotIdx  int
+	CurrentCharName string
 
 	// Log spam prevention (reset on attach/detach)
 	saveLoggedOnce bool
 	loadLoggedOnce bool
 }
 
-// InitGameMonitor initializes a GameMonitor with buffered channels.
-func InitGameMonitor[S Displayable](reader *memreader.GameReader, tracker *stats.Tracker) GameMonitor[S] {
+// NewGameMonitor initializes a GameMonitor with buffered channels.
+func NewGameMonitor[S Displayable](gameID string, ops memreader.ProcessOps, tracker *stats.Tracker) GameMonitor[S] {
 	return GameMonitor[S]{
-		Reader:    reader,
+		ops:       ops,
+		gameID:    gameID,
 		Tracker:   tracker,
 		updates:   make(chan S, 1),
 		displayCh: make(chan DisplayUpdate, 1),
@@ -89,22 +96,19 @@ func (m *GameMonitor[S]) DisplayUpdates() <-chan DisplayUpdate {
 	return m.displayCh
 }
 
-// TypedUpdates returns the typed state channel.
-func (m *GameMonitor[S]) TypedUpdates() <-chan S {
+// Updates returns the typed state channel.
+func (m *GameMonitor[S]) Updates() <-chan S {
 	return m.updates
 }
 
-// GameName returns the current game ID.
-func (m *GameMonitor[S]) GameName() string {
-	return m.LastGame
+// GameID returns the target game ID.
+func (m *GameMonitor[S]) GameID() string {
+	return m.gameID
 }
 
-// GameLabel returns the display label for the current game.
+// GameLabel returns the display label for the target game.
 func (m *GameMonitor[S]) GameLabel() string {
-	if m.LastGame == "" {
-		return ""
-	}
-	return memreader.GetGameLabel(m.LastGame)
+	return memreader.GetGameLabel(m.gameID)
 }
 
 // StatusText returns the current status string derived from the Phase.
@@ -112,40 +116,42 @@ func (m *GameMonitor[S]) StatusText() string {
 	return m.Phase.StatusText()
 }
 
-// IsAttached returns whether a game is currently attached.
-func (m *GameMonitor[S]) IsAttached() bool {
-	return m.Reader.IsAttached()
+// Attach attempts to attach to the target game process.
+// Returns the GameReader and nil on success, or ErrNoGame if the process is not running.
+// If already attached, returns the existing reader.
+func (m *GameMonitor[S]) Attach() (*memreader.GameReader, error) {
+	if m.Reader != nil {
+		return m.Reader, nil
+	}
+	cfg, proc, err := memreader.FindGame(m.ops, m.gameID)
+	if err != nil {
+		if m.Phase > PhaseDisconnected {
+			m.Detach()
+			return nil, ErrGameDisconnected
+		}
+		return nil, ErrNoGame
+	}
+	m.Reader = memreader.NewGameReader(m.ops, cfg, proc)
+	log.Printf("Attached to: %s (%s)", cfg.Label, cfg.ID)
+	m.Phase = PhaseConnected
+	m.LastCount = 0
+	m.CurrentSaveID = 0
+	m.CurrentSlotIdx = 0
+	m.CurrentCharName = ""
+	m.saveLoggedOnce = false
+	m.loadLoggedOnce = false
+	return m.Reader, nil
 }
 
-// Attach attempts to attach to a game process, detects game changes,
-// and updates status. Returns the game ID and nil on success, or ErrNoGame
-// if no supported game is running.
-func (m *GameMonitor[S]) Attach() (string, error) {
-	if !m.Reader.IsAttached() {
-		if err := m.Reader.Attach(); err != nil {
-			if m.LastGame != "" {
-				log.Printf("[%s] Game process ended", m.LastGame)
-				m.Phase = PhaseDisconnected
-				m.LastGame = ""
-				m.LastCount = 0
-			}
-			return "", ErrNoGame
-		}
+// Detach closes the reader and resets phase to Disconnected.
+func (m *GameMonitor[S]) Detach() {
+	if m.Reader != nil {
+		log.Printf("[%s] Detached", m.gameID)
+		m.Reader.Detach()
+		m.Reader = nil
 	}
-
-	currentGame := m.Reader.GetCurrentGame()
-	if currentGame != m.LastGame {
-		log.Printf("Attached to: %s", currentGame)
-		m.Phase = PhaseConnected
-		m.LastGame = currentGame
-		m.LastCount = 0
-		m.CurrentSaveID = 0
-		m.CurrentSlotIdx = 0
-		m.CurrentCharName = ""
-		m.saveLoggedOnce = false
-		m.loadLoggedOnce = false
-	}
-	return m.LastGame, nil
+	m.Phase = PhaseDisconnected
+	m.LastCount = 0
 }
 
 // DetectSave attempts to read the save slot identity from game memory.
@@ -154,9 +160,9 @@ func (m *GameMonitor[S]) Attach() (string, error) {
 // ErrSavePending for transient failures, ErrSaveChanged when identity changes,
 // or a wrapped error for DB failures.
 // Phase transitions (Connected → Loaded) are left to callers.
-func (m *GameMonitor[S]) DetectSave() (int64, error) {
-	charName, nameErr := m.Reader.ReadCharacterName()
-	slotIdx, slotErr := m.Reader.ReadSaveSlotIndex()
+func (m *GameMonitor[S]) DetectSave(reader *memreader.GameReader) (int64, error) {
+	charName, nameErr := reader.ReadCharacterName()
+	slotIdx, slotErr := reader.ReadSaveSlotIndex()
 
 	// If character name is not supported, skip save detection entirely
 	if isUnsupportedErr(nameErr) {
@@ -166,7 +172,7 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 	// Null pointer or read error means game data is not yet loaded — retry later
 	if nameErr != nil {
 		if !m.saveLoggedOnce {
-			log.Printf("[%s] Save detection pending: %v", m.Reader.GetCurrentGame(), nameErr)
+			log.Printf("[%s] Save detection pending: %v", m.gameID, nameErr)
 			m.saveLoggedOnce = true
 		}
 		return 0, ErrSavePending
@@ -175,7 +181,7 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 	// Empty name means the structure exists but save data isn't populated yet
 	if charName == "" {
 		if !m.saveLoggedOnce {
-			log.Printf("[%s] Save detection pending: empty character name", m.Reader.GetCurrentGame())
+			log.Printf("[%s] Save detection pending: empty character name", m.gameID)
 			m.saveLoggedOnce = true
 		}
 		return 0, ErrSavePending
@@ -189,7 +195,7 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 	// Slot 255 is uninitialized memory — treat as not yet loaded
 	if slotIdx == 255 {
 		if !m.saveLoggedOnce {
-			log.Printf("[%s] Save detection pending: uninitialized slot (255)", m.Reader.GetCurrentGame())
+			log.Printf("[%s] Save detection pending: uninitialized slot (255)", m.gameID)
 			m.saveLoggedOnce = true
 		}
 		return 0, ErrSavePending
@@ -197,9 +203,9 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 
 	// Check if save identity changed
 	if slotIdx != m.CurrentSlotIdx || charName != m.CurrentCharName {
-		saveID, err := m.Tracker.FindOrCreateSave(m.Reader.GetCurrentGame(), slotIdx, charName)
+		saveID, err := m.Tracker.FindOrCreateSave(m.gameID, slotIdx, charName)
 		if err != nil {
-			log.Printf("[%s] Failed to create save record: %v", m.Reader.GetCurrentGame(), err)
+			log.Printf("[%s] Failed to create save record: %v", m.gameID, err)
 			return 0, fmt.Errorf("failed to create save record: %w", err)
 		}
 
@@ -209,10 +215,10 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 		m.CurrentCharName = charName
 
 		if !previouslyLoaded {
-			log.Printf("[%s] Save detected: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
-			log.Printf("[%s] Game loaded successfully", m.Reader.GetCurrentGame())
+			log.Printf("[%s] Save detected: %s (Slot %d)", m.gameID, charName, slotIdx)
+			log.Printf("[%s] Game loaded successfully", m.gameID)
 		} else {
-			log.Printf("[%s] Save changed: %s (Slot %d)", m.Reader.GetCurrentGame(), charName, slotIdx)
+			log.Printf("[%s] Save changed: %s (Slot %d)", m.gameID, charName, slotIdx)
 			return saveID, ErrSaveChanged
 		}
 		return saveID, nil
@@ -225,7 +231,7 @@ func (m *GameMonitor[S]) DetectSave() (int64, error) {
 // Returns true if the count changed.
 func (m *GameMonitor[S]) RecordDeathIfChanged(count uint32) bool {
 	if count != m.LastCount {
-		log.Printf("[%s] Death count: %d (previous: %d)", m.Reader.GetCurrentGame(), count, m.LastCount)
+		log.Printf("[%s] Death count: %d (previous: %d)", m.gameID, count, m.LastCount)
 		if m.CurrentSaveID > 0 {
 			m.Tracker.RecordDeathForSave(count, m.CurrentSaveID)
 		} else {
@@ -245,15 +251,29 @@ func isUnsupportedErr(err error) bool {
 	return errors.Is(err, memreader.ErrNotSupported)
 }
 
-// StartLoop creates a 500ms ticker and runs tickFn on each tick in a goroutine.
-func (m *GameMonitor[S]) StartLoop(tickFn func() error) {
+// StartLoop creates a 500ms ticker and runs the TickMonitor handler on each tick.
+func (m *GameMonitor[S]) StartLoop(handler TickMonitor) {
 	m.stopCh = make(chan struct{})
 	m.ticker = time.NewTicker(500 * time.Millisecond)
 	go func() {
 		for {
 			select {
 			case <-m.ticker.C:
-				tickFn()
+				reader, err := m.Attach()
+				if errors.Is(err, ErrGameDisconnected) {
+					handler.OnDisconnect()
+					continue
+				}
+				if err != nil {
+					continue // ErrNoGame — never connected, just wait
+				}
+				if err := handler.Tick(reader); err != nil {
+					if errors.Is(err, memreader.ErrGameRead) {
+						m.Detach()
+						handler.OnDisconnect()
+					}
+					log.Printf("[%s] Tick error: %v", m.gameID, err)
+				}
 			case <-m.stopCh:
 				return
 			}

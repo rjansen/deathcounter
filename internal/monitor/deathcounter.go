@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
@@ -14,29 +15,29 @@ type DeathCounterMonitor struct {
 }
 
 // NewDeathCounterMonitor creates a new death counter monitor.
-func NewDeathCounterMonitor(reader *memreader.GameReader, tracker *stats.Tracker) *DeathCounterMonitor {
+func NewDeathCounterMonitor(gameID string, ops memreader.ProcessOps, tracker *stats.Tracker) *DeathCounterMonitor {
 	return &DeathCounterMonitor{
-		GameMonitor: InitGameMonitor[DeathCounterState](reader, tracker),
+		GameMonitor: NewGameMonitor[DeathCounterState](gameID, ops, tracker),
 	}
 }
 
 // Start begins the monitoring tick loop.
 func (m *DeathCounterMonitor) Start() {
-	m.StartLoop(m.Tick)
+	m.StartLoop(m)
 }
 
-// Tick performs one monitoring cycle.
-func (m *DeathCounterMonitor) Tick() error {
-	if _, err := m.Attach(); errors.Is(err, ErrNoGame) {
-		m.PublishState(DeathCounterState{
-			Status: m.StatusText(),
-		})
-		return err
-	}
+// OnDisconnect publishes empty state when no game is found.
+func (m *DeathCounterMonitor) OnDisconnect() {
+	m.PublishState(DeathCounterState{
+		Status: m.StatusText(),
+	})
+}
 
+// Tick performs one monitoring cycle. Receives the attached reader.
+func (m *DeathCounterMonitor) Tick(reader *memreader.GameReader) error {
 	// PhaseConnected: attempt save detection before reading death count
 	if m.Phase == PhaseConnected {
-		_, err := m.DetectSave()
+		_, err := m.DetectSave(reader)
 		if err == nil || errors.Is(err, ErrSaveNotSupported) {
 			m.Phase = PhaseLoaded
 		}
@@ -50,39 +51,27 @@ func (m *DeathCounterMonitor) Tick() error {
 	}
 
 	// PhaseLoaded or beyond: full tick
-	m.DetectSave() // check for save changes (best-effort)
+	m.DetectSave(reader) // check for save changes (best-effort)
 
-	count, err := m.Reader.ReadDeathCount()
+	count, err := reader.ReadDeathCount()
 	if err != nil {
 		if errors.Is(err, memreader.ErrNullPointer) {
 			if !m.loadLoggedOnce {
-				log.Printf("[%s] Waiting for game to fully load...", m.Reader.GetCurrentGame())
+				log.Printf("[%s] Waiting for game to fully load...", m.gameID)
 				m.loadLoggedOnce = true
 			}
-		} else {
-			log.Printf("[%s] Disconnected: %v", m.Reader.GetCurrentGame(), err)
-			m.Reader.Detach()
-			m.Phase = PhaseDisconnected
-			m.LastGame = ""
+			m.PublishState(DeathCounterState{
+				GameName:      m.GameLabel(),
+				Status:        m.StatusText(),
+				CharacterName: m.CurrentCharName,
+				SaveSlotIndex: m.CurrentSlotIdx,
+			})
+			return nil
 		}
-		m.PublishState(DeathCounterState{
-			GameName:      m.GameLabel(),
-			Status:        m.StatusText(),
-			CharacterName: m.CurrentCharName,
-			SaveSlotIndex: m.CurrentSlotIdx,
-		})
-		return err
+		return fmt.Errorf("read death count: %w", memreader.ErrGameRead)
 	}
 
 	m.RecordDeathIfChanged(count)
-
-	// Read hollowing directly
-	val, hollowErr := m.Reader.ReadHollowing()
-	if hollowErr != nil {
-		m.CurrentHollowing = 0
-	} else {
-		m.CurrentHollowing = val
-	}
 
 	m.PublishState(DeathCounterState{
 		GameName:      m.GameLabel(),
@@ -90,7 +79,6 @@ func (m *DeathCounterMonitor) Tick() error {
 		DeathCount:    count,
 		CharacterName: m.CurrentCharName,
 		SaveSlotIndex: m.CurrentSlotIdx,
-		Hollowing:     m.CurrentHollowing,
 	})
 	return nil
 }
