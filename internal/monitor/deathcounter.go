@@ -26,37 +26,21 @@ func (m *DeathCounterMonitor) Start() {
 	m.StartLoop(m)
 }
 
-// OnConnect is a no-op for the death counter monitor.
-func (m *DeathCounterMonitor) OnConnect(gameID string) error {
+// OnAttach is a no-op for the death counter monitor.
+func (m *DeathCounterMonitor) OnAttach(gameID string) error {
 	return nil
 }
 
-// OnDisconnect publishes empty state when no game is found.
-func (m *DeathCounterMonitor) OnDisconnect() {
+// OnDetach publishes empty state when no game is found.
+func (m *DeathCounterMonitor) OnDetach() {
 	m.PublishState(DeathCounterState{
 		Status: m.StatusText(),
 	})
 }
 
-// Tick performs one monitoring cycle. Receives the attached reader.
+// Tick performs one monitoring cycle. Always called in PhaseLoaded or beyond.
 func (m *DeathCounterMonitor) Tick(reader *memreader.GameReader) error {
-	// PhaseConnected: attempt save detection before reading death count
-	if m.Phase == PhaseConnected {
-		_, err := m.DetectSave(reader)
-		if err == nil || errors.Is(err, ErrSaveNotSupported) {
-			m.Phase = PhaseLoaded
-		}
-		m.PublishState(DeathCounterState{
-			GameName:      m.GameLabel(),
-			Status:        m.StatusText(),
-			CharacterName: m.CurrentCharName,
-			SaveSlotIndex: m.CurrentSlotIdx,
-		})
-		return err
-	}
-
-	// PhaseLoaded or beyond: full tick
-	m.DetectSave(reader) // check for save changes (best-effort)
+	m.DetectSave(reader) // save change check (best-effort)
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {

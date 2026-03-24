@@ -4,23 +4,23 @@ package monitor
 type MonitorPhase int
 
 const (
-	PhaseDisconnected MonitorPhase = iota // No game process found
-	PhaseConnected                        // Game process attached, AOB scanning
-	PhaseLoaded                           // Save detected, DB record created
-	PhaseRouteRunning                     // Route started with valid saveID
+	PhaseDetached MonitorPhase = iota // No game process found
+	PhaseAttached                     // Game process attached
+	PhaseLoaded                       // Game and route loaded, ready for ticking
+	PhaseRunning                      // Route run active with valid saveID
 )
 
 // String returns the phase name.
 func (p MonitorPhase) String() string {
 	switch p {
-	case PhaseDisconnected:
-		return "Disconnected"
-	case PhaseConnected:
-		return "Connected"
+	case PhaseDetached:
+		return "Detached"
+	case PhaseAttached:
+		return "Attached"
 	case PhaseLoaded:
 		return "Loaded"
-	case PhaseRouteRunning:
-		return "RouteRunning"
+	case PhaseRunning:
+		return "Running"
 	default:
 		return "Unknown"
 	}
@@ -29,13 +29,13 @@ func (p MonitorPhase) String() string {
 // StatusText returns the user-facing status text for this phase.
 func (p MonitorPhase) StatusText() string {
 	switch p {
-	case PhaseDisconnected:
+	case PhaseDetached:
 		return "Waiting for game..."
-	case PhaseConnected:
-		return "Connected"
+	case PhaseAttached:
+		return "Attached"
 	case PhaseLoaded:
 		return "Loaded"
-	case PhaseRouteRunning:
+	case PhaseRunning:
 		return "Tracking route"
 	default:
 		return "Unknown"

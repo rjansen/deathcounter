@@ -14,10 +14,11 @@ import (
 // Sentinel errors for monitor state transitions.
 var (
 	ErrNoGame           = errors.New("no game found")
-	ErrGameDisconnected = errors.New("game disconnected")
+	ErrGameDetached     = errors.New("game detached")
 	ErrSaveNotSupported = errors.New("save detection not supported")
 	ErrSavePending      = errors.New("save detection pending")
-	ErrSaveChanged      = errors.New("save identity changed")
+	ErrSaveChanged           = errors.New("save identity changed")
+	ErrAttachedGameMismatch = errors.New("attached game mismatch")
 )
 
 // Monitor is the interface tray.App uses to drive the monitoring lifecycle.
@@ -30,8 +31,8 @@ type Monitor interface {
 // TickMonitor is implemented by sub-monitors for the tick loop.
 type TickMonitor interface {
 	Tick(reader *memreader.GameReader) error
-	OnConnect(gameID string) error
-	OnDisconnect()
+	OnAttach(gameID string) error
+	OnDetach()
 }
 
 // DisplayUpdate is the common display state consumed by tray.
@@ -65,9 +66,9 @@ type GameMonitor[S Displayable] struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
-	LastCount       uint32
-	Phase           MonitorPhase
-	connectedGameID string
+	LastCount      uint32
+	Phase          MonitorPhase
+	attachedGameID string
 
 	// Save slot tracking
 	CurrentSaveID   int64
@@ -87,7 +88,7 @@ func NewGameMonitor[S Displayable](gameID string, ops memreader.ProcessOps, trac
 		Tracker:   tracker,
 		updates:   make(chan S, 1),
 		displayCh: make(chan DisplayUpdate, 1),
-		Phase:     PhaseDisconnected,
+		Phase:     PhaseDetached,
 	}
 }
 
@@ -125,16 +126,16 @@ func (m *GameMonitor[S]) Attach() (*memreader.GameReader, error) {
 	}
 	cfg, proc, err := memreader.FindGame(m.ops, m.gameID)
 	if err != nil {
-		if m.Phase > PhaseDisconnected {
+		if m.Phase > PhaseDetached {
 			m.Detach()
-			return nil, ErrGameDisconnected
+			return nil, ErrGameDetached
 		}
 		return nil, ErrNoGame
 	}
 	m.Reader = memreader.NewGameReader(m.ops, cfg, proc)
-	m.connectedGameID = cfg.ID
+	m.attachedGameID = cfg.ID
 	log.Printf("Attached to: %s (%s)", cfg.Label, cfg.ID)
-	m.Phase = PhaseConnected
+	m.Phase = PhaseAttached
 	m.LastCount = 0
 	m.CurrentSaveID = 0
 	m.CurrentSlotIdx = 0
@@ -144,14 +145,14 @@ func (m *GameMonitor[S]) Attach() (*memreader.GameReader, error) {
 	return m.Reader, nil
 }
 
-// Detach closes the reader and resets phase to Disconnected.
+// Detach closes the reader and resets phase to Detached.
 func (m *GameMonitor[S]) Detach() {
 	if m.Reader != nil {
 		log.Printf("[%s] Detached", m.gameID)
 		m.Reader.Detach()
 		m.Reader = nil
 	}
-	m.Phase = PhaseDisconnected
+	m.Phase = PhaseDetached
 	m.LastCount = 0
 }
 
@@ -160,7 +161,6 @@ func (m *GameMonitor[S]) Detach() {
 // ErrSaveNotSupported if the game doesn't support save detection,
 // ErrSavePending for transient failures, ErrSaveChanged when identity changes,
 // or a wrapped error for DB failures.
-// Phase transitions (Connected → Loaded) are left to callers.
 func (m *GameMonitor[S]) DetectSave(reader *memreader.GameReader) (int64, error) {
 	charName, nameErr := reader.ReadCharacterName()
 	slotIdx, slotErr := reader.ReadSaveSlotIndex()
@@ -253,6 +253,8 @@ func isUnsupportedErr(err error) bool {
 }
 
 // StartLoop creates a 500ms ticker and runs the TickMonitor handler on each tick.
+// It manages the PhaseDetached→PhaseAttached→PhaseLoaded transitions.
+// Tick is only called when Phase >= PhaseLoaded.
 func (m *GameMonitor[S]) StartLoop(handler TickMonitor) {
 	m.stopCh = make(chan struct{})
 	m.ticker = time.NewTicker(500 * time.Millisecond)
@@ -260,27 +262,32 @@ func (m *GameMonitor[S]) StartLoop(handler TickMonitor) {
 		for {
 			select {
 			case <-m.ticker.C:
-				isNew := m.Reader == nil
 				reader, err := m.Attach()
-				if errors.Is(err, ErrGameDisconnected) {
-					handler.OnDisconnect()
+				if errors.Is(err, ErrGameDetached) {
+					handler.OnDetach()
 					continue
 				}
 				if err != nil {
-					continue // ErrNoGame — never connected, just wait
+					continue // ErrNoGame — never attached, just wait
 				}
-				if isNew {
-					if err := handler.OnConnect(m.connectedGameID); err != nil {
-						log.Printf("[%s] OnConnect error: %v", m.gameID, err)
+
+				// PhaseAttached → PhaseLoaded (via OnAttach)
+				if m.Phase == PhaseAttached {
+					if err := handler.OnAttach(m.attachedGameID); err != nil {
+						log.Printf("[%s] OnAttach error: %v", m.gameID, err)
 						m.Detach()
-						handler.OnDisconnect()
+						handler.OnDetach()
 						continue
 					}
+					m.Phase = PhaseLoaded
+					continue
 				}
+
+				// PhaseLoaded+: call Tick
 				if err := handler.Tick(reader); err != nil {
 					if errors.Is(err, memreader.ErrGameRead) {
 						m.Detach()
-						handler.OnDisconnect()
+						handler.OnDetach()
 					}
 					log.Printf("[%s] Tick error: %v", m.gameID, err)
 				}
