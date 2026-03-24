@@ -26,6 +26,11 @@ func (m *DeathCounterMonitor) Start() {
 	m.StartLoop(m)
 }
 
+// OnConnect is a no-op for the death counter monitor.
+func (m *DeathCounterMonitor) OnConnect(gameID string) error {
+	return nil
+}
+
 // OnDisconnect publishes empty state when no game is found.
 func (m *DeathCounterMonitor) OnDisconnect() {
 	m.PublishState(DeathCounterState{

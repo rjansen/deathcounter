@@ -33,6 +33,22 @@ func (m *RouteMonitor) Start() {
 	m.StartLoop(m)
 }
 
+// OnConnect loads the route definition for the connected game.
+// Route loading failures are non-fatal: the monitor continues without route tracking.
+func (m *RouteMonitor) OnConnect(gameID string) error {
+	r, err := route.LoadRouteByID(gameID, m.routeID, m.routesDir)
+	if err != nil {
+		log.Printf("[Route] Failed to load route %q: %v", m.routeID, err)
+		return nil
+	}
+	if r.Game != gameID {
+		log.Printf("[Route] Route game %q does not match connected game %q", r.Game, gameID)
+		return nil
+	}
+	m.route = r
+	return nil
+}
+
 // OnDisconnect handles game disconnection: abandons active run and clears state.
 func (m *RouteMonitor) OnDisconnect() {
 	if m.isRunning() {
@@ -50,47 +66,22 @@ func (m *RouteMonitor) isRunning() bool {
 
 // Tick performs one monitoring cycle with route tracking.
 func (m *RouteMonitor) Tick(reader *memreader.GameReader) error {
-	if m.Phase == PhaseConnected {
-		m.startRun(reader)
-		return nil
-	}
-
 	_, err := m.DetectSave(reader)
 	if errors.Is(err, ErrSaveChanged) {
 		m.handleSaveChanged(reader)
-	}
-
-	if m.Phase == PhaseLoaded && m.isRunning() {
-		m.catchUpRun(reader)
+	} else if (err == nil || errors.Is(err, ErrSaveNotSupported)) && m.Phase == PhaseConnected {
+		m.Phase = PhaseLoaded
+		m.startRouteRun(reader)
+	} else if m.Phase == PhaseLoaded && !m.isRunning() {
+		m.startRouteRun(reader)
 	}
 
 	if m.Phase == PhaseRouteRunning && m.isRunning() {
-		if err := m.tickRun(reader); err != nil {
-			m.publishRouteState()
-			return err
-		}
+		return m.tickRun(reader)
 	}
 
 	m.publishRouteState()
 	return nil
-}
-
-func (m *RouteMonitor) loadRoute() error {
-	r, err := route.LoadRouteByID(m.gameID, m.routeID, m.routesDir)
-	if err != nil {
-		return err
-	}
-	m.route = r
-	return nil
-}
-
-func (m *RouteMonitor) startRun(reader *memreader.GameReader) {
-	_, err := m.DetectSave(reader)
-	if err == nil || errors.Is(err, ErrSaveNotSupported) {
-		m.Phase = PhaseLoaded
-		m.startRouteRun(reader)
-	}
-	m.publishRouteState()
 }
 
 func (m *RouteMonitor) handleSaveChanged(reader *memreader.GameReader) {
@@ -101,15 +92,10 @@ func (m *RouteMonitor) handleSaveChanged(reader *memreader.GameReader) {
 	m.startRouteRun(reader)
 }
 
-func (m *RouteMonitor) catchUpRun(reader *memreader.GameReader) {
-	if err := m.runner.CatchUp(reader); err == nil {
-		m.Phase = PhaseRouteRunning
-	}
-}
-
 func (m *RouteMonitor) tickRun(reader *memreader.GameReader) error {
 	events, err := m.runner.Tick(reader)
 	if err != nil {
+		m.publishRouteState()
 		return err
 	}
 	m.RecordDeathIfChanged(m.runner.LastDeathCount())
@@ -118,22 +104,12 @@ func (m *RouteMonitor) tickRun(reader *memreader.GameReader) error {
 			evt.Checkpoint.Name, evt.IGT, evt.Deaths)
 	}
 	m.backupCount += m.countBackups(events)
+	m.publishRouteState()
 	return nil
 }
 
 func (m *RouteMonitor) startRouteRun(reader *memreader.GameReader) {
-	// Load route if not already loaded
-	if m.route == nil {
-		if err := m.loadRoute(); err != nil {
-			log.Printf("[Route] Failed to load route %q: %v", m.routeID, err)
-			return
-		}
-	}
-
-	// Verify route matches the target game
-	if m.route.Game != m.GameID() {
-		log.Printf("[Route] Route game %q does not match target game %q", m.route.Game, m.GameID())
-		m.route = nil
+	if m.route == nil || m.route.Game != m.GameID() {
 		return
 	}
 
@@ -152,6 +128,8 @@ func (m *RouteMonitor) startRouteRun(reader *memreader.GameReader) {
 				log.Printf("[Route] Resumed route: %s (run %d)", m.route.Name, runID)
 				if err := m.runner.CatchUp(reader); err == nil {
 					m.Phase = PhaseRouteRunning
+				} else {
+					m.runner = nil
 				}
 				return
 			}
@@ -164,10 +142,10 @@ func (m *RouteMonitor) startRouteRun(reader *memreader.GameReader) {
 		return
 	}
 	log.Printf("[Route] Started route: %s", m.route.Name)
-	// Attempt CatchUp immediately; if it fails, Phase stays PhaseLoaded
-	// and Tick will retry on subsequent cycles
 	if err := m.runner.CatchUp(reader); err == nil {
 		m.Phase = PhaseRouteRunning
+	} else {
+		m.runner = nil
 	}
 }
 
@@ -192,16 +170,19 @@ func (m *RouteMonitor) publishRouteState() {
 
 	if m.isRunning() {
 		r := m.runner.GetRoute()
-		state.RouteName = r.Name
-		state.CompletionPercent = m.runner.CompletionPercent()
-		state.CompletedCount = m.runner.CompletedCount()
-		state.TotalCount = m.runner.TotalCount()
-		state.SegmentDeaths = m.runner.SegmentDeaths()
-		state.BackupCount = m.backupCount
-
 		cp := m.runner.CurrentCheckpoint()
+		cpName := ""
 		if cp != nil {
-			state.CurrentCheckpoint = cp.Name
+			cpName = cp.Name
+		}
+		state.Route = &RouteDisplay{
+			RouteName:         r.Name,
+			CompletionPercent: m.runner.CompletionPercent(),
+			CompletedCount:    m.runner.CompletedCount(),
+			TotalCount:        m.runner.TotalCount(),
+			CurrentCheckpoint: cpName,
+			SegmentDeaths:     m.runner.SegmentDeaths(),
+			BackupCount:       m.backupCount,
 		}
 	}
 

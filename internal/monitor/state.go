@@ -62,21 +62,26 @@ func (s DeathCounterState) ToDisplayUpdate() DisplayUpdate {
 	}
 }
 
-// RouteMonitorState is the route tracking state with death counting.
-type RouteMonitorState struct {
-	GameName          string
-	Status            string
-	DeathCount        uint32
-	CharacterName     string
-	SaveSlotIndex     int
+// RouteDisplay holds route-specific display data.
+// Used as a pointer in DisplayUpdate: nil when no route is active.
+type RouteDisplay struct {
 	RouteName         string
+	CompletionPercent float64
 	CompletedCount    int
 	TotalCount        int
-	LastCheckpoint    string
-	BackupCount       int
-	CompletionPercent float64
-	SegmentDeaths     uint32
 	CurrentCheckpoint string
+	SegmentDeaths     uint32
+	BackupCount       int
+}
+
+// RouteMonitorState is the route tracking state with death counting.
+type RouteMonitorState struct {
+	GameName      string
+	Status        string
+	DeathCount    uint32
+	CharacterName string
+	SaveSlotIndex int
+	Route         *RouteDisplay
 }
 
 // ToDisplayUpdate converts to a DisplayUpdate.
@@ -87,14 +92,6 @@ func (s RouteMonitorState) ToDisplayUpdate() DisplayUpdate {
 		DeathCount:    s.DeathCount,
 		CharacterName: s.CharacterName,
 		SaveSlotIndex: s.SaveSlotIndex,
-		Fields: map[string]any{
-			"route_name":         s.RouteName,
-			"completion_percent": s.CompletionPercent,
-			"completed_count":    s.CompletedCount,
-			"total_count":        s.TotalCount,
-			"current_checkpoint": s.CurrentCheckpoint,
-			"segment_deaths":     s.SegmentDeaths,
-			"backup_count":       s.BackupCount,
-		},
+		Route:         s.Route,
 	}
 }

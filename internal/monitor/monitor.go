@@ -30,19 +30,18 @@ type Monitor interface {
 // TickMonitor is implemented by sub-monitors for the tick loop.
 type TickMonitor interface {
 	Tick(reader *memreader.GameReader) error
+	OnConnect(gameID string) error
 	OnDisconnect()
 }
 
 // DisplayUpdate is the common display state consumed by tray.
-// Fields holds domain-specific key-value data (e.g. route progress fields)
-// so the struct stays generic without needing typed sub-structs.
 type DisplayUpdate struct {
 	GameName      string
 	Status        string
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
-	Fields        map[string]any
+	Route         *RouteDisplay // nil when no route is active (e.g. DeathCounterMonitor)
 }
 
 // Displayable is the constraint for State types — they must know
@@ -66,8 +65,9 @@ type GameMonitor[S Displayable] struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
-	LastCount uint32
-	Phase     MonitorPhase
+	LastCount       uint32
+	Phase           MonitorPhase
+	connectedGameID string
 
 	// Save slot tracking
 	CurrentSaveID   int64
@@ -132,6 +132,7 @@ func (m *GameMonitor[S]) Attach() (*memreader.GameReader, error) {
 		return nil, ErrNoGame
 	}
 	m.Reader = memreader.NewGameReader(m.ops, cfg, proc)
+	m.connectedGameID = cfg.ID
 	log.Printf("Attached to: %s (%s)", cfg.Label, cfg.ID)
 	m.Phase = PhaseConnected
 	m.LastCount = 0
@@ -259,6 +260,7 @@ func (m *GameMonitor[S]) StartLoop(handler TickMonitor) {
 		for {
 			select {
 			case <-m.ticker.C:
+				isNew := m.Reader == nil
 				reader, err := m.Attach()
 				if errors.Is(err, ErrGameDisconnected) {
 					handler.OnDisconnect()
@@ -266,6 +268,14 @@ func (m *GameMonitor[S]) StartLoop(handler TickMonitor) {
 				}
 				if err != nil {
 					continue // ErrNoGame — never connected, just wait
+				}
+				if isNew {
+					if err := handler.OnConnect(m.connectedGameID); err != nil {
+						log.Printf("[%s] OnConnect error: %v", m.gameID, err)
+						m.Detach()
+						handler.OnDisconnect()
+						continue
+					}
 				}
 				if err := handler.Tick(reader); err != nil {
 					if errors.Is(err, memreader.ErrGameRead) {
