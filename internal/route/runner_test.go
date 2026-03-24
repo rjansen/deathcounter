@@ -946,6 +946,77 @@ func TestRestoreFromDB(t *testing.T) {
 	}
 }
 
+func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
+	tracker := newTestTracker(t)
+	r := &Route{
+		ID:   "test-catchup-resume",
+		Name: "CatchUp Resume Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 200}},
+			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 300}},
+		},
+	}
+
+	// Create a run and record boss1 as completed in DB
+	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
+	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+
+	// Resume the run (RestoreFromDB marks boss1 as completed)
+	reader := newMockGameReader()
+	runner := NewRunner(r, tracker, nil, reader)
+	if err := runner.Resume(runID, 5); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if !runner.state.CompletedFlags["boss1"] {
+		t.Fatal("expected boss1 to be completed after Resume")
+	}
+
+	// Set boss1 flag in memory (still set) and boss2 flag (newly completed)
+	reader.flags[100] = true // boss1 — already restored from DB
+	reader.flags[200] = true // boss2 — newly completed in memory
+
+	if err := runner.CatchUp(); err != nil {
+		t.Fatalf("CatchUp: %v", err)
+	}
+
+	// boss2 should be caught up
+	if !runner.state.CompletedFlags["boss2"] {
+		t.Error("expected boss2 to be completed after CatchUp")
+	}
+	// boss3 should NOT be completed
+	if runner.state.CompletedFlags["boss3"] {
+		t.Error("expected boss3 to NOT be completed")
+	}
+
+	// Verify boss1 was NOT re-recorded in DB (should still have exactly 1 record)
+	var count int
+	err := tracker.DB().QueryRow(
+		"SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
+		runID,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 boss1 record, got %d (CatchUp duplicated a DB-restored checkpoint)", count)
+	}
+
+	// Verify boss2 was recorded by CatchUp (with IGT=0 since it's a catch-up)
+	var igtMs int64
+	err = tracker.DB().QueryRow(
+		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss2'",
+		runID,
+	).Scan(&igtMs)
+	if err != nil {
+		t.Fatalf("query boss2: %v", err)
+	}
+	if igtMs != 0 {
+		t.Errorf("expected IGT=0 for caught-up boss2, got %d", igtMs)
+	}
+}
+
 func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 	tracker := newTestTracker(t)
 	r := &Route{
