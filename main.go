@@ -20,8 +20,8 @@ func main() {
 
 	log.Println("Starting FromSoftware Death Counter...")
 	log.Println("Supported games:")
-	for _, game := range memreader.GetSupportedGames() {
-		log.Printf("  - %s", game)
+	for _, id := range memreader.GetSupportedGames() {
+		log.Printf("  - %s (%s)", memreader.GetGameLabel(id), id)
 	}
 	log.Println()
 

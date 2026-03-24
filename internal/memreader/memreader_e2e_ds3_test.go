@@ -11,8 +11,8 @@ import (
 // Event flags, IGT, memory paths, and AOB scanning are only configured for DS3.
 func requireDS3(t *testing.T, reader *GameReader) {
 	t.Helper()
-	if reader.GetCurrentGame() != "Dark Souls III" {
-		t.Skipf("Test requires Dark Souls III, attached to %q", reader.GetCurrentGame())
+	if reader.GetCurrentGame() != "ds3" {
+		t.Skipf("Test requires DS3, attached to %q", reader.GetCurrentGame())
 	}
 }
 

@@ -83,12 +83,13 @@ func (r *GameReader) Attach() error {
 			continue
 		}
 
+		gameCopy := game
 		r.processHandle = handle
 		r.baseAddress = baseAddr
-		r.game = &game
+		r.game = &gameCopy
 		r.is64Bit = is64Bit
 		r.attached = true
-		r.currentGame = game.Name
+		r.currentGame = game.ID
 
 		return nil
 	}
