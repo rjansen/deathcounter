@@ -341,8 +341,8 @@ func TestRouteMonitor_NoRoute(t *testing.T) {
 
 	select {
 	case update := <-mon.DisplayUpdates():
-		if update.Fields != nil {
-			routeName, _ := update.Fields["route_name"].(string)
+		if update.Route != nil {
+			routeName := update.Route.RouteName
 			if routeName != "" {
 				t.Errorf("expected no route name, got %q", routeName)
 			}
@@ -367,18 +367,18 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 		},
 	}
 
-	// First tick: attach → Connected, detect save → Loaded → start route
-	// CatchUp can't succeed (no event flag memory in mock), so phase stays Loaded
+	// First tick: attach → Connected, detect save → Loaded → startRouteRun
+	// CatchUp fails (no event flag memory in mock) → runner nil'd → phase stays Loaded
 	tickRoute(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
-		routeName, _ := update.Fields["route_name"].(string)
-		if routeName != "DS3 Any%" {
-			t.Errorf("expected route name 'DS3 Any%%', got %q", routeName)
-		}
 		if update.Status != "Loaded" {
 			t.Errorf("expected 'Loaded' status (CatchUp pending), got %q", update.Status)
+		}
+		// Runner is nil after CatchUp failure, so no route info in update
+		if update.Route != nil {
+			t.Errorf("expected nil Route after CatchUp failure, got %+v", update.Route)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -404,8 +404,8 @@ func TestRouteMonitor_NonMatchingRoute(t *testing.T) {
 
 	select {
 	case update := <-mon.DisplayUpdates():
-		if update.Fields != nil {
-			routeName, _ := update.Fields["route_name"].(string)
+		if update.Route != nil {
+			routeName := update.Route.RouteName
 			if routeName != "" {
 				t.Errorf("expected no route name, got %q", routeName)
 			}
@@ -560,7 +560,10 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 			t.Errorf("expected 'Connected' status while save pending, got %q", update.Status)
 		}
 		// No route should be active
-		routeName, _ := update.Fields["route_name"].(string)
+		routeName := ""
+		if update.Route != nil {
+			routeName = update.Route.RouteName
+		}
 		if routeName != "" {
 			t.Errorf("expected no route name before save detection, got %q", routeName)
 		}
@@ -642,7 +645,10 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 		if update.Status != "Connected" {
 			t.Errorf("expected 'Connected' with slot 255, got %q", update.Status)
 		}
-		routeName, _ := update.Fields["route_name"].(string)
+		routeName := ""
+		if update.Route != nil {
+			routeName = update.Route.RouteName
+		}
 		if routeName != "" {
 			t.Errorf("expected no route with slot 255, got %q", routeName)
 		}

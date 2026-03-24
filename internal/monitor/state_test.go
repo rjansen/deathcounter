@@ -28,25 +28,27 @@ func TestDeathCounterState_ToDisplayUpdate(t *testing.T) {
 	if update.SaveSlotIndex != 2 {
 		t.Errorf("expected SaveSlotIndex=2, got %d", update.SaveSlotIndex)
 	}
-	if update.Fields != nil {
-		t.Errorf("expected nil Fields, got %v", update.Fields)
+	if update.Route != nil {
+		t.Errorf("expected nil Route, got %v", update.Route)
 	}
 }
 
 func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	s := RouteMonitorState{
-		GameName:          "Dark Souls III",
-		Status:            "Connected",
-		DeathCount:        10,
-		CharacterName:     "Knight",
-		SaveSlotIndex:     1,
-		RouteName:         "Any% Glitchless",
-		CompletedCount:    3,
-		TotalCount:        10,
-		CurrentCheckpoint: "Pontiff Sulyvahn",
-		BackupCount:       2,
-		CompletionPercent: 30.0,
-		SegmentDeaths:     5,
+		GameName:      "Dark Souls III",
+		Status:        "Connected",
+		DeathCount:    10,
+		CharacterName: "Knight",
+		SaveSlotIndex: 1,
+		Route: &RouteDisplay{
+			RouteName:         "Any% Glitchless",
+			CompletedCount:    3,
+			TotalCount:        10,
+			CurrentCheckpoint: "Pontiff Sulyvahn",
+			BackupCount:       2,
+			CompletionPercent: 30.0,
+			SegmentDeaths:     5,
+		},
 	}
 
 	update := s.ToDisplayUpdate()
@@ -66,28 +68,31 @@ func TestRouteMonitorState_ToDisplayUpdate(t *testing.T) {
 	if update.SaveSlotIndex != 1 {
 		t.Errorf("expected SaveSlotIndex=1, got %d", update.SaveSlotIndex)
 	}
-	if update.Fields == nil {
-		t.Fatal("expected Fields to be non-nil")
+	if update.Route == nil {
+		t.Fatal("expected Route to be non-nil")
 	}
 
-	checks := map[string]any{
-		"route_name":         "Any% Glitchless",
-		"completed_count":    3,
-		"total_count":        10,
-		"current_checkpoint": "Pontiff Sulyvahn",
-		"backup_count":       2,
-		"completion_percent": 30.0,
-		"segment_deaths":     uint32(5),
+	r := update.Route
+	if r.RouteName != "Any% Glitchless" {
+		t.Errorf("RouteName = %q, want %q", r.RouteName, "Any% Glitchless")
 	}
-	for key, want := range checks {
-		got, ok := update.Fields[key]
-		if !ok {
-			t.Errorf("missing field %q", key)
-			continue
-		}
-		if got != want {
-			t.Errorf("field %q: expected %v (%T), got %v (%T)", key, want, want, got, got)
-		}
+	if r.CompletedCount != 3 {
+		t.Errorf("CompletedCount = %d, want 3", r.CompletedCount)
+	}
+	if r.TotalCount != 10 {
+		t.Errorf("TotalCount = %d, want 10", r.TotalCount)
+	}
+	if r.CurrentCheckpoint != "Pontiff Sulyvahn" {
+		t.Errorf("CurrentCheckpoint = %q, want %q", r.CurrentCheckpoint, "Pontiff Sulyvahn")
+	}
+	if r.BackupCount != 2 {
+		t.Errorf("BackupCount = %d, want 2", r.BackupCount)
+	}
+	if r.CompletionPercent != 30.0 {
+		t.Errorf("CompletionPercent = %f, want 30.0", r.CompletionPercent)
+	}
+	if r.SegmentDeaths != 5 {
+		t.Errorf("SegmentDeaths = %d, want 5", r.SegmentDeaths)
 	}
 }
 
@@ -101,11 +106,8 @@ func TestRouteMonitorState_ToDisplayUpdate_ZeroValue(t *testing.T) {
 	if update.DeathCount != 0 {
 		t.Errorf("expected DeathCount=0, got %d", update.DeathCount)
 	}
-	if update.Fields == nil {
-		t.Fatal("expected Fields to be non-nil even for zero value")
-	}
-	if len(update.Fields) != 7 {
-		t.Errorf("expected 7 fields, got %d", len(update.Fields))
+	if update.Route != nil {
+		t.Errorf("expected nil Route for zero value, got %v", update.Route)
 	}
 }
 

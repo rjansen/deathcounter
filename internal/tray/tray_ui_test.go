@@ -224,13 +224,13 @@ func TestRefreshDisplay_WithRouteFields(t *testing.T) {
 		Status:     "Connected",
 		GameName:   "Dark Souls III",
 		DeathCount: 10,
-		Fields: map[string]any{
-			"route_name":         "Any%",
-			"completed_count":    5,
-			"total_count":        20,
-			"completion_percent": 25.0,
-			"current_checkpoint": "Pontiff Sulyvahn",
-			"segment_deaths":     uint32(3),
+		Route: &monitor.RouteDisplay{
+			RouteName:         "Any%",
+			CompletedCount:    5,
+			TotalCount:        20,
+			CompletionPercent: 25.0,
+			CurrentCheckpoint: "Pontiff Sulyvahn",
+			SegmentDeaths:     3,
 		},
 	}
 
@@ -250,27 +250,27 @@ func TestRefreshDisplay_WithRouteFields(t *testing.T) {
 	}
 }
 
-func TestRefreshDisplay_NilRouteFieldsResetsDefaults(t *testing.T) {
+func TestRefreshDisplay_NilRouteResetsDefaults(t *testing.T) {
 	app := newTestApp(t)
 	app.buildMenu()
 
 	// First set route data
 	app.refreshDisplay(monitor.DisplayUpdate{
 		Status: "Connected",
-		Fields: map[string]any{
-			"route_name":         "Test Route",
-			"completed_count":    1,
-			"total_count":        5,
-			"completion_percent": 20.0,
-			"current_checkpoint": "Boss 2",
-			"segment_deaths":     uint32(7),
+		Route: &monitor.RouteDisplay{
+			RouteName:         "Test Route",
+			CompletedCount:    1,
+			TotalCount:        5,
+			CompletionPercent: 20.0,
+			CurrentCheckpoint: "Boss 2",
+			SegmentDeaths:     7,
 		},
 	})
 
 	// Then clear it
 	app.refreshDisplay(monitor.DisplayUpdate{
 		Status: "Connected",
-		Fields: nil,
+		Route:  nil,
 	})
 
 	if got := app.menuRouteName.Text(); got != "Route: None" {

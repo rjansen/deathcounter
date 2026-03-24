@@ -170,7 +170,10 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	}
 
 	// Verify route is active
-	routeName, _ := update.Fields["route_name"].(string)
+	if update.Route == nil {
+		t.Fatal("expected Route to be non-nil")
+	}
+	routeName := update.Route.RouteName
 	if routeName != "E2E Test Route" {
 		t.Errorf("expected route name 'E2E Test Route', got %q", routeName)
 	}

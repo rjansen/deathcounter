@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"image/png"
 	"testing"
+
+	"github.com/rjansen/deathcounter/internal/monitor"
 )
 
 func TestFormatStatusText(t *testing.T) {
@@ -124,7 +126,7 @@ func TestDefaultRouteTexts(t *testing.T) {
 	}
 }
 
-func TestResolveRouteTexts_NilFields(t *testing.T) {
+func TestResolveRouteTexts_NilRoute(t *testing.T) {
 	got := resolveRouteTexts(nil)
 	want := defaultRouteTexts()
 	if got != want {
@@ -133,33 +135,22 @@ func TestResolveRouteTexts_NilFields(t *testing.T) {
 }
 
 func TestResolveRouteTexts_EmptyRouteName(t *testing.T) {
-	fields := map[string]any{"route_name": ""}
-	got := resolveRouteTexts(fields)
+	got := resolveRouteTexts(&monitor.RouteDisplay{RouteName: ""})
 	want := defaultRouteTexts()
 	if got != want {
-		t.Errorf("resolveRouteTexts(empty route_name) = %+v, want %+v", got, want)
-	}
-}
-
-func TestResolveRouteTexts_MissingRouteName(t *testing.T) {
-	fields := map[string]any{"completed_count": 5}
-	got := resolveRouteTexts(fields)
-	want := defaultRouteTexts()
-	if got != want {
-		t.Errorf("resolveRouteTexts(no route_name) = %+v, want %+v", got, want)
+		t.Errorf("resolveRouteTexts(empty RouteName) = %+v, want %+v", got, want)
 	}
 }
 
 func TestResolveRouteTexts_FullRoute(t *testing.T) {
-	fields := map[string]any{
-		"route_name":         "Any% Glitchless",
-		"completed_count":    3,
-		"total_count":        10,
-		"completion_percent": 30.0,
-		"current_checkpoint": "Abyss Watchers",
-		"segment_deaths":     uint32(5),
-	}
-	got := resolveRouteTexts(fields)
+	got := resolveRouteTexts(&monitor.RouteDisplay{
+		RouteName:         "Any% Glitchless",
+		CompletedCount:    3,
+		TotalCount:        10,
+		CompletionPercent: 30.0,
+		CurrentCheckpoint: "Abyss Watchers",
+		SegmentDeaths:     5,
+	})
 
 	if got.name != "Route: Any% Glitchless" {
 		t.Errorf("name = %q, want %q", got.name, "Route: Any% Glitchless")
@@ -176,15 +167,14 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 }
 
 func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
-	fields := map[string]any{
-		"route_name":         "All Bosses",
-		"completed_count":    19,
-		"total_count":        19,
-		"completion_percent": 100.0,
-		"current_checkpoint": "", // empty = complete
-		"segment_deaths":     uint32(0),
-	}
-	got := resolveRouteTexts(fields)
+	got := resolveRouteTexts(&monitor.RouteDisplay{
+		RouteName:         "All Bosses",
+		CompletedCount:    19,
+		TotalCount:        19,
+		CompletionPercent: 100.0,
+		CurrentCheckpoint: "",
+		SegmentDeaths:     0,
+	})
 
 	if got.current != "Current: Complete!" {
 		t.Errorf("current = %q, want %q", got.current, "Current: Complete!")
@@ -194,11 +184,10 @@ func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
 	}
 }
 
-func TestResolveRouteTexts_MissingOptionalFields(t *testing.T) {
-	fields := map[string]any{
-		"route_name": "Speedrun",
-	}
-	got := resolveRouteTexts(fields)
+func TestResolveRouteTexts_ZeroValueRoute(t *testing.T) {
+	got := resolveRouteTexts(&monitor.RouteDisplay{
+		RouteName: "Speedrun",
+	})
 
 	if got.name != "Route: Speedrun" {
 		t.Errorf("name = %q, want %q", got.name, "Route: Speedrun")
