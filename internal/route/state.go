@@ -8,6 +8,7 @@ type RunStatus string
 const (
 	RunNotStarted RunStatus = "not_started"
 	RunInProgress RunStatus = "in_progress"
+	RunPaused     RunStatus = "paused"
 	RunCompleted  RunStatus = "completed"
 	RunAbandoned  RunStatus = "abandoned"
 )
@@ -49,6 +50,11 @@ func NewRunState(route *Route) *RunState {
 func (rs *RunState) Start() {
 	rs.Status = RunInProgress
 	rs.StartTime = time.Now()
+}
+
+// Pause marks the run as paused (no DB write — run stays in_progress in DB).
+func (rs *RunState) Pause() {
+	rs.Status = RunPaused
 }
 
 // Abandon marks the run as abandoned.

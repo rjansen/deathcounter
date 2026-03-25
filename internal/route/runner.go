@@ -120,6 +120,12 @@ func (r *Runner) initStateVars() {
 	}
 }
 
+// Pause stops tracking the run without persisting any status change.
+// The run stays in_progress in the database and can be resumed later.
+func (r *Runner) Pause() {
+	r.state.Pause()
+}
+
 // Abandon marks the current run as abandoned.
 func (r *Runner) Abandon() error {
 	r.state.Abandon()
