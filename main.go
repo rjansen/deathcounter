@@ -40,15 +40,18 @@ func main() {
 	// Create platform-specific process operations
 	ops := memreader.NewProcessOps()
 
-	// Choose monitor based on flags
-	var mon monitor.Monitor
+	// Choose tracker based on flags
+	var tracker monitor.GameTracker
 	if !*dcOnly {
-		mon = monitor.NewRouteMonitor(*gameID, *routeID, "routes", ops, statsTracker)
+		tracker = monitor.NewRouteTracker(*gameID, *routeID, "routes", statsTracker)
 		log.Printf("Route mode: will load route %q for game %q after attach", *routeID, *gameID)
 	} else {
-		mon = monitor.NewDeathCounterMonitor(*gameID, ops, statsTracker)
+		tracker = monitor.NewDeathTracker(*gameID, statsTracker)
 		log.Printf("Death counter mode for game %q", *gameID)
 	}
+
+	// Create monitor with the chosen tracker
+	mon := monitor.NewGameMonitor(*gameID, ops, tracker)
 
 	// Run system tray (blocks until quit; monitor owns its own tick loop)
 	trayApp := tray.NewApp(mon, statsTracker)
