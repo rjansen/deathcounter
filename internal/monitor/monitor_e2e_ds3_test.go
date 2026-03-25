@@ -33,41 +33,29 @@ func newE2ETracker(t *testing.T) *stats.Tracker {
 	return tracker
 }
 
-// tickDCE2E is a test helper for e2e tests: simulates one StartLoop cycle.
-func tickDCE2E(t *testing.T, mon *DeathCounterMonitor) {
+// tickE2E is a test helper for e2e tests: simulates one Start() loop cycle.
+func tickE2E(t *testing.T, mon *GameMonitor) {
 	t.Helper()
 	reader, err := mon.Attach()
 	if err != nil {
-		mon.OnDetach()
+		mon.tracker.OnDetach()
+		mon.publishDetached()
 		return
 	}
-	if mon.Phase == PhaseAttached {
-		mon.OnAttach(mon.attachedGameID)
-		mon.Phase = PhaseLoaded
+	if mon.phase == PhaseAttached {
+		mon.tracker.OnAttach(mon.attachedGameID)
+		mon.phase = PhaseLoaded
 		return
 	}
-	mon.Tick(reader)
+	update, err := mon.tracker.Tick(reader)
+	if err == nil {
+		mon.publish(update)
+	}
 }
 
-// tickRouteE2E is a test helper for e2e tests: simulates one StartLoop cycle.
-func tickRouteE2E(t *testing.T, mon *RouteMonitor) {
-	t.Helper()
-	reader, err := mon.Attach()
-	if err != nil {
-		mon.OnDetach()
-		return
-	}
-	if mon.Phase == PhaseAttached {
-		mon.OnAttach(mon.attachedGameID)
-		mon.Phase = PhaseLoaded
-		return
-	}
-	mon.Tick(reader)
-}
-
-// TestE2E_DeathCounterMonitor_PhaseTransitions validates the full
+// TestE2E_DeathTracker_PhaseTransitions validates the full
 // Detached → Attached → Loaded state machine with a real DS3 process.
-func TestE2E_DeathCounterMonitor_PhaseTransitions(t *testing.T) {
+func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
 	tracker := newE2ETracker(t)
@@ -76,23 +64,23 @@ func TestE2E_DeathCounterMonitor_PhaseTransitions(t *testing.T) {
 	// starts fresh from PhaseDetached — detach and let the monitor attach.
 	reader.Detach()
 
-	mon := NewDeathCounterMonitor("ds3", ops, tracker)
+	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
 
 	// Phase 1: Detached — no game attached yet... but since the process
 	// IS running, Attach will succeed on first tick.
-	if mon.Phase != PhaseDetached {
-		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDetached)
+	if mon.phase != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.phase, PhaseDetached)
 	}
 
 	// Phase 2: First tick → Attach succeeds → PhaseAttached → OnAttach → PhaseLoaded
-	tickDCE2E(t, mon)
+	tickE2E(t, mon)
 
-	if mon.Phase < PhaseLoaded {
-		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.Phase)
+	if mon.phase < PhaseLoaded {
+		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.phase)
 	}
 
 	// Phase 3: Loaded — death count should now be readable on next tick
-	tickDCE2E(t, mon)
+	tickE2E(t, mon)
 	update := drainUpdate(t, mon)
 
 	t.Logf("After loaded tick: deaths=%d, char=%q, status=%q",
@@ -107,14 +95,15 @@ func TestE2E_DeathCounterMonitor_PhaseTransitions(t *testing.T) {
 	}
 
 	// Verify save ID was created in the DB
-	if mon.CurrentSaveID <= 0 {
-		t.Errorf("expected CurrentSaveID > 0, got %d", mon.CurrentSaveID)
+	dt := deathTracker(mon)
+	if dt.currentSaveID <= 0 {
+		t.Errorf("expected currentSaveID > 0, got %d", dt.currentSaveID)
 	}
 }
 
-// TestE2E_RouteMonitor_PhaseTransitions validates the full
+// TestE2E_RouteTracker_PhaseTransitions validates the full
 // Detached → Attached → Loaded → Running state machine.
-func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
+func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
 	tracker := newE2ETracker(t)
@@ -122,9 +111,10 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	// Detach so the monitor starts fresh
 	reader.Detach()
 
-	mon := NewRouteMonitor("ds3", "", "", ops, tracker)
+	rt := NewRouteTracker("ds3", "", "", tracker)
+	mon := NewGameMonitor("ds3", ops, rt)
 	// Inject route directly for the e2e test
-	mon.route = &route.Route{
+	rt.route = &route.Route{
 		ID:   "ds3-e2e-test",
 		Name: "E2E Test Route",
 		Game: "ds3",
@@ -134,25 +124,25 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	}
 
 	// Initial state
-	if mon.Phase != PhaseDetached {
-		t.Errorf("initial phase: got %s, want %s", mon.Phase, PhaseDetached)
+	if mon.phase != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.phase, PhaseDetached)
 	}
 
-	// Tick until we reach Running (max 5 ticks to account for slow save detection)
+	// Tick until the route is running (max 5 ticks to account for slow save detection)
 	var update DisplayUpdate
 	for i := 0; i < 5; i++ {
-		tickRouteE2E(t, mon)
+		tickE2E(t, mon)
 		update = drainUpdate(t, mon)
-		t.Logf("Tick %d: phase=%s, status=%q, char=%q",
-			i+1, mon.Phase, update.Status, update.CharacterName)
+		t.Logf("Tick %d: phase=%s, running=%v, status=%q, char=%q",
+			i+1, mon.phase, rt.running, update.Status, update.CharacterName)
 
-		if mon.Phase == PhaseRunning {
+		if rt.running {
 			break
 		}
 	}
 
-	if mon.Phase != PhaseRunning {
-		t.Fatalf("expected PhaseRunning after ticks, got %s", mon.Phase)
+	if !rt.running {
+		t.Fatalf("expected tracker to be running after ticks")
 	}
 
 	// Verify route is active
@@ -169,26 +159,26 @@ func TestE2E_RouteMonitor_PhaseTransitions(t *testing.T) {
 	}
 
 	// Verify save was detected before route started
-	if mon.CurrentSaveID <= 0 {
-		t.Errorf("route started but CurrentSaveID=%d (should be > 0)", mon.CurrentSaveID)
+	if rt.currentSaveID <= 0 {
+		t.Errorf("route started but currentSaveID=%d (should be > 0)", rt.currentSaveID)
 	}
 	if update.CharacterName == "" {
 		t.Error("route started but character name is empty")
 	}
 
 	t.Logf("Route running: char=%q (Slot %d), saveID=%d",
-		update.CharacterName, update.SaveSlotIndex, mon.CurrentSaveID)
+		update.CharacterName, update.SaveSlotIndex, rt.currentSaveID)
 
 	// One more tick to verify death count is readable in Running phase
-	tickRouteE2E(t, mon)
+	tickE2E(t, mon)
 	update = drainUpdate(t, mon)
 
 	t.Logf("Route tick: deaths=%d", update.DeathCount)
 }
 
-// TestE2E_DeathCounterMonitor_Slot255NotAccepted verifies that slot 255
-// (uninitialized memory) does not cause a premature transition to PhaseLoaded.
-func TestE2E_DeathCounterMonitor_Slot255NotAccepted(t *testing.T) {
+// TestE2E_DeathTracker_Slot255NotAccepted verifies that slot 255
+// (uninitialized memory) does not cause a premature save detection.
+func TestE2E_DeathTracker_Slot255NotAccepted(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
 
@@ -206,27 +196,29 @@ func TestE2E_DeathCounterMonitor_Slot255NotAccepted(t *testing.T) {
 	// Verify the monitor properly loads with a valid slot
 	reader.Detach()
 	tracker := newE2ETracker(t)
-	mon := NewDeathCounterMonitor("ds3", ops, tracker)
+	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
 
 	for i := 0; i < 5; i++ {
-		tickDCE2E(t, mon)
+		tickE2E(t, mon)
 		drainUpdate(t, mon)
-		if mon.Phase >= PhaseLoaded {
+		dt := deathTracker(mon)
+		if dt.saveDetected {
 			break
 		}
 	}
 
-	if mon.Phase < PhaseLoaded {
-		t.Errorf("expected >= PhaseLoaded with valid slot %d, got %s", slot, mon.Phase)
+	dt := deathTracker(mon)
+	if !dt.saveDetected {
+		t.Errorf("expected save to be detected with valid slot %d", slot)
 	}
-	if mon.CurrentSlotIdx == 255 {
-		t.Error("monitor accepted slot 255 — should have been rejected")
+	if dt.currentSlotIdx == 255 {
+		t.Error("tracker accepted slot 255 — should have been rejected")
 	}
-	t.Logf("Monitor loaded with slot %d, phase=%s", mon.CurrentSlotIdx, mon.Phase)
+	t.Logf("Tracker detected save with slot %d", dt.currentSlotIdx)
 }
 
 // drainUpdate reads one DisplayUpdate from the monitor, failing if none is available.
-func drainUpdate(t *testing.T, mon interface{ DisplayUpdates() <-chan DisplayUpdate }) DisplayUpdate {
+func drainUpdate(t *testing.T, mon *GameMonitor) DisplayUpdate {
 	t.Helper()
 	select {
 	case u := <-mon.DisplayUpdates():

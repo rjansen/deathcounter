@@ -84,7 +84,7 @@ const (
 
 // setupDS3Mock sets up a mock with Dark Souls III process and a death count value.
 // It also sets up the save slot and character name memory chains so that
-// DetectSave works correctly.
+// detectSave works correctly.
 func setupDS3Mock(deathCount uint32) *mockProcessOps {
 	mock := newMockProcessOps()
 
@@ -162,13 +162,14 @@ func newTestTracker(t *testing.T) *stats.Tracker {
 	return tracker
 }
 
-// tickDC simulates one StartLoop iteration for a DeathCounterMonitor:
-// Attach, OnAttach (PhaseAttached→PhaseLoaded), and Tick (PhaseLoaded+).
-func tickDC(t *testing.T, mon *DeathCounterMonitor) error {
+// tick simulates one Start() loop iteration for a GameMonitor:
+// Attach, OnAttach (PhaseAttached→PhaseLoaded), and Tick (PhaseLoaded).
+func tick(t *testing.T, mon *GameMonitor) error {
 	t.Helper()
 	reader, err := mon.Attach()
 	if errors.Is(err, ErrGameDetached) {
-		mon.OnDetach()
+		mon.tracker.OnDetach()
+		mon.publishDetached()
 		return err
 	}
 	if err != nil {
@@ -178,78 +179,66 @@ func tickDC(t *testing.T, mon *DeathCounterMonitor) error {
 	reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
 
 	// PhaseAttached → PhaseLoaded (via OnAttach)
-	if mon.Phase == PhaseAttached {
-		if err := mon.OnAttach(mon.attachedGameID); err != nil {
+	if mon.phase == PhaseAttached {
+		if err := mon.tracker.OnAttach(mon.attachedGameID); err != nil {
 			return err
 		}
-		mon.Phase = PhaseLoaded
-		return nil // no Tick this cycle, matches StartLoop behavior
+		mon.phase = PhaseLoaded
+		return nil // no Tick this cycle, matches Start() behavior
 	}
 
-	// PhaseLoaded+: Tick
-	if err := mon.Tick(reader); err != nil {
-		if errors.Is(err, memreader.ErrGameRead) {
-			mon.Detach()
-			mon.OnDetach()
-		}
-		return err
-	}
-	return nil
-}
-
-// tickRoute simulates one StartLoop iteration for a RouteMonitor:
-// Attach, OnAttach (PhaseAttached→PhaseLoaded), and Tick (PhaseLoaded+).
-func tickRoute(t *testing.T, mon *RouteMonitor) error {
-	t.Helper()
-	reader, err := mon.Attach()
-	if errors.Is(err, ErrGameDetached) {
-		mon.OnDetach()
-		return err
-	}
+	// PhaseLoaded: Tick
+	update, err := mon.tracker.Tick(reader)
 	if err != nil {
-		return err
-	}
-	// Always inject AOB addresses (idempotent)
-	reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
-
-	// PhaseAttached → PhaseLoaded (via OnAttach)
-	if mon.Phase == PhaseAttached {
-		if err := mon.OnAttach(mon.attachedGameID); err != nil {
-			return err
-		}
-		mon.Phase = PhaseLoaded
-		return nil // no Tick this cycle, matches StartLoop behavior
-	}
-
-	// PhaseLoaded+: Tick
-	if err := mon.Tick(reader); err != nil {
 		if errors.Is(err, memreader.ErrGameRead) {
 			mon.Detach()
-			mon.OnDetach()
+			mon.tracker.OnDetach()
+			mon.publishDetached()
 		}
 		return err
 	}
+	mon.publish(update)
 	return nil
 }
 
-// attachRouteMonitor attaches the monitor and transitions to PhaseLoaded,
-// bypassing OnAttach. Used by tests that inject mon.route directly.
-func attachRouteMonitor(t *testing.T, mon *RouteMonitor) {
+// attachMonitor attaches the monitor and transitions to PhaseLoaded,
+// bypassing OnAttach. Used by tests that inject tracker state directly.
+func attachMonitor(t *testing.T, mon *GameMonitor) {
 	t.Helper()
 	reader, err := mon.Attach()
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
 	reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
-	mon.Phase = PhaseLoaded
+	mon.phase = PhaseLoaded
 }
 
-func TestDeathCounterMonitor_NotAttached(t *testing.T) {
+// newDeathMonitor creates a GameMonitor with a DeathTracker for testing.
+func newDeathMonitor(gameID string, ops memreader.ProcessOps, tracker *stats.Tracker) *GameMonitor {
+	return NewGameMonitor(gameID, ops, NewDeathTracker(gameID, tracker))
+}
+
+// newRouteMonitor creates a GameMonitor with a RouteTracker for testing.
+func newRouteMonitor(gameID, routeID, routesDir string, ops memreader.ProcessOps, tracker *stats.Tracker) *GameMonitor {
+	return NewGameMonitor(gameID, ops, NewRouteTracker(gameID, routeID, routesDir, tracker))
+}
+
+// routeTracker extracts the RouteTracker from a GameMonitor for test assertions.
+func routeTracker(mon *GameMonitor) *RouteTracker {
+	return mon.tracker.(*RouteTracker)
+}
+
+// deathTracker extracts the DeathTracker from a GameMonitor for test assertions.
+func deathTracker(mon *GameMonitor) *DeathTracker {
+	return mon.tracker.(*DeathTracker)
+}
+
+func TestDeathTracker_NotAttached(t *testing.T) {
 	mock := newMockProcessOps()
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("ds3", mock, tracker)
-	err := tickDC(t, mon)
+	mon := newDeathMonitor("ds3", mock, tracker)
+	err := tick(t, mon)
 
 	// ErrNoGame is returned when no game process is running
 	if !errors.Is(err, ErrNoGame) {
@@ -265,17 +254,17 @@ func TestDeathCounterMonitor_NotAttached(t *testing.T) {
 	}
 }
 
-func TestDeathCounterMonitor_AttachAndRead(t *testing.T) {
+func TestDeathTracker_AttachAndRead(t *testing.T) {
 	mock := setupDS3Mock(42)
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, tracker)
 
 	// First tick: attach → PhaseAttached → OnAttach → PhaseLoaded (no Tick)
-	tickDC(t, mon)
+	tick(t, mon)
 
 	// Second tick: Tick reads death count
-	tickDC(t, mon)
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -293,17 +282,17 @@ func TestDeathCounterMonitor_AttachAndRead(t *testing.T) {
 	}
 }
 
-func TestDeathCounterMonitor_DeathCountChange(t *testing.T) {
+func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mock := setupDS3Mock(10)
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, tracker)
 
 	// First tick: attach + load
-	tickDC(t, mon)
+	tick(t, mon)
 
 	// Second tick: read initial count
-	tickDC(t, mon)
+	tick(t, mon)
 	<-mon.DisplayUpdates()
 
 	// Update death count in memory
@@ -313,7 +302,7 @@ func TestDeathCounterMonitor_DeathCountChange(t *testing.T) {
 	mock.memory[valueAddr] = valueBytes
 
 	// Third tick: should detect change
-	tickDC(t, mon)
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -325,17 +314,17 @@ func TestDeathCounterMonitor_DeathCountChange(t *testing.T) {
 	}
 }
 
-func TestDeathCounterMonitor_Detach(t *testing.T) {
+func TestDeathTracker_Detach(t *testing.T) {
 	mock := setupDS3Mock(5)
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, tracker)
 
 	// First tick: attach + load
-	tickDC(t, mon)
+	tick(t, mon)
 
 	// Second tick: read death count
-	tickDC(t, mon)
+	tick(t, mon)
 	<-mon.DisplayUpdates()
 
 	// Remove the process to simulate game exit
@@ -347,7 +336,7 @@ func TestDeathCounterMonitor_Detach(t *testing.T) {
 	}
 
 	// Next tick: Attach returns existing reader (still non-nil), Tick fails on read → detach
-	tickDC(t, mon)
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -360,30 +349,32 @@ func TestDeathCounterMonitor_Detach(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_NoRoute(t *testing.T) {
+func TestRouteTracker_NoRoute(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
 	// Use a non-existent route ID so OnAttach returns error
-	mon := NewRouteMonitor("ds3", "nonexistent-route", "testdata", mock, tracker)
+	mon := newRouteMonitor("ds3", "nonexistent-route", "testdata", mock, tracker)
 
 	// First tick: attach → OnAttach fails (route not found) → error returned
-	err := tickRoute(t, mon)
+	err := tick(t, mon)
 	if err == nil {
 		t.Fatal("expected error from OnAttach when route doesn't exist")
 	}
-	if mon.route != nil {
-		t.Errorf("expected nil route, got %+v", mon.route)
+	rt := routeTracker(mon)
+	if rt.route != nil {
+		t.Errorf("expected nil route, got %+v", rt.route)
 	}
 }
 
-func TestRouteMonitor_MatchingRoute(t *testing.T) {
+func TestRouteTracker_MatchingRoute(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	rt := routeTracker(mon)
 	// Inject route directly and skip OnAttach (which would fail loading from disk)
-	mon.route = &route.Route{
+	rt.route = &route.Route{
 		ID:   "ds3-any",
 		Name: "DS3 Any%",
 		Game: "ds3",
@@ -393,10 +384,10 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 	}
 
 	// Attach and transition to PhaseLoaded (bypassing OnAttach since route is injected)
-	attachRouteMonitor(t, mon)
+	attachMonitor(t, mon)
 
-	// First tick: Tick → DetectSave → startRouteRun → CatchUp fails → runner nil'd
-	tickRoute(t, mon)
+	// First tick: Tick → detectSave → startRouteRun → CatchUp fails → runner nil'd
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -412,26 +403,25 @@ func TestRouteMonitor_MatchingRoute(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_OnAttach_GameMismatch(t *testing.T) {
+func TestRouteTracker_OnAttach_GameMismatch(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
-	// Monitor targets "ds3" but OnAttach receives a different gameID
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
+	rt := NewRouteTracker("ds3", "", "", tracker)
 
-	err := mon.OnAttach("sekiro")
+	err := rt.OnAttach("sekiro")
 	if !errors.Is(err, ErrAttachedGameMismatch) {
 		t.Errorf("expected ErrAttachedGameMismatch, got %v", err)
 	}
-	if mon.route != nil {
-		t.Errorf("expected nil route after mismatch, got %+v", mon.route)
+	if rt.route != nil {
+		t.Errorf("expected nil route after mismatch, got %+v", rt.route)
 	}
+	_ = mock // mock unused in this test but kept for consistency
 }
 
-func TestRouteMonitor_countBackups(t *testing.T) {
-	mock := setupDS3Mock(0)
+func TestRouteTracker_countBackups(t *testing.T) {
 	tracker := newTestTracker(t)
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
+	rt := NewRouteTracker("ds3", "", "", tracker)
 
 	events := []route.CheckpointEvent{
 		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagCheck: &route.EventFlagCheck{FlagID: 101}}}, // has encounter flag → NOT counted
@@ -439,28 +429,28 @@ func TestRouteMonitor_countBackups(t *testing.T) {
 		{Checkpoint: route.Checkpoint{ID: "boss3"}},                                                      // no encounter flag → counted
 	}
 
-	count := mon.countBackups(events)
+	count := rt.countBackups(events)
 	if count != 2 {
 		t.Errorf("expected 2 kill-based backups, got %d", count)
 	}
 }
 
-func TestGameMonitor_PublishState_NonBlocking(t *testing.T) {
+func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 	mock := newMockProcessOps()
 	tracker := newTestTracker(t)
 
-	gm := NewGameMonitor[DeathCounterState]("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, tracker)
 
 	// Publish multiple states without consuming — should not block
 	for i := 0; i < 5; i++ {
-		gm.PublishState(DeathCounterState{
+		mon.publish(DisplayUpdate{
 			DeathCount: uint32(i),
 		})
 	}
 
 	// Should get the latest state
 	select {
-	case update := <-gm.DisplayUpdates():
+	case update := <-mon.DisplayUpdates():
 		if update.DeathCount != 4 {
 			t.Errorf("expected latest death count 4, got %d", update.DeathCount)
 		}
@@ -471,17 +461,17 @@ func TestGameMonitor_PublishState_NonBlocking(t *testing.T) {
 
 // --- Save detection tests ---
 
-func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
+func TestDeathTracker_SaveDetection(t *testing.T) {
 	mock := setupDS3Mock(5)
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, tracker)
 
 	// First tick: attach + load (no Tick)
-	tickDC(t, mon)
+	tick(t, mon)
 
-	// Second tick: Tick → DetectSave detects "Knight" slot 0
-	tickDC(t, mon)
+	// Second tick: Tick → detectSave detects "Knight" slot 0
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -499,12 +489,13 @@ func TestDeathCounterMonitor_SaveDetection(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_DetectsSave(t *testing.T) {
+func TestRouteTracker_DetectsSave(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
-	mon.route = &route.Route{
+	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	rt := routeTracker(mon)
+	rt.route = &route.Route{
 		ID:   "ds3-any",
 		Name: "DS3 Any%",
 		Game: "ds3",
@@ -514,10 +505,10 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 	}
 
 	// Attach and transition to PhaseLoaded (bypassing OnAttach)
-	attachRouteMonitor(t, mon)
+	attachMonitor(t, mon)
 
-	// Tick → DetectSave
-	tickRoute(t, mon)
+	// Tick → detectSave
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -529,7 +520,7 @@ func TestRouteMonitor_DetectsSave(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
+func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	mock := newMockProcessOps()
 
 	// DS3 process
@@ -552,8 +543,9 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
-	mon.route = &route.Route{
+	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	rt := routeTracker(mon)
+	rt.route = &route.Route{
 		ID:   "ds3-any",
 		Name: "DS3 Any%",
 		Game: "ds3",
@@ -569,21 +561,24 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 	}
 	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), 0)
 
-	// Manually transition to PhaseLoaded (OnAttach would do this in StartLoop)
-	mon.Phase = PhaseLoaded
+	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
+	mon.phase = PhaseLoaded
 
 	// Tick: save detection fails (null GameDataMan) → route CatchUp also fails
-	mon.Tick(reader)
+	update, tickErr := mon.tracker.Tick(reader)
+	if tickErr == nil {
+		mon.publish(update)
+	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
-		if update.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' status while save pending, got %q", update.Status)
+	case got := <-mon.DisplayUpdates():
+		if got.Status != "Loaded" {
+			t.Errorf("expected 'Loaded' status while save pending, got %q", got.Status)
 		}
 		// No route should be active (CatchUp fails with null GameDataMan)
 		routeName := ""
-		if update.Route != nil {
-			routeName = update.Route.RouteName
+		if got.Route != nil {
+			routeName = got.Route.RouteName
 		}
 		if routeName != "" {
 			t.Errorf("expected no route name before save detection, got %q", routeName)
@@ -593,7 +588,7 @@ func TestRouteMonitor_SaveDetectionGatesRoute(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_Slot255Rejected(t *testing.T) {
+func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	mock := newMockProcessOps()
 
 	// DS3 process
@@ -637,8 +632,9 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
-	mon.route = &route.Route{
+	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	rt := routeTracker(mon)
+	rt.route = &route.Route{
 		ID:   "ds3-any",
 		Name: "DS3 Any%",
 		Game: "ds3",
@@ -654,20 +650,23 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 	}
 	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), int64(gameManGlobalAddr))
 
-	// Manually transition to PhaseLoaded (OnAttach would do this in StartLoop)
-	mon.Phase = PhaseLoaded
+	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
+	mon.phase = PhaseLoaded
 
-	mon.Tick(reader)
+	update, tickErr := mon.tracker.Tick(reader)
+	if tickErr == nil {
+		mon.publish(update)
+	}
 
 	// Slot 255 rejected → save pending, route CatchUp fails → no route active
 	select {
-	case update := <-mon.DisplayUpdates():
-		if update.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' with slot 255, got %q", update.Status)
+	case got := <-mon.DisplayUpdates():
+		if got.Status != "Loaded" {
+			t.Errorf("expected 'Loaded' with slot 255, got %q", got.Status)
 		}
 		routeName := ""
-		if update.Route != nil {
-			routeName = update.Route.RouteName
+		if got.Route != nil {
+			routeName = got.Route.RouteName
 		}
 		if routeName != "" {
 			t.Errorf("expected no route with slot 255, got %q", routeName)
@@ -677,12 +676,13 @@ func TestRouteMonitor_Slot255Rejected(t *testing.T) {
 	}
 }
 
-func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
+func TestRouteTracker_SaveChange_AbandonsRun(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
-	mon := NewRouteMonitor("ds3", "", "", mock, tracker)
-	mon.route = &route.Route{
+	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	rt := routeTracker(mon)
+	rt.route = &route.Route{
 		ID:   "ds3-any",
 		Name: "DS3 Any%",
 		Game: "ds3",
@@ -692,17 +692,17 @@ func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
 	}
 
 	// Attach and transition to PhaseLoaded (bypassing OnAttach)
-	attachRouteMonitor(t, mon)
+	attachMonitor(t, mon)
 
-	// First tick: Tick → DetectSave → start route
-	tickRoute(t, mon)
+	// First tick: Tick → detectSave → start route
+	tick(t, mon)
 	<-mon.DisplayUpdates()
 
 	// Change character name to simulate save switch
 	setCharacterName(mock, "Pyromancer")
 
 	// Third tick: save changed → abandon + restart
-	tickRoute(t, mon)
+	tick(t, mon)
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -714,7 +714,7 @@ func TestRouteMonitor_SaveChange_AbandonsRun(t *testing.T) {
 	}
 }
 
-func TestDeathCounterMonitor_NonDS3_SkipsSaveDetection(t *testing.T) {
+func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	mock := newMockProcessOps()
 
 	// Elden Ring process (no save slot support)
@@ -732,32 +732,36 @@ func TestDeathCounterMonitor_NonDS3_SkipsSaveDetection(t *testing.T) {
 
 	tracker := newTestTracker(t)
 
-	mon := NewDeathCounterMonitor("er", mock, tracker)
+	mon := newDeathMonitor("er", mock, tracker)
 
 	// Attach → PhaseAttached, manually transition to PhaseLoaded (OnAttach no-op)
 	reader, err := mon.Attach()
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
-	mon.Phase = PhaseLoaded
+	mon.phase = PhaseLoaded
 
-	// First Tick: DetectSave (unsupported) + ReadDeathCount
-	mon.Tick(reader)
+	// First Tick: detectSave (unsupported) + ReadDeathCount
+	update, tickErr := mon.tracker.Tick(reader)
+	if tickErr != nil {
+		t.Fatalf("Tick failed: %v", tickErr)
+	}
+	mon.publish(update)
 
 	select {
-	case update := <-mon.DisplayUpdates():
-		if update.GameName != "Elden Ring" {
-			t.Errorf("expected 'Elden Ring', got %q", update.GameName)
+	case got := <-mon.DisplayUpdates():
+		if got.GameName != "Elden Ring" {
+			t.Errorf("expected 'Elden Ring', got %q", got.GameName)
 		}
-		if update.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' for unsupported save detection, got %q", update.Status)
+		if got.Status != "Loaded" {
+			t.Errorf("expected 'Loaded' for unsupported save detection, got %q", got.Status)
 		}
-		if update.DeathCount != 7 {
-			t.Errorf("expected death count 7, got %d", update.DeathCount)
+		if got.DeathCount != 7 {
+			t.Errorf("expected death count 7, got %d", got.DeathCount)
 		}
 		// No character name for unsupported game
-		if update.CharacterName != "" {
-			t.Errorf("expected empty character name, got %q", update.CharacterName)
+		if got.CharacterName != "" {
+			t.Errorf("expected empty character name, got %q", got.CharacterName)
 		}
 	default:
 		t.Fatal("expected a display update")
