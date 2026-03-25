@@ -113,6 +113,7 @@ go mod tidy
    - `RecordDeathForSave()`: records death event scoped to a save identity
    - Route run persistence: `route_runs`, `route_checkpoints`, `route_pbs`, `route_state_vars` tables
    - `StartRouteRun`, `RecordCheckpoint`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
+   - `FindLatestRun(routeID, slotIndex, charName)`: finds most recent run by game identity (joins `route_runs` → `saves`), returns run ID + status
    - `UpdatePersonalBest` with UPSERT that keeps better times
    - `SaveStateVar`, `LoadStateVars` for cumulative inventory tracking state persistence
    - Supports tracking across multiple games
@@ -197,7 +198,7 @@ When the app detects a matching game, the route runner starts with this sequence
 1. **Game Detection**: `GameMonitor.Attach()` detects game process → `PhaseAttached`
 2. **OnAttach**: `RouteTracker.OnAttach()` loads route definition from disk → `PhaseLoaded`
 3. **Save Detection**: `RouteTracker.Tick()` calls `detectSave()` — reads character name + save slot, rejects slot 255, creates save record in DB (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
-4. **Route Start** (`startRouteRun`→`runner.go:Start`): Only called when `currentSaveID > 0`. Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, sets `running = true`, initializes `LastDeathCount`
+4. **Route Start** (`startRouteRun`): Calls `FindLatestRun(routeID, slotIdx, charName)` to find the most recent run by game identity. If found with status `not_started` or `in_progress`, resumes it; otherwise creates a new run in SQLite. Sets `running = true` after successful CatchUp
 5. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
    - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
      - Scans `.text` section for SprjEventFlagMan, FieldArea, and GameMan AOB patterns
