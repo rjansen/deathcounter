@@ -1,0 +1,195 @@
+package monitor
+
+import (
+	"errors"
+	"fmt"
+	"log"
+
+	"github.com/rjansen/deathcounter/internal/memreader"
+	"github.com/rjansen/deathcounter/internal/route"
+	"github.com/rjansen/deathcounter/internal/stats"
+)
+
+// RouteTracker tracks death counts and speedrun route progress.
+// It implements GameTracker.
+type RouteTracker struct {
+	baseTracker
+	runner      *route.Runner
+	route       *route.Route
+	routeID     string
+	routesDir   string
+	backupCount int
+	running     bool // true when a route run is active
+}
+
+// NewRouteTracker creates a new route tracker.
+func NewRouteTracker(gameID, routeID, routesDir string, tracker *stats.Tracker) *RouteTracker {
+	return &RouteTracker{
+		baseTracker: baseTracker{
+			gameID: gameID,
+			stats:  tracker,
+		},
+		routeID:   routeID,
+		routesDir: routesDir,
+	}
+}
+
+// OnAttach validates the attached game and loads the route definition.
+func (t *RouteTracker) OnAttach(gameID string) error {
+	if t.gameID != gameID {
+		log.Printf("[Route] Selected game %q does not match attached game %q", t.gameID, gameID)
+		return ErrAttachedGameMismatch
+	}
+	r, err := route.LoadRouteByID(gameID, t.routeID, t.routesDir)
+	if err != nil {
+		log.Printf("[Route] Failed to load route %q: %v", t.routeID, err)
+		return fmt.Errorf("failed to load route %q of the game %q: %w", t.routeID, t.gameID, err)
+	}
+	t.route = r
+	return nil
+}
+
+// OnDetach handles game detachment: abandons active run and clears state.
+func (t *RouteTracker) OnDetach() {
+	if t.isRunning() {
+		t.runner.Abandon()
+	}
+	t.route = nil
+	t.runner = nil
+	t.running = false
+	t.resetOnDetach()
+}
+
+// isRunning returns true if the runner exists and is actively tracking a run.
+func (t *RouteTracker) isRunning() bool {
+	return t.runner != nil && t.runner.IsActive()
+}
+
+// Tick performs one monitoring cycle with route tracking.
+func (t *RouteTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error) {
+	_, err := t.detectSave(reader)
+	if errors.Is(err, ErrSaveChanged) {
+		t.handleSaveChanged(reader)
+	}
+
+	if !t.isRunning() {
+		t.startRouteRun(reader)
+	}
+
+	if t.running && t.isRunning() {
+		return t.tickRun(reader)
+	}
+
+	return t.buildUpdate(), nil
+}
+
+func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) {
+	if t.isRunning() {
+		t.runner.Abandon()
+	}
+	t.stats.EndCurrentSession()
+	t.running = false
+	t.startRouteRun(reader)
+}
+
+func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, error) {
+	events, err := t.runner.Tick(reader)
+	if err != nil {
+		return t.buildUpdate(), err
+	}
+	t.recordDeathIfChanged(t.runner.LastDeathCount())
+	for _, evt := range events {
+		log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
+			evt.Checkpoint.Name, evt.IGT, evt.Deaths)
+	}
+	t.backupCount += t.countBackups(events)
+	return t.buildUpdate(), nil
+}
+
+func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
+	if t.route == nil {
+		return
+	}
+
+	t.runner = route.NewRunner(t.route, t.stats, nil)
+	t.backupCount = 0
+
+	// Check for an existing in-progress run for this route+save
+	if t.currentSaveID > 0 {
+		runID, found, err := t.stats.FindInProgressRun(t.route.ID, t.currentSaveID)
+		if err != nil {
+			log.Printf("[Route] Failed to check for in-progress run: %v", err)
+		} else if found {
+			if err := t.runner.Resume(runID, 0); err != nil {
+				log.Printf("[Route] Failed to resume run %d: %v", runID, err)
+			} else {
+				log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, runID)
+				if err := t.runner.CatchUp(reader); err == nil {
+					t.running = true
+				} else {
+					t.runner = nil
+				}
+				return
+			}
+		}
+	}
+
+	if err := t.runner.Start(0, t.currentSaveID); err != nil {
+		log.Printf("Failed to start route run: %v", err)
+		t.runner = nil
+		return
+	}
+	log.Printf("[Route] Started route: %s", t.route.Name)
+	if err := t.runner.CatchUp(reader); err == nil {
+		t.running = true
+	} else {
+		t.runner = nil
+	}
+}
+
+func (t *RouteTracker) countBackups(events []route.CheckpointEvent) int {
+	count := 0
+	for _, evt := range events {
+		if evt.Checkpoint.BackupFlagCheck == nil {
+			count++
+		}
+	}
+	return count
+}
+
+func (t *RouteTracker) statusText() string {
+	if t.running && t.isRunning() {
+		return "Tracking route"
+	}
+	return PhaseLoaded.StatusText()
+}
+
+func (t *RouteTracker) buildUpdate() DisplayUpdate {
+	update := DisplayUpdate{
+		GameName:      t.gameLabel(),
+		Status:        t.statusText(),
+		DeathCount:    t.lastCount,
+		CharacterName: t.currentCharName,
+		SaveSlotIndex: t.currentSlotIdx,
+	}
+
+	if t.isRunning() {
+		r := t.runner.GetRoute()
+		cp := t.runner.CurrentCheckpoint()
+		cpName := ""
+		if cp != nil {
+			cpName = cp.Name
+		}
+		update.Route = &RouteDisplay{
+			RouteName:         r.Name,
+			CompletionPercent: t.runner.CompletionPercent(),
+			CompletedCount:    t.runner.CompletedCount(),
+			TotalCount:        t.runner.TotalCount(),
+			CurrentCheckpoint: cpName,
+			SegmentDeaths:     t.runner.SegmentDeaths(),
+			BackupCount:       t.backupCount,
+		}
+	}
+
+	return update
+}

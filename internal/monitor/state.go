@@ -6,8 +6,7 @@ type MonitorPhase int
 const (
 	PhaseDetached MonitorPhase = iota // No game process found
 	PhaseAttached                     // Game process attached
-	PhaseLoaded                       // Game and route loaded, ready for ticking
-	PhaseRunning                      // Route run active with valid saveID
+	PhaseLoaded                       // Game loaded, tracker receiving ticks
 )
 
 // String returns the phase name.
@@ -19,8 +18,6 @@ func (p MonitorPhase) String() string {
 		return "Attached"
 	case PhaseLoaded:
 		return "Loaded"
-	case PhaseRunning:
-		return "Running"
 	default:
 		return "Unknown"
 	}
@@ -35,31 +32,19 @@ func (p MonitorPhase) StatusText() string {
 		return "Attached"
 	case PhaseLoaded:
 		return "Loaded"
-	case PhaseRunning:
-		return "Tracking route"
 	default:
 		return "Unknown"
 	}
 }
 
-// DeathCounterState is the simple death counting state.
-type DeathCounterState struct {
+// DisplayUpdate is the common display state consumed by tray.
+type DisplayUpdate struct {
 	GameName      string
 	Status        string
 	DeathCount    uint32
 	CharacterName string
 	SaveSlotIndex int
-}
-
-// ToDisplayUpdate converts to a DisplayUpdate.
-func (s DeathCounterState) ToDisplayUpdate() DisplayUpdate {
-	return DisplayUpdate{
-		GameName:      s.GameName,
-		Status:        s.Status,
-		DeathCount:    s.DeathCount,
-		CharacterName: s.CharacterName,
-		SaveSlotIndex: s.SaveSlotIndex,
-	}
+	Route         *RouteDisplay // nil when no route is active
 }
 
 // RouteDisplay holds route-specific display data.
@@ -72,26 +57,4 @@ type RouteDisplay struct {
 	CurrentCheckpoint string
 	SegmentDeaths     uint32
 	BackupCount       int
-}
-
-// RouteMonitorState is the route tracking state with death counting.
-type RouteMonitorState struct {
-	GameName      string
-	Status        string
-	DeathCount    uint32
-	CharacterName string
-	SaveSlotIndex int
-	Route         *RouteDisplay
-}
-
-// ToDisplayUpdate converts to a DisplayUpdate.
-func (s RouteMonitorState) ToDisplayUpdate() DisplayUpdate {
-	return DisplayUpdate{
-		GameName:      s.GameName,
-		Status:        s.Status,
-		DeathCount:    s.DeathCount,
-		CharacterName: s.CharacterName,
-		SaveSlotIndex: s.SaveSlotIndex,
-		Route:         s.Route,
-	}
 }
