@@ -107,15 +107,15 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	t.runner = route.NewRunner(t.route, t.repo, nil)
 
 	// Try to find the latest run for this route+save
-	runID, status, err := t.repo.FindLatestRun(t.route.ID, t.currentSaveID)
+	run, err := t.repo.FindLatestRun(t.route.ID, t.currentSaveID)
 	if err != nil && !errors.Is(err, data.ErrNotFound) {
 		log.Printf("[Route] Failed to find latest run: %v", err)
 	}
-	if err == nil && (status == string(route.RunNotStarted) || status == string(route.RunInProgress) || status == string(route.RunPaused)) {
-		if err := t.runner.Resume(runID, 0); err != nil {
-			log.Printf("[Route] Failed to resume run %d: %v", runID, err)
+	if err == nil && (run.Status == string(route.RunNotStarted) || run.Status == string(route.RunInProgress) || run.Status == string(route.RunPaused)) {
+		if err := t.runner.Resume(run.ID, 0); err != nil {
+			log.Printf("[Route] Failed to resume run %d: %v", run.ID, err)
 		} else {
-			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, runID)
+			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
 			if err := t.runner.CatchUp(reader); err == nil {
 				t.running = true
 			} else {

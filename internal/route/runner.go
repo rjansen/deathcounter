@@ -69,11 +69,11 @@ func (r *Runner) LastIGT() int64 {
 // only tracks deaths that occur after the run starts.
 // saveID links the run to a character save slot (0 means no save tracking).
 func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
-	runID, err := r.repo.StartRouteRun(r.route.ID, r.route.Game, saveID)
+	run, err := r.repo.StartRouteRun(r.route.ID, r.route.Game, saveID)
 	if err != nil {
 		return fmt.Errorf("failed to start route run: %w", err)
 	}
-	r.runID = runID
+	r.runID = run.ID
 	r.state.Start()
 	r.state.LastDeathCount = initialDeathCount
 	r.initStateVars()

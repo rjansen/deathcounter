@@ -914,14 +914,14 @@ func TestRestoreFromDB(t *testing.T) {
 	}
 
 	// Create a run and record some checkpoints
-	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
-	repo.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
+	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
+	repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000, 1)
 
 	// Create a new runner and restore from DB
 	runner := NewRunner(r, repo, nil)
 	runner.state.Start()
-	runner.runID = runID
+	runner.runID = run.ID
 
 	if err := runner.RestoreFromDB(); err != nil {
 		t.Fatalf("RestoreFromDB: %v", err)
@@ -961,13 +961,13 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 	}
 
 	// Create a run and record boss1 as completed in DB
-	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
 
 	// Resume the run (RestoreFromDB marks boss1 as completed)
 	reader := newMockGameReader()
 	runner := NewRunner(r, repo, nil)
-	if err := runner.Resume(runID, 5); err != nil {
+	if err := runner.Resume(run.ID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 	if !runner.state.CompletedFlags["boss1"] {
@@ -995,7 +995,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 	var count int
 	err := repo.DB().QueryRow(
 		"SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
-		runID,
+		run.ID,
 	).Scan(&count)
 	if err != nil {
 		t.Fatalf("query: %v", err)
@@ -1008,7 +1008,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 	var igtMs int64
 	err = repo.DB().QueryRow(
 		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss2'",
-		runID,
+		run.ID,
 	).Scan(&igtMs)
 	if err != nil {
 		t.Fatalf("query boss2: %v", err)
@@ -1063,21 +1063,21 @@ func TestRunner_Resume(t *testing.T) {
 	}
 
 	// Create a run and record some checkpoints
-	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
 
 	// Resume the run with a new runner
 	reader := newMockGameReader()
 	runner := NewRunner(r, repo, nil)
-	if err := runner.Resume(runID, 5); err != nil {
+	if err := runner.Resume(run.ID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 
 	if !runner.IsActive() {
 		t.Error("expected runner to be active after Resume")
 	}
-	if runner.runID != runID {
-		t.Errorf("expected runID %d, got %d", runID, runner.runID)
+	if runner.runID != run.ID {
+		t.Errorf("expected runID %d, got %d", run.ID, runner.runID)
 	}
 	if !runner.state.CompletedFlags["boss1"] {
 		t.Error("expected boss1 to be completed after Resume")

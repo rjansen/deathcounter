@@ -79,14 +79,14 @@ func (b *baseTracker) detectSave(reader *memreader.GameReader) (int64, error) {
 
 	// Check if save identity changed
 	if slotIdx != b.currentSlotIdx || charName != b.currentCharName {
-		saveID, err := b.repo.FindOrCreateSave(b.gameID, slotIdx, charName)
+		save, err := b.repo.FindOrCreateSave(b.gameID, slotIdx, charName)
 		if err != nil {
 			log.Printf("[%s] Failed to create save record: %v", b.gameID, err)
 			return 0, fmt.Errorf("failed to create save record: %w", err)
 		}
 
 		previouslyDetected := b.saveDetected
-		b.currentSaveID = saveID
+		b.currentSaveID = save.ID
 		b.currentSlotIdx = slotIdx
 		b.currentCharName = charName
 		b.saveDetected = true
@@ -96,9 +96,9 @@ func (b *baseTracker) detectSave(reader *memreader.GameReader) (int64, error) {
 			log.Printf("[%s] Game loaded successfully", b.gameID)
 		} else {
 			log.Printf("[%s] Save changed: %s (Slot %d)", b.gameID, charName, slotIdx)
-			return saveID, ErrSaveChanged
+			return save.ID, ErrSaveChanged
 		}
-		return saveID, nil
+		return save.ID, nil
 	}
 
 	return b.currentSaveID, nil
