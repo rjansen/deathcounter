@@ -271,13 +271,13 @@ func (h *nullStringHolder) assign(field reflect.Value) {
 
 func newNullHolder(baseType reflect.Type) nullHolder {
 	switch baseType {
-	case reflect.TypeOf(time.Time{}):
+	case reflect.TypeFor[time.Time]():
 		return &nullTimeHolder{}
-	case reflect.TypeOf(int64(0)):
+	case reflect.TypeFor[int64]():
 		return &nullInt64Holder{}
-	case reflect.TypeOf(float64(0)):
+	case reflect.TypeFor[float64]():
 		return &nullFloat64Holder{}
-	case reflect.TypeOf(""):
+	case reflect.TypeFor[string]():
 		return &nullStringHolder{}
 	default:
 		// Fallback: use NullString for unknown pointer types
