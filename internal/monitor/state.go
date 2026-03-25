@@ -42,6 +42,7 @@ type DisplayUpdate struct {
 	GameName      string
 	Status        string
 	DeathCount    uint32
+	IGT           int64 // in-game time in milliseconds
 	CharacterName string
 	SaveSlotIndex int
 	Route         *RouteDisplay // nil when no route is active

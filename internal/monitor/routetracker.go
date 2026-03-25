@@ -156,6 +156,7 @@ func (t *RouteTracker) buildUpdate() DisplayUpdate {
 	}
 
 	if t.isRunning() {
+		update.IGT = t.runner.LastIGT()
 		r := t.runner.GetRoute()
 		cp := t.runner.CurrentCheckpoint()
 		cpName := ""

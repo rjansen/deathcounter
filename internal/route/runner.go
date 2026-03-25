@@ -59,6 +59,11 @@ func (r *Runner) LastDeathCount() uint32 {
 	return r.state.LastDeathCount
 }
 
+// LastIGT returns the last known in-game time in milliseconds.
+func (r *Runner) LastIGT() int64 {
+	return r.state.LastIGT
+}
+
 // Start begins a new route run, recording it in the database.
 // initialDeathCount should be the current death count so the first segment
 // only tracks deaths that occur after the run starts.

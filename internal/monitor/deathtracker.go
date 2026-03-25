@@ -58,10 +58,16 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 
 	t.recordDeathIfChanged(count)
 
+	var igt int64
+	if v, err := reader.ReadIGT(); err == nil {
+		igt = v
+	}
+
 	return DisplayUpdate{
 		GameName:      t.gameLabel(),
 		Status:        PhaseLoaded.StatusText(),
 		DeathCount:    count,
+		IGT:           igt,
 		CharacterName: t.currentCharName,
 		SaveSlotIndex: t.currentSlotIdx,
 	}, nil
