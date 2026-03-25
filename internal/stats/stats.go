@@ -2,11 +2,15 @@ package stats
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotFound is returned when a queried record does not exist.
+var ErrNotFound = errors.New("not found")
 
 // Tracker handles death statistics and persistence
 type Tracker struct {
@@ -533,25 +537,21 @@ func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
 }
 
 // FindLatestRun returns the ID and status of the most recent route run
-// matching the given route and save identity (slot index + character name).
-// Returns (0, "", false, nil) if no matching run exists.
-func (t *Tracker) FindLatestRun(routeID string, slotIndex int, charName string) (int64, string, bool, error) {
+// for the given route and save. Returns ErrNotFound if no matching run exists.
+func (t *Tracker) FindLatestRun(routeID string, saveID int64) (int64, string, error) {
 	var runID int64
 	var status string
-	err := t.db.QueryRow(`
-		SELECT r.id, r.status FROM route_runs r
-		JOIN saves s ON r.save_id = s.id
-		WHERE r.route_id = ? AND s.slot_index = ? AND s.character_name = ?
-		ORDER BY r.start_time DESC LIMIT 1`,
-		routeID, slotIndex, charName,
+	err := t.db.QueryRow(
+		"SELECT id, status FROM route_runs WHERE route_id = ? AND save_id = ? ORDER BY start_time DESC LIMIT 1",
+		routeID, saveID,
 	).Scan(&runID, &status)
 	if err == sql.ErrNoRows {
-		return 0, "", false, nil
+		return 0, "", ErrNotFound
 	}
 	if err != nil {
-		return 0, "", false, fmt.Errorf("failed to find latest run: %w", err)
+		return 0, "", fmt.Errorf("failed to find latest run: %w", err)
 	}
-	return runID, status, true, nil
+	return runID, status, nil
 }
 
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.

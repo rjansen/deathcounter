@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -727,14 +728,11 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 
 func TestFindLatestRun_NoRun(t *testing.T) {
 	tracker := newTestTracker(t)
-	tracker.FindOrCreateSave("ds3", 0, "Knight")
+	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
 
-	_, _, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
-	if err != nil {
-		t.Fatalf("FindLatestRun: %v", err)
-	}
-	if found {
-		t.Error("expected no run found")
+	_, _, err := tracker.FindLatestRun("ds3-any", saveID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -744,12 +742,9 @@ func TestFindLatestRun_InProgress(t *testing.T) {
 
 	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
 
-	gotID, status, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
+	gotID, status, err := tracker.FindLatestRun("ds3-any", saveID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
-	}
-	if !found {
-		t.Fatal("expected run to be found")
 	}
 	if gotID != runID {
 		t.Errorf("expected run ID %d, got %d", runID, gotID)
@@ -766,12 +761,9 @@ func TestFindLatestRun_Completed(t *testing.T) {
 	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
 	tracker.EndRouteRun(runID, "completed", 10, 400000)
 
-	gotID, status, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
+	gotID, status, err := tracker.FindLatestRun("ds3-any", saveID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
-	}
-	if !found {
-		t.Fatal("expected completed run to be found")
 	}
 	if gotID != runID {
 		t.Errorf("expected run ID %d, got %d", runID, gotID)
@@ -784,16 +776,13 @@ func TestFindLatestRun_Completed(t *testing.T) {
 func TestFindLatestRun_DifferentSave(t *testing.T) {
 	tracker := newTestTracker(t)
 	save1, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
-	tracker.FindOrCreateSave("ds3", 1, "Pyromancer")
+	save2, _ := tracker.FindOrCreateSave("ds3", 1, "Pyromancer")
 
 	tracker.StartRouteRun("ds3-any", "ds3", save1)
 
-	_, _, found, err := tracker.FindLatestRun("ds3-any", 1, "Pyromancer")
-	if err != nil {
-		t.Fatalf("FindLatestRun: %v", err)
-	}
-	if found {
-		t.Error("different save should not match")
+	_, _, err := tracker.FindLatestRun("ds3-any", save2)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
