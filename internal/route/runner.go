@@ -6,8 +6,8 @@ import (
 	"log"
 
 	"github.com/rjansen/deathcounter/internal/backup"
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // GameReader is the subset of memreader.GameReader used by the route runner.
@@ -34,7 +34,7 @@ type stateVarData struct {
 type Runner struct {
 	state     *RunState
 	route     *Route
-	tracker   *stats.Tracker
+	repo    *data.Repository
 	backup    *backup.Manager
 	runID     int64
 	stateVars map[string]*stateVarData // state_var name → tracking data
@@ -42,15 +42,15 @@ type Runner struct {
 
 // NewRunner creates a new route runner.
 // If backupMgr is nil, a default backup manager is created.
-func NewRunner(route *Route, tracker *stats.Tracker, backupMgr *backup.Manager) *Runner {
+func NewRunner(route *Route, repo *data.Repository, backupMgr *backup.Manager) *Runner {
 	if backupMgr == nil {
 		backupMgr = backup.NewManager("backups")
 	}
 	return &Runner{
-		route:   route,
-		tracker: tracker,
-		backup:  backupMgr,
-		state:   NewRunState(route),
+		route:  route,
+		repo:   repo,
+		backup: backupMgr,
+		state:  NewRunState(route),
 	}
 }
 
@@ -69,7 +69,7 @@ func (r *Runner) LastIGT() int64 {
 // only tracks deaths that occur after the run starts.
 // saveID links the run to a character save slot (0 means no save tracking).
 func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
-	runID, err := r.tracker.StartRouteRun(r.route.ID, r.route.Game, saveID)
+	runID, err := r.repo.StartRouteRun(r.route.ID, r.route.Game, saveID)
 	if err != nil {
 		return fmt.Errorf("failed to start route run: %w", err)
 	}
@@ -110,7 +110,7 @@ func (r *Runner) initStateVars() {
 
 	// Try to restore persisted state vars (for future run resumption)
 	if len(r.stateVars) > 0 {
-		rows, err := r.tracker.LoadStateVars(r.runID)
+		rows, err := r.repo.LoadStateVars(r.runID)
 		if err != nil {
 			log.Printf("[Route] Failed to load state vars: %v", err)
 			return
@@ -134,7 +134,7 @@ func (r *Runner) Pause() {
 // Abandon marks the current run as abandoned.
 func (r *Runner) Abandon() error {
 	r.state.Abandon()
-	return r.tracker.EndRouteRun(r.runID, string(RunAbandoned), r.state.LastDeathCount, r.state.LastIGT)
+	return r.repo.EndRouteRun(r.runID, string(RunAbandoned), r.state.LastDeathCount, r.state.LastIGT)
 }
 
 // IsActive returns whether a run is currently in progress.
@@ -204,7 +204,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -231,7 +231,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.tracker.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -252,7 +252,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 // RestoreFromDB restores completed checkpoint state from the database
 // instead of re-scanning game memory via CatchUp.
 func (r *Runner) RestoreFromDB() error {
-	ids, err := r.tracker.LoadCompletedCheckpoints(r.runID)
+	ids, err := r.repo.LoadCompletedCheckpoints(r.runID)
 	if err != nil {
 		return fmt.Errorf("failed to restore from DB: %w", err)
 	}
@@ -423,13 +423,13 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 	// Record each completed checkpoint
 	for _, evt := range result.Checkpoints {
 		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
-		if err := r.tracker.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
+		if err := r.repo.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
 			evt.IGT, evt.CheckpointDuration, evt.Deaths); err != nil {
 			log.Printf("Failed to record checkpoint: %v", err)
 		}
 
 		// Update PB if better
-		if err := r.tracker.UpdatePersonalBest(r.route.ID, evt.Checkpoint.ID,
+		if err := r.repo.UpdatePersonalBest(r.route.ID, evt.Checkpoint.ID,
 			evt.IGT, evt.CheckpointDuration); err != nil {
 			log.Printf("Failed to update PB: %v", err)
 		}
@@ -442,7 +442,7 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 
 	// Check if run is complete
 	if r.state.Status == RunCompleted {
-		if err := r.tracker.EndRouteRun(r.runID, string(RunCompleted),
+		if err := r.repo.EndRouteRun(r.runID, string(RunCompleted),
 			deathCount, igt); err != nil {
 			log.Printf("Failed to end route run: %v", err)
 		}
@@ -457,7 +457,7 @@ func (r *Runner) persistDirtyStateVars() {
 		if !sv.Dirty {
 			continue
 		}
-		if err := r.tracker.SaveStateVar(r.runID, name, sv.ItemID, sv.LastQuantity, sv.Accumulated); err != nil {
+		if err := r.repo.SaveStateVar(r.runID, name, sv.ItemID, sv.LastQuantity, sv.Accumulated); err != nil {
 			log.Printf("[Route] Failed to save state var %s: %v", name, err)
 		}
 		sv.Dirty = false

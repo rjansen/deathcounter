@@ -6,9 +6,9 @@ import (
 	"flag"
 	"log"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/monitor"
-	"github.com/rjansen/deathcounter/internal/stats"
 	"github.com/rjansen/deathcounter/internal/tray"
 )
 
@@ -30,12 +30,12 @@ func main() {
 		log.Fatalf("Unknown game %q", *gameID)
 	}
 
-	// Initialize statistics tracker
-	statsTracker, err := stats.NewTracker("deathcounter.db")
+	// Initialize data repository
+	repo, err := data.NewRepository("deathcounter.db")
 	if err != nil {
-		log.Fatalf("Failed to initialize stats tracker: %v", err)
+		log.Fatalf("Failed to initialize data repository: %v", err)
 	}
-	defer statsTracker.Close()
+	defer repo.Close()
 
 	// Create platform-specific process operations
 	ops := memreader.NewProcessOps()
@@ -43,10 +43,10 @@ func main() {
 	// Choose tracker based on flags
 	var tracker monitor.GameTracker
 	if !*dcOnly {
-		tracker = monitor.NewRouteTracker(*gameID, *routeID, "routes", statsTracker)
+		tracker = monitor.NewRouteTracker(*gameID, *routeID, "routes", repo)
 		log.Printf("Route mode: will load route %q for game %q after attach", *routeID, *gameID)
 	} else {
-		tracker = monitor.NewDeathTracker(*gameID, statsTracker)
+		tracker = monitor.NewDeathTracker(*gameID, repo)
 		log.Printf("Death counter mode for game %q", *gameID)
 	}
 
@@ -54,7 +54,7 @@ func main() {
 	mon := monitor.NewGameMonitor(*gameID, ops, tracker)
 
 	// Run system tray (blocks until quit; monitor owns its own tick loop)
-	trayApp := tray.NewApp(mon, statsTracker)
+	trayApp := tray.NewApp(mon, repo)
 	if err := trayApp.Run(); err != nil {
 		log.Fatalf("System tray error: %v", err)
 	}

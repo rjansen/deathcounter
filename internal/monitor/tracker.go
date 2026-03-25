@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // baseTracker holds shared state and methods used by both DeathTracker
@@ -14,7 +14,7 @@ import (
 // embed it for reuse.
 type baseTracker struct {
 	gameID string
-	stats  *stats.Tracker
+	repo *data.Repository
 
 	lastCount      uint32
 	currentSaveID  int64
@@ -79,7 +79,7 @@ func (b *baseTracker) detectSave(reader *memreader.GameReader) (int64, error) {
 
 	// Check if save identity changed
 	if slotIdx != b.currentSlotIdx || charName != b.currentCharName {
-		saveID, err := b.stats.FindOrCreateSave(b.gameID, slotIdx, charName)
+		saveID, err := b.repo.FindOrCreateSave(b.gameID, slotIdx, charName)
 		if err != nil {
 			log.Printf("[%s] Failed to create save record: %v", b.gameID, err)
 			return 0, fmt.Errorf("failed to create save record: %w", err)
@@ -110,9 +110,9 @@ func (b *baseTracker) recordDeathIfChanged(count uint32) bool {
 	if count != b.lastCount {
 		log.Printf("[%s] Death count: %d (previous: %d)", b.gameID, count, b.lastCount)
 		if b.currentSaveID > 0 {
-			b.stats.RecordDeathForSave(count, b.currentSaveID)
+			b.repo.RecordDeathForSave(count, b.currentSaveID)
 		} else {
-			b.stats.RecordDeath(count)
+			b.repo.RecordDeath(count)
 		}
 		b.lastCount = count
 		return true

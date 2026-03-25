@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/rjansen/deathcounter/internal/memreader"
-	"github.com/rjansen/deathcounter/internal/stats"
+	"github.com/rjansen/deathcounter/internal/data"
 )
 
 // mockGameReader implements GameReader for testing.
@@ -69,14 +69,14 @@ func (m *mockGameReader) ReadDeathCount() (uint32, error) {
 	return m.deathCount, nil
 }
 
-func newTestTracker(t *testing.T) *stats.Tracker {
+func newTestRepo(t *testing.T) *data.Repository {
 	t.Helper()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to create tracker: %v", err)
+		t.Fatalf("Failed to create repository: %v", err)
 	}
-	t.Cleanup(func() { tracker.Close() })
-	return tracker
+	t.Cleanup(func() { repo.Close() })
+	return repo
 }
 
 // testRoute creates a simple route with flag-based checkpoints.
@@ -97,8 +97,8 @@ func testRunnerRoute() *Route {
 
 func TestNewRunner(t *testing.T) {
 	r := testRunnerRoute()
-	tracker := newTestTracker(t)
-	runner := NewRunner(r, tracker, nil)
+	repo := newTestRepo(t)
+	runner := NewRunner(r, repo, nil)
 
 	if runner.route != r {
 		t.Error("expected route to be set")
@@ -115,8 +115,8 @@ func TestNewRunner(t *testing.T) {
 }
 
 func TestRunner_Start(t *testing.T) {
-	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	repo := newTestRepo(t)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 
 	if err := runner.Start(42, 0); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -134,8 +134,8 @@ func TestRunner_Start(t *testing.T) {
 }
 
 func TestRunner_Abandon(t *testing.T) {
-	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	repo := newTestRepo(t)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	if err := runner.Abandon(); err != nil {
@@ -147,9 +147,9 @@ func TestRunner_Abandon(t *testing.T) {
 }
 
 func TestRunner_Accessors(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := testRunnerRoute()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	if runner.GetRoute() != r {
@@ -175,9 +175,9 @@ func TestRunner_Accessors(t *testing.T) {
 }
 
 func TestRunner_CatchUp_AllNew(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	// No flags set
@@ -190,7 +190,7 @@ func TestRunner_CatchUp_AllNew(t *testing.T) {
 }
 
 func TestRunner_CatchUp_PreExisting(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test",
 		Name: "Test",
@@ -201,7 +201,7 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true // boss1 already killed
@@ -221,9 +221,9 @@ func TestRunner_CatchUp_PreExisting(t *testing.T) {
 }
 
 func TestRunner_CatchUp_ReadError(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = errors.New("not ready")
@@ -234,9 +234,9 @@ func TestRunner_CatchUp_ReadError(t *testing.T) {
 }
 
 func TestRunner_CatchUp_NotActive(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	// Not started
 
 	if err := runner.CatchUp(reader); err != nil {
@@ -245,9 +245,9 @@ func TestRunner_CatchUp_NotActive(t *testing.T) {
 }
 
 func TestRunner_Tick_NotActive(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	// Not started
 
 	events, err := runner.Tick(reader)
@@ -260,9 +260,9 @@ func TestRunner_Tick_NotActive(t *testing.T) {
 }
 
 func TestRunner_Tick_Checkpoint(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true // boss1 killed
@@ -291,9 +291,9 @@ func TestRunner_Tick_Checkpoint(t *testing.T) {
 }
 
 func TestRunner_Tick_NullPointer(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = memreader.ErrNullPointer
@@ -308,9 +308,9 @@ func TestRunner_Tick_NullPointer(t *testing.T) {
 }
 
 func TestRunner_Tick_FatalError(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flagErr = errors.New("process gone")
@@ -322,7 +322,7 @@ func TestRunner_Tick_FatalError(t *testing.T) {
 }
 
 func TestRunner_Tick_MemCheck(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-memcheck",
 		Name: "MemCheck Route",
@@ -335,7 +335,7 @@ func TestRunner_Tick_MemCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.memValues["player_stats"] = 10
@@ -354,7 +354,7 @@ func TestRunner_Tick_MemCheck(t *testing.T) {
 }
 
 func TestRunner_Tick_RunCompletion(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-complete",
 		Name: "Completion Route",
@@ -364,7 +364,7 @@ func TestRunner_Tick_RunCompletion(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
@@ -383,7 +383,7 @@ func TestRunner_Tick_RunCompletion(t *testing.T) {
 }
 
 func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-backup",
 		Name: "Backup Route",
@@ -394,7 +394,7 @@ func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil) // nil backup manager
+	runner := NewRunner(r, repo, nil) // nil backup manager
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
@@ -411,8 +411,8 @@ func TestRunner_Tick_BackupOnKillNoEncounterFlag(t *testing.T) {
 }
 
 func TestRunner_findGameConfig(t *testing.T) {
-	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil) // Game: "ds3"
+	repo := newTestRepo(t)
+	runner := NewRunner(testRunnerRoute(), repo, nil) // Game: "ds3"
 
 	cfg := runner.findGameConfig()
 	if cfg == nil {
@@ -423,22 +423,22 @@ func TestRunner_findGameConfig(t *testing.T) {
 	}
 
 	// Unknown game
-	runner2 := NewRunner(&Route{Game: "Unknown Game"}, tracker, nil)
+	runner2 := NewRunner(&Route{Game: "Unknown Game"}, repo, nil)
 	if runner2.findGameConfig() != nil {
 		t.Error("expected nil for unknown game")
 	}
 }
 
 func TestRunner_triggerBackup_NilManager(t *testing.T) {
-	tracker := newTestTracker(t)
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	repo := newTestRepo(t)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 
 	// Should not panic
 	runner.triggerBackup("boss1")
 }
 
 func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-mixed",
 		Name: "Mixed Route",
@@ -453,7 +453,7 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true                 // boss1 killed
@@ -479,7 +479,7 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 }
 
 func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-igt",
 		Name: "IGT Route",
@@ -489,7 +489,7 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 	runner.state.LastIGT = 50000 // simulate prior tick with valid IGT
 
@@ -509,9 +509,9 @@ func TestRunner_Tick_IGTNullPointerUsesLastKnown(t *testing.T) {
 }
 
 func TestRunner_Tick_IGTError(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	reader := newMockGameReader()
-	runner := NewRunner(testRunnerRoute(), tracker, nil)
+	runner := NewRunner(testRunnerRoute(), repo, nil)
 	_ = runner.Start(0, 0)
 
 	// No flags set, so event flag reads succeed but return false
@@ -527,7 +527,7 @@ func TestRunner_Tick_IGTError(t *testing.T) {
 }
 
 func TestRunner_Tick_InventoryCheck(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-inv",
 		Name: "Inventory Route",
@@ -540,7 +540,7 @@ func TestRunner_Tick_InventoryCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400003E8] = 3 // only 3 shards
@@ -571,7 +571,7 @@ func TestRunner_Tick_InventoryCheck(t *testing.T) {
 }
 
 func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-inv-null",
 		Name: "Inventory Null Route",
@@ -586,7 +586,7 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true
@@ -609,7 +609,7 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 }
 
 func TestStateVar_Accumulation(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-sv",
 		Name: "StateVar Route",
@@ -622,7 +622,7 @@ func TestStateVar_Accumulation(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	// Tick 1: pick up 2 embers (initialize)
@@ -669,7 +669,7 @@ func TestStateVar_Accumulation(t *testing.T) {
 }
 
 func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-sv-shared",
 		Name: "Shared StateVar Route",
@@ -686,7 +686,7 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	// Pick up 2 embers
@@ -726,7 +726,7 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 }
 
 func TestStateVar_MixedWithRawInventory(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-sv-mixed",
 		Name: "Mixed Route",
@@ -743,7 +743,7 @@ func TestStateVar_MixedWithRawInventory(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 2 // embers (state_var)
@@ -764,7 +764,7 @@ func TestStateVar_MixedWithRawInventory(t *testing.T) {
 }
 
 func TestStateVar_CatchUp(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-sv-catchup",
 		Name: "CatchUp StateVar Route",
@@ -781,7 +781,7 @@ func TestStateVar_CatchUp(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 5 // have 5 embers at route start
@@ -801,7 +801,7 @@ func TestStateVar_CatchUp(t *testing.T) {
 }
 
 func TestStateVar_Persistence(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-sv-persist",
 		Name: "Persist Route",
@@ -814,7 +814,7 @@ func TestStateVar_Persistence(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400001F4] = 3
@@ -823,7 +823,7 @@ func TestStateVar_Persistence(t *testing.T) {
 	runner.Tick(reader)
 
 	// Verify state var was persisted
-	rows, err := tracker.LoadStateVars(runner.runID)
+	rows, err := repo.LoadStateVars(runner.runID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -842,7 +842,7 @@ func TestStateVar_Persistence(t *testing.T) {
 }
 
 func TestCatchUp_PersistsToDB(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-catchup-db",
 		Name: "CatchUp DB Route",
@@ -857,7 +857,7 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.flags[100] = true             // boss1 already killed
@@ -868,7 +868,7 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 	}
 
 	// Verify caught-up checkpoints are persisted to DB with IGT=0
-	ids, err := tracker.LoadCompletedCheckpoints(runner.runID)
+	ids, err := repo.LoadCompletedCheckpoints(runner.runID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -888,7 +888,7 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 
 	// Verify caught-up records have zero IGT (not real splits)
 	var igtMs int64
-	err = tracker.DB().QueryRow(
+	err = repo.DB().QueryRow(
 		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
 		runner.runID,
 	).Scan(&igtMs)
@@ -901,7 +901,7 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 }
 
 func TestRestoreFromDB(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-restore",
 		Name: "Restore Route",
@@ -914,12 +914,12 @@ func TestRestoreFromDB(t *testing.T) {
 	}
 
 	// Create a run and record some checkpoints
-	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
-	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
-	tracker.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
+	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	repo.RecordCheckpoint(runID, "boss2", "Boss 2", 120000, 60000, 1)
 
 	// Create a new runner and restore from DB
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	runner.state.Start()
 	runner.runID = runID
 
@@ -948,7 +948,7 @@ func TestRestoreFromDB(t *testing.T) {
 }
 
 func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-catchup-resume",
 		Name: "CatchUp Resume Route",
@@ -961,12 +961,12 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 	}
 
 	// Create a run and record boss1 as completed in DB
-	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
-	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
 
 	// Resume the run (RestoreFromDB marks boss1 as completed)
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	if err := runner.Resume(runID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -993,7 +993,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 
 	// Verify boss1 was NOT re-recorded in DB (should still have exactly 1 record)
 	var count int
-	err := tracker.DB().QueryRow(
+	err := repo.DB().QueryRow(
 		"SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
 		runID,
 	).Scan(&count)
@@ -1006,7 +1006,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 
 	// Verify boss2 was recorded by CatchUp (with IGT=0 since it's a catch-up)
 	var igtMs int64
-	err = tracker.DB().QueryRow(
+	err = repo.DB().QueryRow(
 		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss2'",
 		runID,
 	).Scan(&igtMs)
@@ -1019,7 +1019,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 }
 
 func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-inv-catchup",
 		Name: "Inventory CatchUp Route",
@@ -1033,7 +1033,7 @@ func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 		},
 	}
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
 	reader.invQuantities[0x400003E8] = 7 // already have 7 shards
@@ -1050,7 +1050,7 @@ func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 }
 
 func TestRunner_Resume(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 	r := &Route{
 		ID:   "test-resume",
 		Name: "Resume Route",
@@ -1063,12 +1063,12 @@ func TestRunner_Resume(t *testing.T) {
 	}
 
 	// Create a run and record some checkpoints
-	runID, _ := tracker.StartRouteRun(r.ID, r.Game, 0)
-	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
+	runID, _ := repo.StartRouteRun(r.ID, r.Game, 0)
+	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 60000, 60000, 2)
 
 	// Resume the run with a new runner
 	reader := newMockGameReader()
-	runner := NewRunner(r, tracker, nil)
+	runner := NewRunner(r, repo, nil)
 	if err := runner.Resume(runID, 5); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/route"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // mockProcessOps implements memreader.ProcessOps for testing.
@@ -152,14 +152,14 @@ func encodeUTF16LE(s string) []byte {
 	return buf
 }
 
-func newTestTracker(t *testing.T) *stats.Tracker {
+func newTestRepo(t *testing.T) *data.Repository {
 	t.Helper()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to create tracker: %v", err)
+		t.Fatalf("Failed to create repository: %v", err)
 	}
-	t.Cleanup(func() { tracker.Close() })
-	return tracker
+	t.Cleanup(func() { repo.Close() })
+	return repo
 }
 
 // tick simulates one Start() loop iteration for a GameMonitor:
@@ -214,13 +214,13 @@ func attachMonitor(t *testing.T, mon *GameMonitor) {
 }
 
 // newDeathMonitor creates a GameMonitor with a DeathTracker for testing.
-func newDeathMonitor(gameID string, ops memreader.ProcessOps, tracker *stats.Tracker) *GameMonitor {
-	return NewGameMonitor(gameID, ops, NewDeathTracker(gameID, tracker))
+func newDeathMonitor(gameID string, ops memreader.ProcessOps, repo *data.Repository) *GameMonitor {
+	return NewGameMonitor(gameID, ops, NewDeathTracker(gameID, repo))
 }
 
 // newRouteMonitor creates a GameMonitor with a RouteTracker for testing.
-func newRouteMonitor(gameID, routeID, routesDir string, ops memreader.ProcessOps, tracker *stats.Tracker) *GameMonitor {
-	return NewGameMonitor(gameID, ops, NewRouteTracker(gameID, routeID, routesDir, tracker))
+func newRouteMonitor(gameID, routeID, routesDir string, ops memreader.ProcessOps, repo *data.Repository) *GameMonitor {
+	return NewGameMonitor(gameID, ops, NewRouteTracker(gameID, routeID, routesDir, repo))
 }
 
 // routeTracker extracts the RouteTracker from a GameMonitor for test assertions.
@@ -235,9 +235,9 @@ func deathTracker(mon *GameMonitor) *DeathTracker {
 
 func TestDeathTracker_NotAttached(t *testing.T) {
 	mock := newMockProcessOps()
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 	err := tick(t, mon)
 
 	// ErrNoGame is returned when no game process is running
@@ -256,9 +256,9 @@ func TestDeathTracker_NotAttached(t *testing.T) {
 
 func TestDeathTracker_AttachAndRead(t *testing.T) {
 	mock := setupDS3Mock(42)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach → PhaseAttached → OnAttach → PhaseLoaded (no Tick)
 	tick(t, mon)
@@ -284,9 +284,9 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 
 func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mock := setupDS3Mock(10)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load
 	tick(t, mon)
@@ -316,9 +316,9 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 
 func TestDeathTracker_Detach(t *testing.T) {
 	mock := setupDS3Mock(5)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load
 	tick(t, mon)
@@ -351,10 +351,10 @@ func TestDeathTracker_Detach(t *testing.T) {
 
 func TestRouteTracker_NoRoute(t *testing.T) {
 	mock := setupDS3Mock(0)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
 	// Use a non-existent route ID so OnAttach returns error
-	mon := newRouteMonitor("ds3", "nonexistent-route", "testdata", mock, tracker)
+	mon := newRouteMonitor("ds3", "nonexistent-route", "testdata", mock, repo)
 
 	// First tick: attach → OnAttach fails (route not found) → error returned
 	err := tick(t, mon)
@@ -369,9 +369,9 @@ func TestRouteTracker_NoRoute(t *testing.T) {
 
 func TestRouteTracker_MatchingRoute(t *testing.T) {
 	mock := setupDS3Mock(0)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, repo)
 	rt := routeTracker(mon)
 	// Inject route directly and skip OnAttach (which would fail loading from disk)
 	rt.route = &route.Route{
@@ -405,9 +405,9 @@ func TestRouteTracker_MatchingRoute(t *testing.T) {
 
 func TestRouteTracker_OnAttach_GameMismatch(t *testing.T) {
 	mock := setupDS3Mock(0)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	rt := NewRouteTracker("ds3", "", "", tracker)
+	rt := NewRouteTracker("ds3", "", "", repo)
 
 	err := rt.OnAttach("sekiro")
 	if !errors.Is(err, ErrAttachedGameMismatch) {
@@ -421,9 +421,9 @@ func TestRouteTracker_OnAttach_GameMismatch(t *testing.T) {
 
 func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 	mock := newMockProcessOps()
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 
 	// Publish multiple states without consuming — should not block
 	for i := 0; i < 5; i++ {
@@ -447,9 +447,9 @@ func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 
 func TestDeathTracker_SaveDetection(t *testing.T) {
 	mock := setupDS3Mock(5)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, tracker)
+	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load (no Tick)
 	tick(t, mon)
@@ -475,9 +475,9 @@ func TestDeathTracker_SaveDetection(t *testing.T) {
 
 func TestRouteTracker_DetectsSave(t *testing.T) {
 	mock := setupDS3Mock(0)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, repo)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -525,9 +525,9 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	gameDataManBytes := make([]byte, 8) // null pointer
 	mock.memory[gameDataManGlobalAddr] = gameDataManBytes
 
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, repo)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -614,9 +614,9 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	slotBytes[0] = 255 // uninitialized slot
 	mock.memory[uintptr(gameManPtr+0xA60)] = slotBytes
 
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, repo)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -662,9 +662,9 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 
 func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	mock := setupDS3Mock(0)
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newRouteMonitor("ds3", "", "", mock, tracker)
+	mon := newRouteMonitor("ds3", "", "", mock, repo)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -714,9 +714,9 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	binary.LittleEndian.PutUint32(valueBytes, 7)
 	mock.memory[uintptr(0x200000094)] = valueBytes
 
-	tracker := newTestTracker(t)
+	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("er", mock, tracker)
+	mon := newDeathMonitor("er", mock, repo)
 
 	// Attach → PhaseAttached, manually transition to PhaseLoaded (OnAttach no-op)
 	reader, err := mon.Attach()

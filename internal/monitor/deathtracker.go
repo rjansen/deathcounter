@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // DeathTracker tracks death counts without route tracking.
@@ -16,11 +16,11 @@ type DeathTracker struct {
 }
 
 // NewDeathTracker creates a new death tracker.
-func NewDeathTracker(gameID string, tracker *stats.Tracker) *DeathTracker {
+func NewDeathTracker(gameID string, repo *data.Repository) *DeathTracker {
 	return &DeathTracker{
 		baseTracker: baseTracker{
 			gameID: gameID,
-			stats:  tracker,
+			repo:   repo,
 		},
 	}
 }

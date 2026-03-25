@@ -5,9 +5,9 @@ package monitor
 import (
 	"testing"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/route"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // newRealOpsAndAttach creates real ProcessOps, finds DS3, and returns ops + reader.
@@ -23,14 +23,14 @@ func newRealOpsAndAttach(t *testing.T) (memreader.ProcessOps, *memreader.GameRea
 	return ops, reader
 }
 
-func newE2ETracker(t *testing.T) *stats.Tracker {
+func newE2ERepo(t *testing.T) *data.Repository {
 	t.Helper()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to create tracker: %v", err)
+		t.Fatalf("Failed to create repository: %v", err)
 	}
-	t.Cleanup(func() { tracker.Close() })
-	return tracker
+	t.Cleanup(func() { repo.Close() })
+	return repo
 }
 
 // tickE2E is a test helper for e2e tests: simulates one Start() loop cycle.

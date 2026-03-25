@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/route"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // RouteTracker tracks death counts and speedrun route progress.
@@ -22,11 +22,11 @@ type RouteTracker struct {
 }
 
 // NewRouteTracker creates a new route tracker.
-func NewRouteTracker(gameID, routeID, routesDir string, tracker *stats.Tracker) *RouteTracker {
+func NewRouteTracker(gameID, routeID, routesDir string, repo *data.Repository) *RouteTracker {
 	return &RouteTracker{
 		baseTracker: baseTracker{
 			gameID: gameID,
-			stats:  tracker,
+			repo:   repo,
 		},
 		routeID:   routeID,
 		routesDir: routesDir,
@@ -104,11 +104,11 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 		return
 	}
 
-	t.runner = route.NewRunner(t.route, t.stats, nil)
+	t.runner = route.NewRunner(t.route, t.repo, nil)
 
 	// Try to find the latest run for this route+save
-	runID, status, err := t.stats.FindLatestRun(t.route.ID, t.currentSaveID)
-	if err != nil && !errors.Is(err, stats.ErrNotFound) {
+	runID, status, err := t.repo.FindLatestRun(t.route.ID, t.currentSaveID)
+	if err != nil && !errors.Is(err, data.ErrNotFound) {
 		log.Printf("[Route] Failed to find latest run: %v", err)
 	}
 	if err == nil && (status == string(route.RunNotStarted) || status == string(route.RunInProgress) || status == string(route.RunPaused)) {

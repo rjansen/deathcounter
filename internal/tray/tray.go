@@ -8,14 +8,14 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/monitor"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // App represents the system tray application
 type App struct {
 	monitor           monitor.Monitor
-	tracker           *stats.Tracker
+	repo              *data.Repository
 	mainWindow        *walk.MainWindow
 	ni                *walk.NotifyIcon
 	menuTitle         *walk.Action
@@ -32,10 +32,10 @@ type App struct {
 }
 
 // NewApp creates a new system tray application
-func NewApp(mon monitor.Monitor, tracker *stats.Tracker) *App {
+func NewApp(mon monitor.Monitor, repo *data.Repository) *App {
 	return &App{
 		monitor: mon,
-		tracker: tracker,
+		repo:    repo,
 	}
 }
 
@@ -276,7 +276,7 @@ func (a *App) refreshRouteDisplay(route *monitor.RouteDisplay) {
 
 // updateTotalDeaths updates the total deaths display
 func (a *App) updateTotalDeaths() {
-	total, err := a.tracker.GetTotalDeaths()
+	total, err := a.repo.GetTotalDeaths()
 	if err != nil {
 		log.Printf("Error getting total deaths: %v", err)
 		return
@@ -289,7 +289,7 @@ func (a *App) updateTotalDeaths() {
 
 // showCurrentSessionStats shows current session statistics
 func (a *App) showCurrentSessionStats() {
-	deaths, err := a.tracker.GetCurrentSessionDeaths()
+	deaths, err := a.repo.GetCurrentSessionDeaths()
 	if err != nil {
 		log.Printf("Error getting session stats: %v", err)
 		return
@@ -301,7 +301,7 @@ func (a *App) showCurrentSessionStats() {
 
 // showSessionHistory shows session history
 func (a *App) showSessionHistory() {
-	sessions, err := a.tracker.GetSessionHistory(10)
+	sessions, err := a.repo.GetSessionHistory(10)
 	if err != nil {
 		log.Printf("Error getting session history: %v", err)
 		return
