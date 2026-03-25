@@ -1,4 +1,4 @@
-package stats
+package data
 
 import (
 	"database/sql"
@@ -12,8 +12,8 @@ import (
 // ErrNotFound is returned when a queried record does not exist.
 var ErrNotFound = errors.New("not found")
 
-// Tracker handles death statistics and persistence
-type Tracker struct {
+// Repository handles death statistics and persistence
+type Repository struct {
 	db *sql.DB
 }
 
@@ -35,30 +35,30 @@ type Save struct {
 	LastSeenAt    time.Time
 }
 
-// NewTracker creates a new statistics tracker with SQLite backend
-func NewTracker(dbPath string) (*Tracker, error) {
+// NewRepository creates a new data repository with SQLite backend
+func NewRepository(dbPath string) (*Repository, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	tracker := &Tracker{db: db}
+	repo := &Repository{db: db}
 
-	if err := tracker.initDB(); err != nil {
+	if err := repo.initDB(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	if err := tracker.migrateDB(); err != nil {
+	if err := repo.migrateDB(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	return tracker, nil
+	return repo, nil
 }
 
 // initDB creates the necessary tables
-func (t *Tracker) initDB() error {
+func (r *Repository) initDB() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,34 +132,34 @@ func (t *Tracker) initDB() error {
 	);
 	`
 
-	_, err := t.db.Exec(schema)
+	_, err := r.db.Exec(schema)
 	return err
 }
 
 // migrateDB adds new columns to existing tables.
-func (t *Tracker) migrateDB() error {
+func (r *Repository) migrateDB() error {
 	// Rename route_splits → route_checkpoints if old table exists
-	if t.tableExists("route_splits") {
-		if _, err := t.db.Exec("ALTER TABLE route_splits RENAME TO route_checkpoints"); err != nil {
+	if r.tableExists("route_splits") {
+		if _, err := r.db.Exec("ALTER TABLE route_splits RENAME TO route_checkpoints"); err != nil {
 			return fmt.Errorf("failed to rename route_splits to route_checkpoints: %w", err)
 		}
 		// Rename column split_duration_ms → checkpoint_duration_ms
-		if t.columnExists("route_checkpoints", "split_duration_ms") {
-			if _, err := t.db.Exec("ALTER TABLE route_checkpoints RENAME COLUMN split_duration_ms TO checkpoint_duration_ms"); err != nil {
+		if r.columnExists("route_checkpoints", "split_duration_ms") {
+			if _, err := r.db.Exec("ALTER TABLE route_checkpoints RENAME COLUMN split_duration_ms TO checkpoint_duration_ms"); err != nil {
 				return fmt.Errorf("failed to rename split_duration_ms column: %w", err)
 			}
 		}
 	}
 
 	// Add save_id to sessions if missing
-	if !t.columnExists("sessions", "save_id") {
-		if _, err := t.db.Exec("ALTER TABLE sessions ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
+	if !r.columnExists("sessions", "save_id") {
+		if _, err := r.db.Exec("ALTER TABLE sessions ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
 			return fmt.Errorf("failed to add save_id to sessions: %w", err)
 		}
 	}
 	// Add save_id to route_runs if missing
-	if !t.columnExists("route_runs", "save_id") {
-		if _, err := t.db.Exec("ALTER TABLE route_runs ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
+	if !r.columnExists("route_runs", "save_id") {
+		if _, err := r.db.Exec("ALTER TABLE route_runs ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
 			return fmt.Errorf("failed to add save_id to route_runs: %w", err)
 		}
 	}
@@ -167,17 +167,17 @@ func (t *Tracker) migrateDB() error {
 }
 
 // tableExists checks if a table exists in the database.
-func (t *Tracker) tableExists(table string) bool {
+func (r *Repository) tableExists(table string) bool {
 	var name string
-	err := t.db.QueryRow(
+	err := r.db.QueryRow(
 		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
 	).Scan(&name)
 	return err == nil
 }
 
 // columnExists checks if a column exists in a table.
-func (t *Tracker) columnExists(table, column string) bool {
-	rows, err := t.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+func (r *Repository) columnExists(table, column string) bool {
+	rows, err := r.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
 		return false
 	}
@@ -199,9 +199,9 @@ func (t *Tracker) columnExists(table, column string) bool {
 }
 
 // FindOrCreateSave returns the ID of a save slot, creating it if necessary.
-func (t *Tracker) FindOrCreateSave(game string, slotIndex int, charName string) (int64, error) {
+func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName string) (int64, error) {
 	now := time.Now()
-	_, err := t.db.Exec(`
+	_, err := r.db.Exec(`
 		INSERT INTO saves (game, slot_index, character_name, created_at, last_seen_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(game, slot_index, character_name) DO UPDATE SET last_seen_at = ?`,
@@ -212,7 +212,7 @@ func (t *Tracker) FindOrCreateSave(game string, slotIndex int, charName string) 
 	}
 
 	var id int64
-	err = t.db.QueryRow(
+	err = r.db.QueryRow(
 		"SELECT id FROM saves WHERE game = ? AND slot_index = ? AND character_name = ?",
 		game, slotIndex, charName,
 	).Scan(&id)
@@ -223,15 +223,15 @@ func (t *Tracker) FindOrCreateSave(game string, slotIndex int, charName string) 
 }
 
 // GetOrCreateSessionForSave finds an open session for the given save, or creates one.
-func (t *Tracker) GetOrCreateSessionForSave(saveID int64) (int64, error) {
+func (r *Repository) GetOrCreateSessionForSave(saveID int64) (int64, error) {
 	var sessionID int64
-	err := t.db.QueryRow(
+	err := r.db.QueryRow(
 		"SELECT id FROM sessions WHERE end_time IS NULL AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		saveID,
 	).Scan(&sessionID)
 
 	if err == sql.ErrNoRows {
-		result, err := t.db.Exec(
+		result, err := r.db.Exec(
 			"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, ?)",
 			time.Now(), saveID,
 		)
@@ -247,13 +247,13 @@ func (t *Tracker) GetOrCreateSessionForSave(saveID int64) (int64, error) {
 }
 
 // RecordDeathForSave records a death count update linked to a save slot.
-func (t *Tracker) RecordDeathForSave(count uint32, saveID int64) error {
-	sessionID, err := t.GetOrCreateSessionForSave(saveID)
+func (r *Repository) RecordDeathForSave(count uint32, saveID int64) error {
+	sessionID, err := r.GetOrCreateSessionForSave(saveID)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.db.Exec(
+	_, err = r.db.Exec(
 		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
 		sessionID, count, time.Now(),
 	)
@@ -261,20 +261,20 @@ func (t *Tracker) RecordDeathForSave(count uint32, saveID int64) error {
 		return fmt.Errorf("failed to record death: %w", err)
 	}
 
-	_, err = t.db.Exec("UPDATE sessions SET deaths = ? WHERE id = ?", count, sessionID)
+	_, err = r.db.Exec("UPDATE sessions SET deaths = ? WHERE id = ?", count, sessionID)
 	return err
 }
 
 // RecordDeath records a death count update
-func (t *Tracker) RecordDeath(count uint32) error {
+func (r *Repository) RecordDeath(count uint32) error {
 	// Get or create current session
-	sessionID, err := t.getCurrentSession()
+	sessionID, err := r.getCurrentSession()
 	if err != nil {
 		return err
 	}
 
 	// Record death event
-	_, err = t.db.Exec(
+	_, err = r.db.Exec(
 		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
 		sessionID,
 		count,
@@ -286,7 +286,7 @@ func (t *Tracker) RecordDeath(count uint32) error {
 	}
 
 	// Update session death count
-	_, err = t.db.Exec(
+	_, err = r.db.Exec(
 		"UPDATE sessions SET deaths = ? WHERE id = ?",
 		count,
 		sessionID,
@@ -296,16 +296,16 @@ func (t *Tracker) RecordDeath(count uint32) error {
 }
 
 // getCurrentSession gets or creates the current gaming session
-func (t *Tracker) getCurrentSession() (int64, error) {
+func (r *Repository) getCurrentSession() (int64, error) {
 	// Check if there's an open session (no end_time)
 	var sessionID int64
-	err := t.db.QueryRow(
+	err := r.db.QueryRow(
 		"SELECT id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
 	).Scan(&sessionID)
 
 	if err == sql.ErrNoRows {
 		// Create new session
-		result, err := t.db.Exec(
+		result, err := r.db.Exec(
 			"INSERT INTO sessions (start_time, deaths) VALUES (?, 0)",
 			time.Now(),
 		)
@@ -325,8 +325,8 @@ func (t *Tracker) getCurrentSession() (int64, error) {
 }
 
 // EndCurrentSession marks the current session as ended
-func (t *Tracker) EndCurrentSession() error {
-	_, err := t.db.Exec(
+func (r *Repository) EndCurrentSession() error {
+	_, err := r.db.Exec(
 		"UPDATE sessions SET end_time = ? WHERE end_time IS NULL",
 		time.Now(),
 	)
@@ -334,9 +334,9 @@ func (t *Tracker) EndCurrentSession() error {
 }
 
 // GetTotalDeaths returns the total death count across all sessions
-func (t *Tracker) GetTotalDeaths() (uint32, error) {
+func (r *Repository) GetTotalDeaths() (uint32, error) {
 	var total sql.NullInt64
-	err := t.db.QueryRow("SELECT SUM(deaths) FROM sessions").Scan(&total)
+	err := r.db.QueryRow("SELECT SUM(deaths) FROM sessions").Scan(&total)
 	if err != nil {
 		return 0, err
 	}
@@ -349,9 +349,9 @@ func (t *Tracker) GetTotalDeaths() (uint32, error) {
 }
 
 // GetCurrentSessionDeaths returns deaths in the current session
-func (t *Tracker) GetCurrentSessionDeaths() (uint32, error) {
+func (r *Repository) GetCurrentSessionDeaths() (uint32, error) {
 	var deaths sql.NullInt64
-	err := t.db.QueryRow(
+	err := r.db.QueryRow(
 		"SELECT deaths FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
 	).Scan(&deaths)
 
@@ -370,8 +370,8 @@ func (t *Tracker) GetCurrentSessionDeaths() (uint32, error) {
 }
 
 // GetSessionHistory returns recent sessions
-func (t *Tracker) GetSessionHistory(limit int) ([]Session, error) {
-	rows, err := t.db.Query(`
+func (r *Repository) GetSessionHistory(limit int) ([]Session, error) {
+	rows, err := r.db.Query(`
 		SELECT id, start_time, end_time, deaths
 		FROM sessions
 		ORDER BY start_time DESC
@@ -412,16 +412,16 @@ type RouteCheckpoint struct {
 
 // StartRouteRun creates a new route run record and returns its ID.
 // If saveID is non-zero, it is stored as a foreign key to the saves table.
-func (t *Tracker) StartRouteRun(routeID, game string, saveID int64) (int64, error) {
+func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (int64, error) {
 	var result sql.Result
 	var err error
 	if saveID > 0 {
-		result, err = t.db.Exec(
+		result, err = r.db.Exec(
 			"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES (?, ?, 'in_progress', ?, ?)",
 			routeID, game, time.Now(), saveID,
 		)
 	} else {
-		result, err = t.db.Exec(
+		result, err = r.db.Exec(
 			"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?)",
 			routeID, game, time.Now(),
 		)
@@ -433,8 +433,8 @@ func (t *Tracker) StartRouteRun(routeID, game string, saveID int64) (int64, erro
 }
 
 // RecordCheckpoint records a completed checkpoint.
-func (t *Tracker) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
-	_, err := t.db.Exec(
+func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
+	_, err := r.db.Exec(
 		`INSERT INTO route_checkpoints (run_id, checkpoint_id, checkpoint_name, igt_ms, checkpoint_duration_ms, deaths, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runID, checkpointID, name, igtMs, checkpointMs, deaths, time.Now(),
@@ -446,8 +446,8 @@ func (t *Tracker) RecordCheckpoint(runID int64, checkpointID, name string, igtMs
 }
 
 // EndRouteRun marks a route run as finished.
-func (t *Tracker) EndRouteRun(runID int64, status string, totalDeaths uint32, finalIGT int64) error {
-	_, err := t.db.Exec(
+func (r *Repository) EndRouteRun(runID int64, status string, totalDeaths uint32, finalIGT int64) error {
+	_, err := r.db.Exec(
 		"UPDATE route_runs SET status = ?, end_time = ?, total_deaths = ?, final_igt_ms = ? WHERE id = ?",
 		status, time.Now(), totalDeaths, finalIGT, runID,
 	)
@@ -455,8 +455,8 @@ func (t *Tracker) EndRouteRun(runID int64, status string, totalDeaths uint32, fi
 }
 
 // GetPersonalBest returns the personal best checkpoints for a route.
-func (t *Tracker) GetPersonalBest(routeID string) ([]RouteCheckpoint, error) {
-	rows, err := t.db.Query(
+func (r *Repository) GetPersonalBest(routeID string) ([]RouteCheckpoint, error) {
+	rows, err := r.db.Query(
 		"SELECT checkpoint_id, '', best_igt_ms, best_split_ms, 0 FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
 		routeID,
 	)
@@ -477,9 +477,9 @@ func (t *Tracker) GetPersonalBest(routeID string) ([]RouteCheckpoint, error) {
 }
 
 // UpdatePersonalBest updates the PB for a checkpoint if the new time is better.
-func (t *Tracker) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitMs int64) error {
+func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitMs int64) error {
 	// Try to insert, or update if existing PB is worse
-	_, err := t.db.Exec(`
+	_, err := r.db.Exec(`
 		INSERT INTO route_pbs (route_id, checkpoint_id, best_igt_ms, best_split_ms)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(route_id, checkpoint_id) DO UPDATE SET
@@ -498,8 +498,8 @@ type StateVarRow struct {
 }
 
 // SaveStateVar upserts a state variable for the given run.
-func (t *Tracker) SaveStateVar(runID int64, varName string, itemID, lastQty, accumulated uint32) error {
-	_, err := t.db.Exec(`
+func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, accumulated uint32) error {
+	_, err := r.db.Exec(`
 		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, accumulated)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(run_id, var_name) DO UPDATE SET
@@ -515,8 +515,8 @@ func (t *Tracker) SaveStateVar(runID int64, varName string, itemID, lastQty, acc
 }
 
 // LoadStateVars loads all state variables for a run.
-func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
-	rows, err := t.db.Query(
+func (r *Repository) LoadStateVars(runID int64) ([]StateVarRow, error) {
+	rows, err := r.db.Query(
 		"SELECT var_name, item_id, last_quantity, accumulated FROM route_state_vars WHERE run_id = ?",
 		runID,
 	)
@@ -538,10 +538,10 @@ func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
 
 // FindLatestRun returns the ID and status of the most recent route run
 // for the given route and save. Returns ErrNotFound if no matching run exists.
-func (t *Tracker) FindLatestRun(routeID string, saveID int64) (int64, string, error) {
+func (r *Repository) FindLatestRun(routeID string, saveID int64) (int64, string, error) {
 	var runID int64
 	var status string
-	err := t.db.QueryRow(
+	err := r.db.QueryRow(
 		"SELECT id, status FROM route_runs WHERE route_id = ? AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		routeID, saveID,
 	).Scan(&runID, &status)
@@ -555,8 +555,8 @@ func (t *Tracker) FindLatestRun(routeID string, saveID int64) (int64, string, er
 }
 
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
-func (t *Tracker) LoadCompletedCheckpoints(runID int64) ([]string, error) {
-	rows, err := t.db.Query(
+func (r *Repository) LoadCompletedCheckpoints(runID int64) ([]string, error) {
+	rows, err := r.db.Query(
 		"SELECT checkpoint_id FROM route_checkpoints WHERE run_id = ?", runID,
 	)
 	if err != nil {
@@ -576,14 +576,14 @@ func (t *Tracker) LoadCompletedCheckpoints(runID int64) ([]string, error) {
 }
 
 // DB returns the underlying database connection for advanced queries.
-func (t *Tracker) DB() *sql.DB {
-	return t.db
+func (r *Repository) DB() *sql.DB {
+	return r.db
 }
 
 // Close closes the database connection
-func (t *Tracker) Close() error {
-	if err := t.EndCurrentSession(); err != nil {
+func (r *Repository) Close() error {
+	if err := r.EndCurrentSession(); err != nil {
 		return err
 	}
-	return t.db.Close()
+	return r.db.Close()
 }

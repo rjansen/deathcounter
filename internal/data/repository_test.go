@@ -1,4 +1,4 @@
-package stats
+package data
 
 import (
 	"errors"
@@ -8,24 +8,24 @@ import (
 	"time"
 )
 
-func newTestTracker(t *testing.T) *Tracker {
+func newTestRepository(t *testing.T) *Repository {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	tracker, err := NewTracker(dbPath)
+	repo, err := NewRepository(dbPath)
 	if err != nil {
-		t.Fatalf("NewTracker: %v", err)
+		t.Fatalf("NewRepository: %v", err)
 	}
-	t.Cleanup(func() { tracker.db.Close() })
-	return tracker
+	t.Cleanup(func() { repo.db.Close() })
+	return repo
 }
 
-func TestNewTracker(t *testing.T) {
+func TestNewRepository(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	tracker, err := NewTracker(dbPath)
+	repo, err := NewRepository(dbPath)
 	if err != nil {
-		t.Fatalf("NewTracker: %v", err)
+		t.Fatalf("NewRepository: %v", err)
 	}
-	defer tracker.db.Close()
+	defer repo.db.Close()
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		t.Fatal("database file was not created")
@@ -33,31 +33,31 @@ func TestNewTracker(t *testing.T) {
 
 	// Verify tables exist
 	var name string
-	err = tracker.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").Scan(&name)
+	err = repo.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").Scan(&name)
 	if err != nil {
 		t.Fatal("sessions table not created")
 	}
-	err = tracker.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='death_events'").Scan(&name)
+	err = repo.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='death_events'").Scan(&name)
 	if err != nil {
 		t.Fatal("death_events table not created")
 	}
 }
 
-func TestNewTracker_InvalidPath(t *testing.T) {
-	_, err := NewTracker("/nonexistent/path/test.db")
+func TestNewRepository_InvalidPath(t *testing.T) {
+	_, err := NewRepository("/nonexistent/path/test.db")
 	if err == nil {
 		t.Fatal("expected error for invalid path")
 	}
 }
 
 func TestRecordDeath_CreatesSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.RecordDeath(1); err != nil {
+	if err := repo.RecordDeath(1); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
 
-	deaths, err := tracker.GetCurrentSessionDeaths()
+	deaths, err := repo.GetCurrentSessionDeaths()
 	if err != nil {
 		t.Fatalf("GetCurrentSessionDeaths: %v", err)
 	}
@@ -67,16 +67,16 @@ func TestRecordDeath_CreatesSession(t *testing.T) {
 }
 
 func TestRecordDeath_ReusesOpenSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.RecordDeath(1); err != nil {
+	if err := repo.RecordDeath(1); err != nil {
 		t.Fatalf("first RecordDeath: %v", err)
 	}
-	if err := tracker.RecordDeath(2); err != nil {
+	if err := repo.RecordDeath(2); err != nil {
 		t.Fatalf("second RecordDeath: %v", err)
 	}
 
-	sessions, err := tracker.GetSessionHistory(10)
+	sessions, err := repo.GetSessionHistory(10)
 	if err != nil {
 		t.Fatalf("GetSessionHistory: %v", err)
 	}
@@ -89,17 +89,17 @@ func TestRecordDeath_ReusesOpenSession(t *testing.T) {
 }
 
 func TestRecordDeath_InsertsDeathEvents(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.RecordDeath(1); err != nil {
+	if err := repo.RecordDeath(1); err != nil {
 		t.Fatalf("first RecordDeath: %v", err)
 	}
-	if err := tracker.RecordDeath(2); err != nil {
+	if err := repo.RecordDeath(2); err != nil {
 		t.Fatalf("second RecordDeath: %v", err)
 	}
 
 	var count int
-	err := tracker.db.QueryRow("SELECT COUNT(*) FROM death_events").Scan(&count)
+	err := repo.db.QueryRow("SELECT COUNT(*) FROM death_events").Scan(&count)
 	if err != nil {
 		t.Fatalf("query death_events: %v", err)
 	}
@@ -109,16 +109,16 @@ func TestRecordDeath_InsertsDeathEvents(t *testing.T) {
 }
 
 func TestEndCurrentSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.RecordDeath(3); err != nil {
+	if err := repo.RecordDeath(3); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
-	if err := tracker.EndCurrentSession(); err != nil {
+	if err := repo.EndCurrentSession(); err != nil {
 		t.Fatalf("EndCurrentSession: %v", err)
 	}
 
-	deaths, err := tracker.GetCurrentSessionDeaths()
+	deaths, err := repo.GetCurrentSessionDeaths()
 	if err != nil {
 		t.Fatalf("GetCurrentSessionDeaths: %v", err)
 	}
@@ -128,18 +128,18 @@ func TestEndCurrentSession(t *testing.T) {
 }
 
 func TestEndCurrentSession_NoOpenSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
 	// Should not error when there's nothing to end
-	if err := tracker.EndCurrentSession(); err != nil {
+	if err := repo.EndCurrentSession(); err != nil {
 		t.Fatalf("EndCurrentSession: %v", err)
 	}
 }
 
 func TestGetTotalDeaths_Empty(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	total, err := tracker.GetTotalDeaths()
+	total, err := repo.GetTotalDeaths()
 	if err != nil {
 		t.Fatalf("GetTotalDeaths: %v", err)
 	}
@@ -149,22 +149,22 @@ func TestGetTotalDeaths_Empty(t *testing.T) {
 }
 
 func TestGetTotalDeaths_AcrossSessions(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
 	// Session 1: 5 deaths
-	if err := tracker.RecordDeath(5); err != nil {
+	if err := repo.RecordDeath(5); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
-	if err := tracker.EndCurrentSession(); err != nil {
+	if err := repo.EndCurrentSession(); err != nil {
 		t.Fatalf("EndCurrentSession: %v", err)
 	}
 
 	// Session 2: 3 deaths
-	if err := tracker.RecordDeath(3); err != nil {
+	if err := repo.RecordDeath(3); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
 
-	total, err := tracker.GetTotalDeaths()
+	total, err := repo.GetTotalDeaths()
 	if err != nil {
 		t.Fatalf("GetTotalDeaths: %v", err)
 	}
@@ -174,9 +174,9 @@ func TestGetTotalDeaths_AcrossSessions(t *testing.T) {
 }
 
 func TestGetCurrentSessionDeaths_NoSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	deaths, err := tracker.GetCurrentSessionDeaths()
+	deaths, err := repo.GetCurrentSessionDeaths()
 	if err != nil {
 		t.Fatalf("GetCurrentSessionDeaths: %v", err)
 	}
@@ -186,19 +186,19 @@ func TestGetCurrentSessionDeaths_NoSession(t *testing.T) {
 }
 
 func TestGetSessionHistory(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
 	// Create 3 sessions
 	for i := uint32(1); i <= 3; i++ {
-		if err := tracker.RecordDeath(i * 10); err != nil {
+		if err := repo.RecordDeath(i * 10); err != nil {
 			t.Fatalf("RecordDeath: %v", err)
 		}
-		if err := tracker.EndCurrentSession(); err != nil {
+		if err := repo.EndCurrentSession(); err != nil {
 			t.Fatalf("EndCurrentSession: %v", err)
 		}
 	}
 
-	sessions, err := tracker.GetSessionHistory(10)
+	sessions, err := repo.GetSessionHistory(10)
 	if err != nil {
 		t.Fatalf("GetSessionHistory: %v", err)
 	}
@@ -223,18 +223,18 @@ func TestGetSessionHistory(t *testing.T) {
 }
 
 func TestGetSessionHistory_Limit(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
 	for i := uint32(1); i <= 5; i++ {
-		if err := tracker.RecordDeath(i); err != nil {
+		if err := repo.RecordDeath(i); err != nil {
 			t.Fatalf("RecordDeath: %v", err)
 		}
-		if err := tracker.EndCurrentSession(); err != nil {
+		if err := repo.EndCurrentSession(); err != nil {
 			t.Fatalf("EndCurrentSession: %v", err)
 		}
 	}
 
-	sessions, err := tracker.GetSessionHistory(2)
+	sessions, err := repo.GetSessionHistory(2)
 	if err != nil {
 		t.Fatalf("GetSessionHistory: %v", err)
 	}
@@ -244,9 +244,9 @@ func TestGetSessionHistory_Limit(t *testing.T) {
 }
 
 func TestGetSessionHistory_Empty(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	sessions, err := tracker.GetSessionHistory(10)
+	sessions, err := repo.GetSessionHistory(10)
 	if err != nil {
 		t.Fatalf("GetSessionHistory: %v", err)
 	}
@@ -256,13 +256,13 @@ func TestGetSessionHistory_Empty(t *testing.T) {
 }
 
 func TestGetSessionHistory_OpenSession(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.RecordDeath(7); err != nil {
+	if err := repo.RecordDeath(7); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
 
-	sessions, err := tracker.GetSessionHistory(10)
+	sessions, err := repo.GetSessionHistory(10)
 	if err != nil {
 		t.Fatalf("GetSessionHistory: %v", err)
 	}
@@ -280,9 +280,9 @@ func TestGetSessionHistory_OpenSession(t *testing.T) {
 // --- Route run tests ---
 
 func TestStartRouteRun(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	runID, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
@@ -292,19 +292,19 @@ func TestStartRouteRun(t *testing.T) {
 }
 
 func TestRecordCheckpoint(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, err := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	runID, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
-	if err := tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+	if err := repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 
 	var count int
-	err = tracker.db.QueryRow("SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ?", runID).Scan(&count)
+	err = repo.db.QueryRow("SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ?", runID).Scan(&count)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -314,19 +314,19 @@ func TestRecordCheckpoint(t *testing.T) {
 }
 
 func TestEndRouteRun(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
-	tracker.RecordCheckpoint(runID, "boss1", "Boss 1", 95000, 95000, 2)
+	runID, _ := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 95000, 95000, 2)
 
-	if err := tracker.EndRouteRun(runID, "completed", 10, 400000); err != nil {
+	if err := repo.EndRouteRun(runID, "completed", 10, 400000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
 	}
 
 	var status string
 	var totalDeaths int
 	var finalIGT int64
-	err := tracker.db.QueryRow("SELECT status, total_deaths, final_igt_ms FROM route_runs WHERE id = ?", runID).
+	err := repo.db.QueryRow("SELECT status, total_deaths, final_igt_ms FROM route_runs WHERE id = ?", runID).
 		Scan(&status, &totalDeaths, &finalIGT)
 	if err != nil {
 		t.Fatalf("query: %v", err)
@@ -343,13 +343,13 @@ func TestEndRouteRun(t *testing.T) {
 }
 
 func TestUpdatePersonalBest_NewPB(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	if err := tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000); err != nil {
+	if err := repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000); err != nil {
 		t.Fatalf("UpdatePersonalBest: %v", err)
 	}
 
-	pbs, err := tracker.GetPersonalBest("ds3")
+	pbs, err := repo.GetPersonalBest("ds3")
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
@@ -362,12 +362,12 @@ func TestUpdatePersonalBest_NewPB(t *testing.T) {
 }
 
 func TestUpdatePersonalBest_BetterTime(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000)
-	tracker.UpdatePersonalBest("ds3", "boss1", 90000, 88000) // better
+	repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000)
+	repo.UpdatePersonalBest("ds3", "boss1", 90000, 88000) // better
 
-	pbs, err := tracker.GetPersonalBest("ds3")
+	pbs, err := repo.GetPersonalBest("ds3")
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
@@ -380,12 +380,12 @@ func TestUpdatePersonalBest_BetterTime(t *testing.T) {
 }
 
 func TestUpdatePersonalBest_WorseTime(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	tracker.UpdatePersonalBest("ds3", "boss1", 90000, 90000)
-	tracker.UpdatePersonalBest("ds3", "boss1", 95000, 95000) // worse
+	repo.UpdatePersonalBest("ds3", "boss1", 90000, 90000)
+	repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000) // worse
 
-	pbs, err := tracker.GetPersonalBest("ds3")
+	pbs, err := repo.GetPersonalBest("ds3")
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
@@ -395,9 +395,9 @@ func TestUpdatePersonalBest_WorseTime(t *testing.T) {
 }
 
 func TestGetPersonalBest_Empty(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	pbs, err := tracker.GetPersonalBest("nonexistent")
+	pbs, err := repo.GetPersonalBest("nonexistent")
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
@@ -407,29 +407,29 @@ func TestGetPersonalBest_Empty(t *testing.T) {
 }
 
 func TestRouteRunLifecycle(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
 	// Start run
-	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, err := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
 	// Record checkpoints
-	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	tracker.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
+	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	repo.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
 
 	// Update PBs
-	tracker.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
-	tracker.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000)
+	repo.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
+	repo.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000)
 
 	// End run
-	if err := tracker.EndRouteRun(runID, "completed", 5, 225000); err != nil {
+	if err := repo.EndRouteRun(runID, "completed", 5, 225000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
 	}
 
 	// Verify PBs
-	pbs, err := tracker.GetPersonalBest("ds3-any")
+	pbs, err := repo.GetPersonalBest("ds3-any")
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
@@ -440,27 +440,27 @@ func TestRouteRunLifecycle(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	tracker, err := NewTracker(dbPath)
+	repo, err := NewRepository(dbPath)
 	if err != nil {
-		t.Fatalf("NewTracker: %v", err)
+		t.Fatalf("NewRepository: %v", err)
 	}
 
-	if err := tracker.RecordDeath(5); err != nil {
+	if err := repo.RecordDeath(5); err != nil {
 		t.Fatalf("RecordDeath: %v", err)
 	}
-	if err := tracker.Close(); err != nil {
+	if err := repo.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
 	// Reopen and verify session was ended and data persisted
-	tracker2, err := NewTracker(dbPath)
+	repo2, err := NewRepository(dbPath)
 	if err != nil {
-		t.Fatalf("NewTracker (reopen): %v", err)
+		t.Fatalf("NewRepository (reopen): %v", err)
 	}
-	defer tracker2.db.Close()
+	defer repo2.db.Close()
 
 	// No open session should exist
-	deaths, err := tracker2.GetCurrentSessionDeaths()
+	deaths, err := repo2.GetCurrentSessionDeaths()
 	if err != nil {
 		t.Fatalf("GetCurrentSessionDeaths: %v", err)
 	}
@@ -469,7 +469,7 @@ func TestClose(t *testing.T) {
 	}
 
 	// Total should be preserved
-	total, err := tracker2.GetTotalDeaths()
+	total, err := repo2.GetTotalDeaths()
 	if err != nil {
 		t.Fatalf("GetTotalDeaths: %v", err)
 	}
@@ -481,9 +481,9 @@ func TestClose(t *testing.T) {
 // --- Save slot tests ---
 
 func TestFindOrCreateSave_New(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	id, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("FindOrCreateSave: %v", err)
 	}
@@ -493,14 +493,14 @@ func TestFindOrCreateSave_New(t *testing.T) {
 }
 
 func TestFindOrCreateSave_Existing(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	id1, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id1, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 
-	id2, err := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id2, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -511,10 +511,10 @@ func TestFindOrCreateSave_Existing(t *testing.T) {
 }
 
 func TestFindOrCreateSave_DifferentSlot(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	id1, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	id2, _ := tracker.FindOrCreateSave("Dark Souls III", 1, "Knight")
+	id1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id2, _ := repo.FindOrCreateSave("Dark Souls III", 1, "Knight")
 
 	if id1 == id2 {
 		t.Error("different slots should produce different IDs")
@@ -522,10 +522,10 @@ func TestFindOrCreateSave_DifferentSlot(t *testing.T) {
 }
 
 func TestFindOrCreateSave_DifferentName(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	id1, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	id2, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Pyromancer")
+	id1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	id2, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Pyromancer")
 
 	if id1 == id2 {
 		t.Error("different names on same slot should produce different IDs")
@@ -533,16 +533,16 @@ func TestFindOrCreateSave_DifferentName(t *testing.T) {
 }
 
 func TestStartRouteRun_WithSaveID(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	runID, err := tracker.StartRouteRun("ds3-any", "Dark Souls III", saveID)
+	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	runID, err := repo.StartRouteRun("ds3-any", "Dark Souls III", saveID)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
 	var storedSaveID int64
-	err = tracker.db.QueryRow("SELECT save_id FROM route_runs WHERE id = ?", runID).Scan(&storedSaveID)
+	err = repo.db.QueryRow("SELECT save_id FROM route_runs WHERE id = ?", runID).Scan(&storedSaveID)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -552,16 +552,16 @@ func TestStartRouteRun_WithSaveID(t *testing.T) {
 }
 
 func TestRecordDeathForSave(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	if err := tracker.RecordDeathForSave(5, saveID); err != nil {
+	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err := repo.RecordDeathForSave(5, saveID); err != nil {
 		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	// Verify session was created with save_id
 	var sessionSaveID int64
-	err := tracker.db.QueryRow(
+	err := repo.db.QueryRow(
 		"SELECT save_id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
 	).Scan(&sessionSaveID)
 	if err != nil {
@@ -573,12 +573,12 @@ func TestRecordDeathForSave(t *testing.T) {
 }
 
 func TestGetOrCreateSessionForSave(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	saveID, _ := tracker.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 
 	// First call creates a session
-	sid1, err := tracker.GetOrCreateSessionForSave(saveID)
+	sid1, err := repo.GetOrCreateSessionForSave(saveID)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestGetOrCreateSessionForSave(t *testing.T) {
 	}
 
 	// Second call reuses the same session
-	sid2, err := tracker.GetOrCreateSessionForSave(saveID)
+	sid2, err := repo.GetOrCreateSessionForSave(saveID)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -597,18 +597,18 @@ func TestGetOrCreateSessionForSave(t *testing.T) {
 }
 
 func TestSaveAndLoadStateVars(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	if err := tracker.SaveStateVar(runID, "embers", 0x400001F4, 3, 5); err != nil {
+	if err := repo.SaveStateVar(runID, "embers", 0x400001F4, 3, 5); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := tracker.SaveStateVar(runID, "firebombs", 0x40000124, 2, 2); err != nil {
+	if err := repo.SaveStateVar(runID, "firebombs", 0x40000124, 2, 2); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
-	rows, err := tracker.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(runID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -638,14 +638,14 @@ func TestSaveAndLoadStateVars(t *testing.T) {
 }
 
 func TestSaveStateVar_Upsert(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	tracker.SaveStateVar(runID, "embers", 0x400001F4, 2, 2)
-	tracker.SaveStateVar(runID, "embers", 0x400001F4, 5, 7) // update
+	repo.SaveStateVar(runID, "embers", 0x400001F4, 2, 2)
+	repo.SaveStateVar(runID, "embers", 0x400001F4, 5, 7) // update
 
-	rows, err := tracker.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(runID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -661,11 +661,11 @@ func TestSaveStateVar_Upsert(t *testing.T) {
 }
 
 func TestLoadStateVars_Empty(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	rows, err := tracker.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(runID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -675,12 +675,12 @@ func TestLoadStateVars_Empty(t *testing.T) {
 }
 
 func TestLoadCompletedCheckpoints(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// No checkpoints yet
-	ids, err := tracker.LoadCompletedCheckpoints(runID)
+	ids, err := repo.LoadCompletedCheckpoints(runID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -689,10 +689,10 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 	}
 
 	// Record some checkpoints
-	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	tracker.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
+	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	repo.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
 
-	ids, err = tracker.LoadCompletedCheckpoints(runID)
+	ids, err = repo.LoadCompletedCheckpoints(runID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -710,14 +710,14 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 }
 
 func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
-	tracker := newTestTracker(t)
+	repo := newTestRepository(t)
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// Caught-up checkpoints have IGT=0, duration=0, deaths=0
-	tracker.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 0, 0, 0)
+	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 0, 0, 0)
 
-	ids, err := tracker.LoadCompletedCheckpoints(runID)
+	ids, err := repo.LoadCompletedCheckpoints(runID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -727,22 +727,22 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 }
 
 func TestFindLatestRun_NoRun(t *testing.T) {
-	tracker := newTestTracker(t)
-	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
+	repo := newTestRepository(t)
+	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	_, _, err := tracker.FindLatestRun("ds3-any", saveID)
+	_, _, err := repo.FindLatestRun("ds3-any", saveID)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestFindLatestRun_InProgress(t *testing.T) {
-	tracker := newTestTracker(t)
-	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
+	repo := newTestRepository(t)
+	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
+	runID, _ := repo.StartRouteRun("ds3-any", "ds3", saveID)
 
-	gotID, status, err := tracker.FindLatestRun("ds3-any", saveID)
+	gotID, status, err := repo.FindLatestRun("ds3-any", saveID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
 	}
@@ -755,13 +755,13 @@ func TestFindLatestRun_InProgress(t *testing.T) {
 }
 
 func TestFindLatestRun_Completed(t *testing.T) {
-	tracker := newTestTracker(t)
-	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
+	repo := newTestRepository(t)
+	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
-	tracker.EndRouteRun(runID, "completed", 10, 400000)
+	runID, _ := repo.StartRouteRun("ds3-any", "ds3", saveID)
+	repo.EndRouteRun(runID, "completed", 10, 400000)
 
-	gotID, status, err := tracker.FindLatestRun("ds3-any", saveID)
+	gotID, status, err := repo.FindLatestRun("ds3-any", saveID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
 	}
@@ -774,30 +774,30 @@ func TestFindLatestRun_Completed(t *testing.T) {
 }
 
 func TestFindLatestRun_DifferentSave(t *testing.T) {
-	tracker := newTestTracker(t)
-	save1, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
-	save2, _ := tracker.FindOrCreateSave("ds3", 1, "Pyromancer")
+	repo := newTestRepository(t)
+	save1, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
+	save2, _ := repo.FindOrCreateSave("ds3", 1, "Pyromancer")
 
-	tracker.StartRouteRun("ds3-any", "ds3", save1)
+	repo.StartRouteRun("ds3-any", "ds3", save1)
 
-	_, _, err := tracker.FindLatestRun("ds3-any", save2)
+	_, _, err := repo.FindLatestRun("ds3-any", save2)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestMigration(t *testing.T) {
-	// Verify that creating a tracker runs migration without error
-	tracker := newTestTracker(t)
+	// Verify that creating a repo runs migration without error
+	repo := newTestRepository(t)
 
 	// Check sessions has save_id column
 	// Verify by trying to insert with save_id
-	_, err := tracker.db.Exec(
+	_, err := repo.db.Exec(
 		"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, NULL)", time.Now())
 	if err != nil {
 		t.Errorf("sessions should accept save_id column: %v", err)
 	}
-	_, err = tracker.db.Exec(
+	_, err = repo.db.Exec(
 		"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES ('test', 'test', 'in_progress', ?, NULL)", time.Now())
 	if err != nil {
 		t.Errorf("route_runs should accept save_id column: %v", err)
