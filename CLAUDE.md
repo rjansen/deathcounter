@@ -17,16 +17,23 @@ FromSoftware Death Counter is a Windows system tray application written in Go th
 
 ## Technology Stack
 
-- **Language**: Go 1.21+
+- **Language**: Go 1.25+
 - **Platform**: Windows only (uses Windows API for process memory reading)
 - **Key Dependencies**:
-  - `fyne.io/systray` - System tray integration
+  - `github.com/lxn/walk` + `github.com/lxn/win` - Windows GUI toolkit (NotifyIcon-based system tray)
   - `modernc.org/sqlite` - Pure Go SQLite database
+  - `github.com/akavel/rsrc` - Windows manifest resource embedding (build tool)
   - Windows kernel32.dll via `syscall` - Process and memory management
 
 ## Development Commands
 
 ```bash
+# Install build tools (rsrc for Windows manifest embedding)
+make tools
+
+# Embed Windows manifest resource (required before build)
+make manifest
+
 # Build executable without console window (production)
 make build
 
@@ -39,9 +46,21 @@ make run
 # Run tests
 make test
 
+# Run E2E tests (requires a supported game running on Windows)
+make test-e2e
+
+# Run DS3 E2E tests (requires Dark Souls III running on Windows)
+make test-e2e-ds3
+
+# Run UI tests (requires Windows desktop session + manifest)
+make test-ui
+
 # Format and vet code
 make fmt
 make vet
+
+# Run linter (requires golangci-lint)
+make lint
 
 # Clean build artifacts
 make clean
@@ -56,8 +75,9 @@ go mod tidy
 ### Core Components
 
 1. **main.go**: Application entry point
-   - Initializes stats tracker and process operations
-   - Creates `GameTracker` (`DeathTracker` or `RouteTracker`) based on flags
+   - Parses CLI flags: `-game` (game ID), `-dc` (death counter only), `-route` (route ID)
+   - Initializes data repository and process operations
+   - Creates `GameTracker` (`DeathTracker` or `RouteTracker`) based on `-dc` flag
    - Creates `GameMonitor` with the tracker; passes monitor to tray
    - Tray consumes `DisplayUpdates()` channel
    - GameMonitor owns the tick loop (500ms poll)
@@ -90,8 +110,8 @@ go mod tidy
    - **route.go**: Route/Checkpoint data model with JSON loading and validation
    - **state.go**: RunState machine with `ProcessTick` returning `TickResult` (pure logic, no I/O)
    - **runner.go**: Runner orchestrator connecting state machine to memreader, stats, and backup
-   - Checkpoints support three condition types: event flags (`event_flag_id`), memory value checks (`mem_check`), and inventory quantity checks (`inventory_check`)
-   - `BackupFlagID` on checkpoints triggers save backup on boss encounter (before the fight)
+   - Checkpoints support three condition types: event flag checks (`event_flag_check`), memory value checks (`mem_check`), and inventory quantity checks (`inventory_check`)
+   - `BackupFlagCheck` on checkpoints triggers save backup on boss encounter (before the fight)
    - `MemCheck` supports `gte`, `gt`, `eq` comparisons with configurable read size (1/2/4 bytes)
    - `InventoryCheck` supports optional `StateVar` for cumulative pickup tracking (only net positive deltas accumulate)
    - `stateVarData` in Runner tracks per-variable `LastQuantity`, `Accumulated`, and `Dirty` flag for DB persistence
@@ -101,22 +121,36 @@ go mod tidy
    - Tracks checkpoint times, per-segment deaths, completion percentage
    - Automatically detects run completion when all required checkpoints are done
 
-4. **internal/stats**: Statistics tracking and persistence
-   - SQLite-based session management
-   - Tracks death counts with timestamps
-   - Maintains current session vs. total statistics
-   - Auto-creates/ends sessions
-   - `saves` table: `(game, slot_index, character_name)` unique key with timestamps
-   - `save_id` FK added to `sessions` and `route_runs` tables (nullable, migration)
-   - `FindOrCreateSave()`: upserts save record, returns save ID
-   - `GetOrCreateSessionForSave()`: finds or creates open session for a specific save
-   - `RecordDeathForSave()`: records death event scoped to a save identity
-   - Route run persistence: `route_runs`, `route_checkpoints`, `route_pbs`, `route_state_vars` tables
-   - `StartRouteRun`, `RecordCheckpoint`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
-   - `FindLatestRun(routeID, slotIndex, charName)`: finds most recent run by game identity (joins `route_runs` → `saves`), returns run ID + status
-   - `UpdatePersonalBest` with UPSERT that keeps better times
-   - `SaveStateVar`, `LoadStateVars` for cumulative inventory tracking state persistence
-   - Supports tracking across multiple games
+4. **internal/data**: Data persistence layer
+   - **repository.go**: `Repository` struct wrapping SQLite database
+     - SQLite-based session management with auto-create/end sessions
+     - `saves` table: `(game, slot_index, character_name)` unique key with timestamps
+     - `save_id` FK on `sessions` and `route_runs` tables (nullable, migration)
+     - `FindOrCreateSave()`: upserts save record, returns `model.Save`
+     - `GetOrCreateSessionForSave()`: finds or creates open session for a specific save
+     - `RecordDeathForSave()`: records death event scoped to a save identity
+     - Route run persistence: `route_runs`, `route_checkpoints`, `route_pbs`, `route_state_vars` tables
+     - `StartRouteRun`, `RecordCheckpoint`, `EndRouteRun` for run lifecycle (StartRouteRun accepts optional `saveID`)
+     - `FindLatestRun(routeID, saveID)`: finds most recent run by save identity, returns `model.RouteRun`
+     - `UpdatePersonalBest` with UPSERT that keeps better times
+     - `SaveStateVar`, `LoadStateVars` for cumulative inventory tracking state persistence
+     - Supports tracking across multiple games
+   - **internal/data/dbm**: Generic database mapper package
+     - Lightweight wrapper over `database/sql` with Go generics
+     - `Query[T](ctx, db, query, args...)`: scans all rows into `[]T` (structs via `db` tags or primitives)
+     - `QueryOne[T](ctx, db, query, args...)`: scans first row; returns `ErrNotFound` if no rows
+     - `Exec[T](ctx, db, query, args...)`: struct-bound named params (`:fieldName`) or positional args
+     - Nested struct scanning with dot-notation column aliases (e.g. `"save.id"`)
+     - Null holder factory for nullable pointer fields (`*time.Time`, `*int64`, `*float64`, `*string`)
+   - **internal/data/model**: Database domain models
+     - `Save`: character save slot identity (game, slot_index, character_name)
+     - `Session`: gaming session with death count and optional save FK
+     - `DeathEvent`: individual death record linked to session
+     - `RouteRun`: single speedrun execution with status (not_started, in_progress, paused, completed, abandoned)
+     - `RouteCheckpoint`: completed checkpoint within a run (IGT, duration, deaths)
+     - `RoutePB`: personal best split times per checkpoint
+     - `RouteStateVar`: cumulative inventory tracking state
+     - Pointer fields (e.g. `*Save`) indicate belongs-to relationships populated via JOINs
 
 5. **internal/backup**: Save file backup
    - Copies save files with timestamped labels at each checkpoint
@@ -145,16 +179,18 @@ go mod tidy
    - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and route display
    - Key files: `monitor.go`, `tracker.go`, `deathtracker.go`, `routetracker.go`, `state.go`
 
-7. **internal/tray**: System tray UI
-   - Displays currently monitored game
-   - Displays character name and save slot: `"Character: Name (Slot N)"`
-   - Shows death counts in tray menu
-   - Shows connection status
-   - Displays route progress (name, completion %, current checkpoint, split deaths)
+7. **internal/tray**: System tray UI (lxn/walk NotifyIcon)
+   - **tray.go**: Main tray app using `lxn/walk` NotifyIcon menu
+   - **display.go**: Extracted text formatting logic (`formatStatusText`, `formatGameText`, `formatCharacterText`, `formatDeathCountText`, `resolveRouteTexts`)
+   - **icon.go**: Icon loading from embedded PNG data via `walk.NewIconFromImageForDPI`
+   - **icon_data.go**: Generated ICO/PNG byte data
+   - Displays currently monitored game, character name and save slot
+   - Shows death counts, connection status, route progress
    - Receives `DisplayUpdate` structs containing optional `RouteDisplay` data
    - Consumes `DisplayUpdates()` channel from monitor
    - Provides access to statistics
    - Graceful shutdown handling
+   - Requires Windows manifest resource (embedded via `rsrc` at build time)
 
 ### Memory Reading Flow
 
@@ -216,7 +252,7 @@ When the app detects a matching game, the route runner starts with this sequence
    - `ProcessTick` returns `TickResult` with checkpoint and backup events:
      - `BackupEvent`: encounter flag newly set → triggers save file backup (before the fight)
      - `CheckpointEvent`: kill condition met → records split in DB, updates PB
-     - If no `backup_flag_id` configured, backup triggers on kill instead
+     - If no `backup_flag_check` configured, backup triggers on kill instead
    - When all required checkpoints are done → marks run as `RunCompleted`
 8. **Save Change Detection**: If `detectSave()` detects different character/slot mid-run → abandon run, end session, restart route with new save identity
 
@@ -233,7 +269,7 @@ flagID → decompose: div10M, area, block, div1K, remainder
        → read uint32 at (remainder >> 5) * 4, check bit (0x1f - (remainder & 0x1f))
 ```
 
-DS3 boss flag patterns: Defeated flags use suffixes `800`, `830`, `850`, `860`, or `890` (e.g. `13000800`, `13300850`, `13000890`). Encountered flags are typically defeated+1 (e.g. `13000801`), except for `XXX50` variants which use defeated+2 (e.g. `13300852`). 8 of 25 bosses have no known encounter flag (Pontiff, Aldrich, Dancer, Ancient Wyvern, Nameless King, Dragonslayer Armour, Demon Prince, no pattern — omit `backup_flag_id` for these).
+DS3 boss flag patterns: Defeated flags use suffixes `800`, `830`, `850`, `860`, or `890` (e.g. `13000800`, `13300850`, `13000890`). Encountered flags are typically defeated+1 (e.g. `13000801`), except for `XXX50` variants which use defeated+2 (e.g. `13300852`). 8 of 25 bosses have no known encounter flag (Pontiff, Aldrich, Dancer, Ancient Wyvern, Nameless King, Dragonslayer Armour, Demon Prince, no pattern — omit `backup_flag_check` for these).
 
 ### AOB (Array of Bytes) Scanning
 
@@ -359,12 +395,13 @@ Other games do not have anti-cheat and work normally.
 ### Testing
 
 - **Route and state machine tests** (`internal/route/`): Pure Go logic, fully testable on any platform
-- **Stats tests** (`internal/stats/`): SQLite-based, platform-independent
+- **Data tests** (`internal/data/`): SQLite-based repository and dbm mapper tests, platform-independent
 - **Backup tests** (`internal/backup/`): File operations, platform-independent
 - **Memory reader tests** (`internal/memreader/`): Use `mockProcessOps` to simulate Windows API without a running game
   - `ds3_offsets_test.go`: Flag constant validation (counts, uniqueness, bit patterns, pinned CT values)
 - **Route integration tests** (`internal/route/`): `route_integration_test.go` validates route file flag IDs against exported `memreader` constants
 - **Monitor tests** (`internal/monitor/`): Uses mock ProcessOps, tests save detection gate, save change handling, display updates
+- **Tray tests** (`internal/tray/`): Display formatting unit tests (`display_test.go`), walk UI tests (`tray_ui_test.go`, requires Windows desktop + manifest)
 - **E2e tests** (`internal/memreader/`): Cover all 25 DS3 boss defeated flags, 17 encountered flags, and 22 inventory item constants (goods, rings, weapons)
 - Manual testing with actual games recommended for end-to-end validation
 
@@ -444,9 +481,9 @@ When a game updates and addresses change:
 
 ### Creating a Custom Route
 
-1. Create a JSON file in `routes/` directory
-2. Set `game` field to match a `GameConfig.Name` exactly
-3. Define checkpoints with `event_flag_id` (for boss kills), `mem_check` (for levels/upgrades), or `inventory_check` (for item quantities):
+1. Create a JSON file in `routes/<game>/` directory (e.g. `routes/ds3/my-route.json`)
+2. Set `game` field to match a `GameConfig.ID` (e.g. `"ds3"`, not the display name)
+3. Define checkpoints with `event_flag_check` (for boss kills), `mem_check` (for levels/upgrades), or `inventory_check` (for item quantities):
    ```json
    {
      "id": "get-3-firebombs",
@@ -475,7 +512,7 @@ When a game updates and addresses change:
    }
    ```
    With `state_var`, only net positive inventory changes accumulate — spending items doesn't regress progress. Multiple checkpoints sharing the same `state_var` name track the same cumulative total (must use the same `item_id`). State vars are persisted to SQLite (`route_state_vars` table) each tick.
-4. Add `backup_flag_id` to boss checkpoints for save backup on encounter (before the fight)
+4. Add `backup_flag_check` to boss checkpoints for save backup on encounter (before the fight)
 5. Optional checkpoints (`"optional": true`) don't block run completion
 6. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
 7. Validate by loading the app — invalid routes log errors on startup
@@ -489,14 +526,15 @@ To expose a new data structure for route checkpoints:
 
 ### Adding New Statistics
 
-1. Modify schema in `internal/stats/stats.go` (`initDB`)
-2. Add query methods to `Tracker` struct
-3. Update tray menu in `internal/tray/tray.go` to display
-4. Consider adding menu items for new stats
+1. Add model struct to `internal/data/model/model.go` if needed
+2. Modify schema in `internal/data/repository.go` (`initDB`)
+3. Add query methods to `Repository` struct using `dbm.Query`/`dbm.QueryOne`
+4. Update tray menu in `internal/tray/tray.go` to display
+5. Consider adding menu items for new stats
 
 ### Changing Update Interval
 
-Modify `checkInterval` in `main.go` (`monitorDeathCount` function). Default: 500ms. Lower values = more responsive but higher CPU usage.
+Modify the tick interval in `internal/monitor/monitor.go` (`Start` method). Default: 500ms. Lower values = more responsive but higher CPU usage.
 
 ### Understanding Pointer Chains
 

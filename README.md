@@ -29,9 +29,9 @@ For a quick start, see [QUICKSTART.md](QUICKSTART.md).
 
 ## Prerequisites
 
-- Windows OS (required for memory reading)
+- Windows OS (required for memory reading and lxn/walk GUI)
 - One or more supported FromSoftware games installed
-- Go 1.21+ (for building from source)
+- Go 1.25+ (for building from source)
 
 ## Installation
 
@@ -44,7 +44,10 @@ cd deathcounter
 # Install dependencies
 go mod download
 
-# Build the application
+# Install build tools (rsrc for Windows manifest embedding)
+make tools
+
+# Build the application (embeds manifest automatically)
 make build
 
 # Or build with console window (for debugging)
@@ -65,8 +68,22 @@ For other games (Dark Souls series, Sekiro), anti-cheat is not an issue.
 
 1. **Run the application**:
    ```bash
+   # Route tracking (default: DS3 glitchless any% e2e route)
    ./deathcounter.exe
+
+   # Specify game and route
+   ./deathcounter.exe -game=ds3 -route=ds3-glitchless-any-percent-hybrid
+
+   # Death counter only (no route tracking)
+   ./deathcounter.exe -game=dsr -dc
    ```
+
+   **CLI Flags:**
+   | Flag | Default | Description |
+   |------|---------|-------------|
+   | `-game` | `ds3` | Game ID (`ds1`, `ds2`, `ds3`, `dsr`, `sekiro`, `er`) |
+   | `-route` | `ds3-glitchless-any-percent-e2e` | Route ID to load from `routes/<game>/` |
+   | `-dc` | `false` | Death counter only (disable route tracking) |
 
 2. **Start any supported game**: The app will automatically detect and attach to it
 
@@ -83,7 +100,7 @@ For other games (Dark Souls series, Sekiro), anti-cheat is not an issue.
 
 ## Speedrun Route Tracking
 
-The app supports custom speedrun route definitions as JSON files in the `routes/` directory. Routes track ordered checkpoints and record split times using in-game time (IGT).
+The app supports custom speedrun route definitions as JSON files in game-specific subdirectories under `routes/<game>/`. Routes track ordered checkpoints and record split times using in-game time (IGT).
 
 ### Route Features
 
@@ -101,19 +118,21 @@ The app supports custom speedrun route definitions as JSON files in the `routes/
 
 ### Included Routes
 
-- **DS3 Glitchless Any% - Hybrid Route v6** (`routes/ds3-glitchless-any-percent-hybrid.json`)
+- **DS3 Glitchless Any% - E2E Route** (`routes/ds3/01-glitchless-any-percent-e2e.json`)
+  - End-to-end test route covering all 25 DS3 bosses
+- **DS3 Glitchless Any% - Hybrid Route v6** (`routes/ds3/02-glitchless-any-percent-hybrid.json`)
   - 18 checkpoints total: 13 required boss kills in hybrid route order
   - 5 optional milestones: DEX 33/38/47 and Sellsword Twinblades +3/+6
 
 ### Creating Custom Routes
 
-Routes are JSON files in the `routes/` directory. Each checkpoint can use either an event flag (for boss kills, bonfires, item pickups) or a memory value check (for levels, weapon upgrades, stats):
+Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.g. `routes/ds3/my-route.json`). The `game` field must match a `GameConfig.ID` (e.g. `"ds3"`). Each checkpoint can use an event flag check (for boss kills, bonfires), a memory value check (for levels, weapon upgrades), or an inventory check (for item quantities):
 
 ```json
 {
   "id": "my-route",
   "name": "My Custom Route",
-  "game": "Dark Souls III",
+  "game": "ds3",
   "category": "Any%",
   "version": "1",
   "checkpoints": [
@@ -121,8 +140,8 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
       "id": "vordt",
       "name": "Vordt of the Boreal Valley",
       "event_type": "boss_kill",
-      "event_flag_id": 13000800,
-      "backup_flag_id": 13000801
+      "event_flag_check": {"flag_id": 13000800},
+      "backup_flag_check": {"flag_id": 13000801}
     },
     {
       "id": "level-30",
@@ -140,9 +159,9 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
     {
       "id": "ember-4",
       "name": "Ember x4 (cumulative)",
-      "event_type": "inventory_check",
+      "event_type": "item_pickup",
       "inventory_check": {
-        "item_id": 1073741300,
+        "item_id": 1073742324,
         "comparison": "gte",
         "value": 4,
         "state_var": "embers"
@@ -157,8 +176,8 @@ Routes are JSON files in the `routes/` directory. Each checkpoint can use either
 
 | Type | Field | Description |
 |------|-------|-------------|
-| Event flag | `event_flag_id` | Game memory flag ID (boss kills, bonfires, item pickups) |
-| Backup trigger | `backup_flag_id` | Event flag that triggers a save backup (e.g. boss encounter) |
+| Event flag | `event_flag_check` | Object with `flag_id` — game memory flag (boss kills, bonfires) |
+| Backup trigger | `backup_flag_check` | Object with `flag_id` — triggers a save backup (e.g. boss encounter) |
 | Memory value | `mem_check` | Read a value from a named memory path and compare it |
 | Inventory check | `inventory_check` | Check item quantity in player inventory |
 
@@ -265,7 +284,7 @@ This application uses memory addresses discovered and shared by the [DSDeaths pr
 1. **Process Detection**: Scans for any supported game process
 2. **Architecture Detection**: Determines if the game is 32-bit or 64-bit
 3. **Memory Attachment**: Opens the process with read permissions
-4. **AOB Scanning**: Dynamically finds game structures (SprjEventFlagMan, FieldArea, GameMan) by scanning for byte patterns in the `.text` section — more resilient to game updates than static offsets
+4. **AOB Scanning**: Dynamically finds game structures (SprjEventFlagMan, FieldArea, GameMan, GameDataMan) by scanning for byte patterns in the `.text` section — more resilient to game updates than static offsets
 5. **Pointer Traversal**: Follows pointer chains to find the death count value
 6. **Save Detection**: Reads character name (UTF-16LE) and save slot index to identify the active character
 7. **Event Flag Reading**: Uses hierarchical decimal decomposition to check boss kill/encounter flags
@@ -290,17 +309,28 @@ These addresses are for current game versions as of the DSDeaths project. If a g
 ## Development
 
 ```bash
+# Install build tools (first time only)
+make tools
+
 # Build and run with console output
 make run
 
 # Run tests
 make test
 
+# Run E2E tests (requires a supported game running)
+make test-e2e          # game-agnostic
+make test-e2e-ds3      # DS3-specific (memreader + monitor)
+
+# Run UI tests (requires Windows desktop session)
+make test-ui
+
 # Format code
 make fmt
 
-# Run linter
+# Run linters
 make vet
+make lint
 
 # Clean build artifacts
 make clean
@@ -310,15 +340,17 @@ make clean
 
 ```
 deathcounter/
-├── main.go                          # Application entry point + route integration
+├── main.go                          # Application entry point (CLI flags, wiring)
+├── deathcounter.manifest            # Windows application manifest (required by lxn/walk)
 ├── cmd/
 │   └── icongen/main.go             # System tray icon generator (ICO format)
 ├── internal/
 │   ├── memreader/                   # Windows memory reading
 │   │   ├── config.go               # Game configurations, offsets, AOB patterns
-│   │   ├── reader.go               # Death count, event flag, IGT, and memory value reading
+│   │   ├── reader.go               # Core reader logic (shared/testable)
+│   │   ├── reader_windows.go       # Windows-specific reader (syscall bindings)
 │   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
-│   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, bonfire names
+│   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, item IDs
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
 │   ├── monitor/                     # Game monitoring lifecycle (two-level)
@@ -327,19 +359,29 @@ deathcounter/
 │   │   ├── deathtracker.go         # DeathTracker: simple death counting
 │   │   ├── routetracker.go         # RouteTracker: death counting + route tracking
 │   │   └── state.go               # MonitorPhase, DisplayUpdate, RouteDisplay
-│   ├── stats/                       # Statistics tracking
-│   │   └── stats.go                # SQLite persistence, sessions, saves, route runs, PBs
+│   ├── data/                        # Data persistence layer
+│   │   ├── repository.go           # Repository: SQLite sessions, saves, route runs, PBs
+│   │   ├── dbm/                    # Generic database mapper (Query, QueryOne, Exec)
+│   │   │   └── dbm.go
+│   │   └── model/                  # Database domain models (Save, Session, RouteRun, etc.)
+│   │       └── model.go
 │   ├── route/                       # Speedrun route tracking
 │   │   ├── route.go                # Route/Checkpoint data model + JSON loader
 │   │   ├── state.go                # Run state machine (ProcessTick → TickResult)
-│   │   └── runner.go               # Runner orchestrator (reader + stats + backup)
+│   │   └── runner.go               # Runner orchestrator (reader + data + backup)
 │   ├── backup/                      # Save file backup
 │   │   └── backup.go               # Timestamped file copy manager
-│   └── tray/                        # System tray UI
+│   └── tray/                        # System tray UI (lxn/walk NotifyIcon)
 │       ├── tray.go                 # Menu, route progress display, event handling
-│       └── icon_data.go            # Generated ICO icon byte data
+│       ├── display.go              # Text formatting for menu items
+│       ├── icon.go                 # Icon loading from embedded PNG
+│       └── icon_data.go            # Generated PNG icon byte data
 ├── routes/                          # Route definition files (JSON)
-│   └── ds3-glitchless-any-percent-hybrid.json
+│   └── ds3/                        # Dark Souls III routes
+│       ├── 01-glitchless-any-percent-e2e.json
+│       └── 02-glitchless-any-percent-hybrid.json
+├── docs/                            # Documentation
+│   └── speedruns/                  # Speedrun route guides
 ├── go.mod                           # Go module definition
 ├── Makefile                         # Build commands
 └── README.md                        # This file

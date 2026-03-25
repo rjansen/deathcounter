@@ -16,7 +16,7 @@ If you just want to use the death counter without building from source:
 
 ### Prerequisites
 - Windows 10 or later
-- Go 1.21 or later installed
+- Go 1.25 or later installed
 - Git (optional, for cloning)
 
 ### Build Steps
@@ -29,14 +29,17 @@ cd deathcounter
 # 2. Download dependencies
 go mod download
 
-# 3. Build the application
+# 3. Install build tools (first time only)
+make tools
+
+# 4. Build the application
 # For production (no console window):
-go build -o deathcounter.exe -ldflags="-H windowsgui" .
+make build
 
 # OR for debugging (with console window):
-go build -o deathcounter.exe .
+make build-console
 
-# 4. Run
+# 5. Run
 ./deathcounter.exe
 ```
 
@@ -77,27 +80,28 @@ make clean        # Remove build artifacts
 
 The app can track your progress through a speedrun route, recording split times and deaths per segment.
 
-### Using the Included Route
+### Using the Included Routes
 
-A DS3 Glitchless Any% Hybrid route is included in the `routes/` directory. It tracks:
-- 13 required boss kills (Iudex Gundyr through Soul of Cinder)
-- 5 optional milestones (DEX levels, weapon upgrades)
+Two DS3 routes are included in the `routes/ds3/` directory:
+- **E2E route**: End-to-end test route covering all 25 DS3 bosses
+- **Hybrid route**: 13 required boss kills + 5 optional milestones (DEX levels, weapon upgrades)
 
-The route loads automatically when you start the app and DS3 is detected.
+The default route loads automatically when you start the app. Use `-route=<routeID>` to select a specific route, or `-dc` for death counter only mode.
 
 ### Creating Your Own Route
 
-Place a JSON file in the `routes/` directory. Each checkpoint uses either an event flag (boss kills) or a memory value check (levels, weapon upgrades):
+Place a JSON file in `routes/<game>/` (e.g. `routes/ds3/my-route.json`). Each checkpoint uses either an event flag check (boss kills) or a memory value check (levels, weapon upgrades):
 
 ```json
 {
   "id": "my-route",
   "name": "My Custom Route",
-  "game": "Dark Souls III",
+  "game": "ds3",
   "category": "Any%",
   "version": "1",
   "checkpoints": [
-    {"id": "vordt", "name": "Vordt", "event_type": "boss_kill", "event_flag_id": 13000800},
+    {"id": "vordt", "name": "Vordt", "event_type": "boss_kill",
+     "event_flag_check": {"flag_id": 13000800}},
     {"id": "dex-30", "name": "DEX 30", "event_type": "level_up", "optional": true,
      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 30, "size": 4}}
   ],
