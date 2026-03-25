@@ -114,26 +114,25 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	t.runner = route.NewRunner(t.route, t.stats, nil)
 	t.backupCount = 0
 
-	// Check for an existing in-progress run for this route+save
-	if t.currentSaveID > 0 {
-		runID, found, err := t.stats.FindInProgressRun(t.route.ID, t.currentSaveID)
-		if err != nil {
-			log.Printf("[Route] Failed to check for in-progress run: %v", err)
-		} else if found {
-			if err := t.runner.Resume(runID, 0); err != nil {
-				log.Printf("[Route] Failed to resume run %d: %v", runID, err)
+	// Try to find the latest run for this route+save identity
+	runID, status, found, err := t.stats.FindLatestRun(t.route.ID, t.currentSlotIdx, t.currentCharName)
+	if err != nil {
+		log.Printf("[Route] Failed to find latest run: %v", err)
+	} else if found && (status == string(route.RunNotStarted) || status == string(route.RunInProgress)) {
+		if err := t.runner.Resume(runID, 0); err != nil {
+			log.Printf("[Route] Failed to resume run %d: %v", runID, err)
+		} else {
+			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, runID)
+			if err := t.runner.CatchUp(reader); err == nil {
+				t.running = true
 			} else {
-				log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, runID)
-				if err := t.runner.CatchUp(reader); err == nil {
-					t.running = true
-				} else {
-					t.runner = nil
-				}
-				return
+				t.runner = nil
 			}
+			return
 		}
 	}
 
+	// No resumable run found (or resume failed) → start fresh
 	if err := t.runner.Start(0, t.currentSaveID); err != nil {
 		log.Printf("Failed to start route run: %v", err)
 		t.runner = nil
