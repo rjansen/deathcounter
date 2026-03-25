@@ -23,7 +23,9 @@ func TestLoadRoute_Valid(t *testing.T) {
 
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	loaded, err := LoadRoute(path)
 	if err != nil {
@@ -46,7 +48,9 @@ func TestLoadRoute_MissingID(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -63,7 +67,9 @@ func TestLoadRoute_MissingName(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -80,7 +86,9 @@ func TestLoadRoute_EmptyCheckpoints(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -98,7 +106,9 @@ func TestLoadRoute_UnknownGame(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -118,7 +128,9 @@ func TestLoadRoute_CheckpointMissingFields(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -136,7 +148,9 @@ func TestLoadRoute_FileNotFound(t *testing.T) {
 func TestLoadRoute_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
-	os.WriteFile(path, []byte("not json"), 0644)
+	if err := os.WriteFile(path, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -159,7 +173,9 @@ func TestLoadRoute_MemCheckValid(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	loaded, err := LoadRoute(path)
 	if err != nil {
@@ -188,7 +204,9 @@ func TestLoadRoute_MemCheckMissingPath(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -211,7 +229,9 @@ func TestLoadRoute_MemCheckInvalidComparison(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -234,7 +254,9 @@ func TestLoadRoute_MemCheckInvalidSize(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -254,7 +276,9 @@ func TestLoadRoute_NoCondition(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -277,7 +301,9 @@ func TestLoadRoute_InventoryCheckValid(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	loaded, err := LoadRoute(path)
 	if err != nil {
@@ -306,7 +332,9 @@ func TestLoadRoute_InventoryCheckMissingItemID(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -329,7 +357,9 @@ func TestLoadRoute_InventoryCheckInvalidComparison(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -356,7 +386,9 @@ func TestValidate_StateVar_SameItemID(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err != nil {
@@ -383,7 +415,9 @@ func TestValidate_StateVar_ConflictingItemID(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -406,7 +440,9 @@ func TestValidate_StateVar_InvalidName(t *testing.T) {
 	}
 	data, _ := json.Marshal(route)
 	path := filepath.Join(dir, "test.json")
-	os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRoute(path)
 	if err == nil {
@@ -417,7 +453,9 @@ func TestValidate_StateVar_InvalidName(t *testing.T) {
 func TestLoadRouteByID_WithGameID(t *testing.T) {
 	dir := t.TempDir()
 	gameDir := filepath.Join(dir, "ds3")
-	os.MkdirAll(gameDir, 0755)
+	if err := os.MkdirAll(gameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	route := Route{
 		ID:   "test-route",
@@ -428,7 +466,9 @@ func TestLoadRouteByID_WithGameID(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(route)
-	os.WriteFile(filepath.Join(gameDir, "test.json"), data, 0644)
+	if err := os.WriteFile(filepath.Join(gameDir, "test.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	loaded, err := LoadRouteByID("ds3", "test-route", dir)
 	if err != nil {
@@ -442,7 +482,9 @@ func TestLoadRouteByID_WithGameID(t *testing.T) {
 func TestLoadRouteByID_GameMismatch(t *testing.T) {
 	dir := t.TempDir()
 	gameDir := filepath.Join(dir, "sekiro")
-	os.MkdirAll(gameDir, 0755)
+	if err := os.MkdirAll(gameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Route says game is "ds3" but is in "sekiro" directory
 	route := Route{
@@ -454,7 +496,9 @@ func TestLoadRouteByID_GameMismatch(t *testing.T) {
 		},
 	}
 	data, _ := json.Marshal(route)
-	os.WriteFile(filepath.Join(gameDir, "misplaced.json"), data, 0644)
+	if err := os.WriteFile(filepath.Join(gameDir, "misplaced.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRouteByID("sekiro", "misplaced", dir)
 	if err == nil {
@@ -465,7 +509,9 @@ func TestLoadRouteByID_GameMismatch(t *testing.T) {
 func TestLoadRouteByID_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	gameDir := filepath.Join(dir, "ds3")
-	os.MkdirAll(gameDir, 0755)
+	if err := os.MkdirAll(gameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadRouteByID("ds3", "nonexistent", dir)
 	if err == nil {
@@ -476,7 +522,9 @@ func TestLoadRouteByID_NotFound(t *testing.T) {
 func TestLoadRoutesDir(t *testing.T) {
 	dir := t.TempDir()
 	gameDir := filepath.Join(dir, "ds3")
-	os.MkdirAll(gameDir, 0755)
+	if err := os.MkdirAll(gameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, id := range []string{"route1", "route2"} {
 		route := Route{
@@ -488,11 +536,15 @@ func TestLoadRoutesDir(t *testing.T) {
 			},
 		}
 		data, _ := json.Marshal(route)
-		os.WriteFile(filepath.Join(gameDir, id+".json"), data, 0644)
+		if err := os.WriteFile(filepath.Join(gameDir, id+".json"), data, 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Non-JSON file should be skipped
-	os.WriteFile(filepath.Join(gameDir, "readme.txt"), []byte("ignore"), 0644)
+	if err := os.WriteFile(filepath.Join(gameDir, "readme.txt"), []byte("ignore"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	routeMap, err := LoadRoutesDir(dir)
 	if err != nil {
@@ -508,7 +560,9 @@ func TestLoadRoutesDir_MultipleGames(t *testing.T) {
 	dir := t.TempDir()
 	for _, gameID := range []string{"ds3", "er"} {
 		gameDir := filepath.Join(dir, gameID)
-		os.MkdirAll(gameDir, 0755)
+		if err := os.MkdirAll(gameDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 		route := Route{
 			ID:   gameID + "-route",
 			Name: gameID + " Route",
@@ -518,7 +572,9 @@ func TestLoadRoutesDir_MultipleGames(t *testing.T) {
 			},
 		}
 		data, _ := json.Marshal(route)
-		os.WriteFile(filepath.Join(gameDir, "route.json"), data, 0644)
+		if err := os.WriteFile(filepath.Join(gameDir, "route.json"), data, 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	routeMap, err := LoadRoutesDir(dir)

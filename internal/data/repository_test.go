@@ -321,7 +321,9 @@ func TestEndRouteRun(t *testing.T) {
 	repo := newTestRepository(t)
 
 	run, _ := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
-	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 95000, 95000, 2)
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 95000, 95000, 2); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := repo.EndRouteRun(run.ID, "completed", 10, 400000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
@@ -368,8 +370,12 @@ func TestUpdatePersonalBest_NewPB(t *testing.T) {
 func TestUpdatePersonalBest_BetterTime(t *testing.T) {
 	repo := newTestRepository(t)
 
-	repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000)
-	repo.UpdatePersonalBest("ds3", "boss1", 90000, 88000) // better
+	if err := repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdatePersonalBest("ds3", "boss1", 90000, 88000); err != nil { // better
+		t.Fatal(err)
+	}
 
 	pbs, err := repo.GetPersonalBest("ds3")
 	if err != nil {
@@ -386,8 +392,12 @@ func TestUpdatePersonalBest_BetterTime(t *testing.T) {
 func TestUpdatePersonalBest_WorseTime(t *testing.T) {
 	repo := newTestRepository(t)
 
-	repo.UpdatePersonalBest("ds3", "boss1", 90000, 90000)
-	repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000) // worse
+	if err := repo.UpdatePersonalBest("ds3", "boss1", 90000, 90000); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdatePersonalBest("ds3", "boss1", 95000, 95000); err != nil { // worse
+		t.Fatal(err)
+	}
 
 	pbs, err := repo.GetPersonalBest("ds3")
 	if err != nil {
@@ -420,12 +430,20 @@ func TestRouteRunLifecycle(t *testing.T) {
 	}
 
 	// Record checkpoints
-	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2)
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2); err != nil {
+		t.Fatal(err)
+	}
 
 	// Update PBs
-	repo.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
-	repo.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000)
+	if err := repo.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000); err != nil {
+		t.Fatal(err)
+	}
 
 	// End run
 	if err := repo.EndRouteRun(run.ID, "completed", 5, 225000); err != nil {
@@ -652,8 +670,12 @@ func TestSaveStateVar_Upsert(t *testing.T) {
 
 	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 2)
-	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 5, 7) // update
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 5, 7); err != nil { // update
+		t.Fatal(err)
+	}
 
 	rows, err := repo.LoadStateVars(run.ID)
 	if err != nil {
@@ -699,8 +721,12 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 	}
 
 	// Record some checkpoints
-	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2)
+	if err = repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+		t.Fatalf("RecordCheckpoint boss1: %v", err)
+	}
+	if err = repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2); err != nil {
+		t.Fatalf("RecordCheckpoint boss2: %v", err)
+	}
 
 	ids, err = repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
@@ -725,7 +751,9 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// Caught-up checkpoints have IGT=0, duration=0, deaths=0
-	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 0, 0, 0)
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 0, 0, 0); err != nil {
+		t.Fatalf("RecordCheckpoint boss1: %v", err)
+	}
 
 	ids, err := repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
@@ -769,7 +797,9 @@ func TestFindLatestRun_Completed(t *testing.T) {
 	save, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
 	run, _ := repo.StartRouteRun("ds3-any", "ds3", save.ID)
-	repo.EndRouteRun(run.ID, "completed", 10, 400000)
+	if err := repo.EndRouteRun(run.ID, "completed", 10, 400000); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := repo.FindLatestRun("ds3-any", save.ID)
 	if err != nil {
@@ -788,7 +818,9 @@ func TestFindLatestRun_DifferentSave(t *testing.T) {
 	save1, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 	save2, _ := repo.FindOrCreateSave("ds3", 1, "Pyromancer")
 
-	repo.StartRouteRun("ds3-any", "ds3", save1.ID)
+	if _, err := repo.StartRouteRun("ds3-any", "ds3", save1.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := repo.FindLatestRun("ds3-any", save2.ID)
 	if err != ErrNotFound {

@@ -706,7 +706,9 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 	// Spend 1, then pick up 3 more
 	reader.invQuantities[0x400001F4] = 1
 	reader.igt = 20000
-	runner.Tick(reader) // spend 1
+	if _, err := runner.Tick(reader); err != nil { // spend 1
+		t.Fatalf("tick spend: %v", err)
+	}
 
 	reader.invQuantities[0x400001F4] = 4
 	reader.igt = 30000
@@ -820,7 +822,9 @@ func TestStateVar_Persistence(t *testing.T) {
 	reader.invQuantities[0x400001F4] = 3
 	reader.igt = 10000
 
-	runner.Tick(reader)
+	if _, err := runner.Tick(reader); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
 
 	// Verify state var was persisted
 	rows, err := repo.LoadStateVars(runner.runID)
@@ -915,8 +919,12 @@ func TestRestoreFromDB(t *testing.T) {
 
 	// Create a run and record some checkpoints
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
-	repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000, 1)
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000, 1); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a new runner and restore from DB
 	runner := NewRunner(r, repo, nil)
@@ -962,7 +970,9 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 
 	// Create a run and record boss1 as completed in DB
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+		t.Fatal(err)
+	}
 
 	// Resume the run (RestoreFromDB marks boss1 as completed)
 	reader := newMockGameReader()
@@ -1063,8 +1073,13 @@ func TestRunner_Resume(t *testing.T) {
 	}
 
 	// Create a run and record some checkpoints
-	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2)
+	run, err := repo.StartRouteRun(r.ID, r.Game, 0)
+	if err != nil {
+		t.Fatalf("StartRouteRun: %v", err)
+	}
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+		t.Fatalf("RecordCheckpoint: %v", err)
+	}
 
 	// Resume the run with a new runner
 	reader := newMockGameReader()

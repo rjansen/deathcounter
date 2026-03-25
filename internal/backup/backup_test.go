@@ -48,7 +48,9 @@ func TestBackup_CreatesDir(t *testing.T) {
 	backupDir := filepath.Join(t.TempDir(), "nested", "backup")
 
 	srcPath := filepath.Join(srcDir, "save.sl2")
-	os.WriteFile(srcPath, []byte("data"), 0644)
+	if err := os.WriteFile(srcPath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	mgr := NewManager(backupDir)
 	_, err := mgr.Backup(srcPath, "test")
@@ -72,7 +74,9 @@ func TestBackup_SourceNotFound(t *testing.T) {
 func TestResolveSavePath_DirectFile(t *testing.T) {
 	dir := t.TempDir()
 	savePath := filepath.Join(dir, "save.sl2")
-	os.WriteFile(savePath, []byte("data"), 0644)
+	if err := os.WriteFile(savePath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	mgr := NewManager(t.TempDir())
 	resolved, err := mgr.ResolveSavePath(savePath)
@@ -87,7 +91,9 @@ func TestResolveSavePath_DirectFile(t *testing.T) {
 func TestResolveSavePath_GlobPattern(t *testing.T) {
 	dir := t.TempDir()
 	savePath := filepath.Join(dir, "save.sl2")
-	os.WriteFile(savePath, []byte("data"), 0644)
+	if err := os.WriteFile(savePath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	mgr := NewManager(t.TempDir())
 	pattern := filepath.Join(dir, "*.sl2")

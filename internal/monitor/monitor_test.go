@@ -228,11 +228,6 @@ func routeTracker(mon *GameMonitor) *RouteTracker {
 	return mon.tracker.(*RouteTracker)
 }
 
-// deathTracker extracts the DeathTracker from a GameMonitor for test assertions.
-func deathTracker(mon *GameMonitor) *DeathTracker {
-	return mon.tracker.(*DeathTracker)
-}
-
 func TestDeathTracker_NotAttached(t *testing.T) {
 	mock := newMockProcessOps()
 	repo := newTestRepo(t)
@@ -261,10 +256,14 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach → PhaseAttached → OnAttach → PhaseLoaded (no Tick)
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
 
 	// Second tick: Tick reads death count
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -289,10 +288,14 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
 
 	// Second tick: read initial count
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
 	<-mon.DisplayUpdates()
 
 	// Update death count in memory
@@ -302,7 +305,9 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mock.memory[valueAddr] = valueBytes
 
 	// Third tick: should detect change
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -321,10 +326,14 @@ func TestDeathTracker_Detach(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
 
 	// Second tick: read death count
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
 	<-mon.DisplayUpdates()
 
 	// Remove the process to simulate game exit
@@ -336,7 +345,10 @@ func TestDeathTracker_Detach(t *testing.T) {
 	}
 
 	// Next tick: Attach returns existing reader (still non-nil), Tick fails on read → detach
-	tick(t, mon)
+	err := tick(t, mon)
+	if !errors.Is(err, memreader.ErrGameRead) {
+		t.Fatalf("expected ErrGameRead, got %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -387,7 +399,9 @@ func TestRouteTracker_MatchingRoute(t *testing.T) {
 	attachMonitor(t, mon)
 
 	// First tick: Tick → detectSave → startRouteRun → CatchUp fails → runner nil'd
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -452,10 +466,14 @@ func TestDeathTracker_SaveDetection(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 
 	// First tick: attach + load (no Tick)
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 
 	// Second tick: Tick → detectSave detects "Knight" slot 0
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -492,7 +510,9 @@ func TestRouteTracker_DetectsSave(t *testing.T) {
 	attachMonitor(t, mon)
 
 	// Tick → detectSave
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():
@@ -679,14 +699,18 @@ func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	attachMonitor(t, mon)
 
 	// First tick: Tick → detectSave → start route
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 	<-mon.DisplayUpdates()
 
 	// Change character name to simulate save switch
 	setCharacterName(mock, "Pyromancer")
 
 	// Third tick: save changed → pause + restart
-	tick(t, mon)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
 
 	select {
 	case update := <-mon.DisplayUpdates():

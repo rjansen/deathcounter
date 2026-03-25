@@ -52,8 +52,12 @@ func TestQuery_Struct(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().Truncate(time.Second)
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "alice@example.com", 10, now)
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Bob", "bob@example.com", 20, now)
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "alice@example.com", 10, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Bob", "bob@example.com", 20, now); err != nil {
+		t.Fatal(err)
+	}
 
 	users, err := Query[user](ctx, db, "SELECT id, name, email, score, created_at, deleted_at FROM users ORDER BY id")
 	if err != nil {
@@ -78,8 +82,12 @@ func TestQuery_Primitive_String(t *testing.T) {
 	seedTable(t, db)
 	ctx := context.Background()
 
-	db.Exec("INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)", "Alice", "a@b.com", time.Now())
-	db.Exec("INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)", "Bob", "b@b.com", time.Now())
+	if _, err := db.Exec("INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)", "Alice", "a@b.com", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)", "Bob", "b@b.com", time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	names, err := Query[string](ctx, db, "SELECT name FROM users ORDER BY name")
 	if err != nil {
@@ -98,7 +106,9 @@ func TestQuery_Primitive_Int(t *testing.T) {
 	seedTable(t, db)
 	ctx := context.Background()
 
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "A", "a@b.com", 42, time.Now())
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "A", "a@b.com", 42, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	scores, err := Query[int64](ctx, db, "SELECT score FROM users")
 	if err != nil {
@@ -133,7 +143,9 @@ func TestQueryOne_Struct(t *testing.T) {
 	seedTable(t, db)
 	ctx := context.Background()
 
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "a@b.com", 99, time.Now())
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "a@b.com", 99, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	u, err := QueryOne[user](ctx, db, "SELECT id, name, email, score, created_at, deleted_at FROM users WHERE name = ?", "Alice")
 	if err != nil {
@@ -160,8 +172,12 @@ func TestQueryOne_Primitive(t *testing.T) {
 	seedTable(t, db)
 	ctx := context.Background()
 
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "A", "a@b.com", 10, time.Now())
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "B", "b@b.com", 20, time.Now())
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "A", "a@b.com", 10, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "B", "b@b.com", 20, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	count, err := QueryOne[int64](ctx, db, "SELECT COUNT(*) FROM users")
 	if err != nil {
@@ -269,10 +285,18 @@ func TestQuery_NestedStruct(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
-	db.Exec("CREATE TABLE teams (id INTEGER PRIMARY KEY, name TEXT)")
-	db.Exec("CREATE TABLE members (id INTEGER PRIMARY KEY, name TEXT, team_id INTEGER)")
-	db.Exec("INSERT INTO teams (id, name) VALUES (1, 'Alpha')")
-	db.Exec("INSERT INTO members (id, name, team_id) VALUES (1, 'Alice', 1)")
+	if _, err := db.Exec("CREATE TABLE teams (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE members (id INTEGER PRIMARY KEY, name TEXT, team_id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO teams (id, name) VALUES (1, 'Alpha')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO members (id, name, team_id) VALUES (1, 'Alice', 1)"); err != nil {
+		t.Fatal(err)
+	}
 
 	members, err := Query[member](ctx, db,
 		`SELECT m.id, m.name, t.id "team.id", t.name "team.name"
@@ -300,10 +324,14 @@ func TestQuery_NullableFields(t *testing.T) {
 
 	now := time.Now().Truncate(time.Second)
 	deleted := now.Add(-time.Hour)
-	db.Exec("INSERT INTO users (name, email, score, created_at, deleted_at) VALUES (?, ?, ?, ?, ?)",
-		"Alice", "a@b.com", 0, now, deleted)
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)",
-		"Bob", "b@b.com", 0, now)
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at, deleted_at) VALUES (?, ?, ?, ?, ?)",
+		"Alice", "a@b.com", 0, now, deleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)",
+		"Bob", "b@b.com", 0, now); err != nil {
+		t.Fatal(err)
+	}
 
 	users, err := Query[user](ctx, db, "SELECT id, name, email, score, created_at, deleted_at FROM users ORDER BY id")
 	if err != nil {
@@ -366,7 +394,9 @@ func TestQueryOne_PartialModel(t *testing.T) {
 	seedTable(t, db)
 	ctx := context.Background()
 
-	db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "a@b.com", 42, time.Now())
+	if _, err := db.Exec("INSERT INTO users (name, email, score, created_at) VALUES (?, ?, ?, ?)", "Alice", "a@b.com", 42, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	// Only select id and name — other fields should be zero-valued
 	u, err := QueryOne[user](ctx, db, "SELECT id, name FROM users LIMIT 1")
