@@ -303,14 +303,14 @@ func buildTagMap(t reflect.Type, basePath []int, prefix string) map[string]field
 
 		path := append(append([]int{}, basePath...), i)
 		ft := f.Type
-		nullable := ft.Kind() == reflect.Ptr
+		nullable := ft.Kind() == reflect.Pointer
 		if nullable {
 			ft = ft.Elem()
 		}
 
 		// If the field is a struct (not time.Time) and it's a pointer to struct,
 		// recurse into it for nested scanning
-		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) {
+		if ft.Kind() == reflect.Struct && ft != reflect.TypeFor[time.Time]() {
 			nested := buildTagMap(ft, path, tag+".")
 			for k, v := range nested {
 				// For pointer-to-struct fields, we need to handle initialization
@@ -336,7 +336,7 @@ func buildTagMap(t reflect.Type, basePath []int, prefix string) map[string]field
 // fieldByPath navigates to a struct field by index path, initializing nil pointers.
 func fieldByPath(v reflect.Value, path []int) reflect.Value {
 	for _, idx := range path {
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			if v.IsNil() {
 				v.Set(reflect.New(v.Type().Elem()))
 			}
@@ -350,10 +350,10 @@ func fieldByPath(v reflect.Value, path []int) reflect.Value {
 // isStructType returns true if T is a struct type (excluding time.Time).
 func isStructType[T any]() bool {
 	t := reflect.TypeFor[T]()
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	return t.Kind() == reflect.Struct && t != reflect.TypeOf(time.Time{})
+	return t.Kind() == reflect.Struct && t != reflect.TypeFor[time.Time]()
 }
 
 // --- Named parameter extraction ---
@@ -361,7 +361,7 @@ func isStructType[T any]() bool {
 // extractNamedParams replaces :name placeholders with ? and extracts values from the model.
 func extractNamedParams(query string, model any) (string, []any, error) {
 	rv := reflect.ValueOf(model)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	rt := rv.Type()
@@ -416,7 +416,7 @@ func buildTagValues(rv reflect.Value, rt reflect.Type, out map[string]any) {
 		ft := f.Type
 
 		// For pointer fields, extract the underlying value or nil
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			if fv.IsNil() {
 				out[tag] = nil
 			} else {
@@ -426,7 +426,7 @@ func buildTagValues(rv reflect.Value, rt reflect.Type, out map[string]any) {
 		}
 
 		// For nested structs (not time.Time), skip — named params use flat tags
-		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) {
+		if ft.Kind() == reflect.Struct && ft != reflect.TypeFor[time.Time]() {
 			continue
 		}
 
