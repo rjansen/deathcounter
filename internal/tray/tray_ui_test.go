@@ -10,7 +10,7 @@ import (
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
 	"github.com/rjansen/deathcounter/internal/monitor"
-	"github.com/rjansen/deathcounter/internal/stats"
+	"github.com/rjansen/deathcounter/internal/data"
 )
 
 // Shared walk resources — a single MainWindow+NotifyIcon lives for the
@@ -66,13 +66,13 @@ func TestMain(m *testing.M) {
 func newTestApp(t *testing.T) *App {
 	t.Helper()
 	mon := newMockMonitor()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("failed to create tracker: %v", err)
+		t.Fatalf("failed to create repository: %v", err)
 	}
-	t.Cleanup(func() { tracker.Close() })
+	t.Cleanup(func() { repo.Close() })
 
-	app := NewApp(mon, tracker)
+	app := NewApp(mon, repo)
 	app.mainWindow = testMW
 	app.ni = testNI
 	return app

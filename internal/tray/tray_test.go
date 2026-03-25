@@ -5,8 +5,8 @@ package tray
 import (
 	"testing"
 
+	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/monitor"
-	"github.com/rjansen/deathcounter/internal/stats"
 )
 
 // mockMonitor implements monitor.Monitor for testing.
@@ -26,19 +26,19 @@ func (m *mockMonitor) DisplayUpdates() <-chan monitor.DisplayUpdate { return m.u
 
 func TestNewApp(t *testing.T) {
 	mon := newMockMonitor()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("failed to create tracker: %v", err)
+		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer tracker.Close()
+	defer repo.Close()
 
-	app := NewApp(mon, tracker)
+	app := NewApp(mon, repo)
 
 	if app.monitor != mon {
 		t.Error("monitor not set")
 	}
-	if app.tracker != tracker {
-		t.Error("tracker not set")
+	if app.repo != repo {
+		t.Error("repo not set")
 	}
 	if app.mainWindow != nil {
 		t.Error("mainWindow should be nil before Run")
@@ -60,13 +60,13 @@ func TestLoadIcon(t *testing.T) {
 
 func TestOnExit_DoesNotPanic(t *testing.T) {
 	mon := newMockMonitor()
-	tracker, err := stats.NewTracker(":memory:")
+	repo, err := data.NewRepository(":memory:")
 	if err != nil {
-		t.Fatalf("failed to create tracker: %v", err)
+		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer tracker.Close()
+	defer repo.Close()
 
-	app := NewApp(mon, tracker)
+	app := NewApp(mon, repo)
 
 	// Should not panic
 	app.onExit()
