@@ -725,63 +725,72 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 	}
 }
 
-func TestFindInProgressRun_NoRun(t *testing.T) {
+func TestFindLatestRun_NoRun(t *testing.T) {
 	tracker := newTestTracker(t)
-	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
+	tracker.FindOrCreateSave("ds3", 0, "Knight")
 
-	_, found, err := tracker.FindInProgressRun("ds3-any", saveID)
+	_, _, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
 	if err != nil {
-		t.Fatalf("FindInProgressRun: %v", err)
+		t.Fatalf("FindLatestRun: %v", err)
 	}
 	if found {
-		t.Error("expected no in-progress run found")
+		t.Error("expected no run found")
 	}
 }
 
-func TestFindInProgressRun_Found(t *testing.T) {
+func TestFindLatestRun_InProgress(t *testing.T) {
 	tracker := newTestTracker(t)
 	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
 
 	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
 
-	gotID, found, err := tracker.FindInProgressRun("ds3-any", saveID)
+	gotID, status, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
 	if err != nil {
-		t.Fatalf("FindInProgressRun: %v", err)
+		t.Fatalf("FindLatestRun: %v", err)
 	}
 	if !found {
-		t.Fatal("expected in-progress run to be found")
+		t.Fatal("expected run to be found")
 	}
 	if gotID != runID {
 		t.Errorf("expected run ID %d, got %d", runID, gotID)
 	}
+	if status != "in_progress" {
+		t.Errorf("expected status 'in_progress', got %q", status)
+	}
 }
 
-func TestFindInProgressRun_CompletedNotFound(t *testing.T) {
+func TestFindLatestRun_Completed(t *testing.T) {
 	tracker := newTestTracker(t)
 	saveID, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
 
 	runID, _ := tracker.StartRouteRun("ds3-any", "ds3", saveID)
 	tracker.EndRouteRun(runID, "completed", 10, 400000)
 
-	_, found, err := tracker.FindInProgressRun("ds3-any", saveID)
+	gotID, status, found, err := tracker.FindLatestRun("ds3-any", 0, "Knight")
 	if err != nil {
-		t.Fatalf("FindInProgressRun: %v", err)
+		t.Fatalf("FindLatestRun: %v", err)
 	}
-	if found {
-		t.Error("completed run should not be found")
+	if !found {
+		t.Fatal("expected completed run to be found")
+	}
+	if gotID != runID {
+		t.Errorf("expected run ID %d, got %d", runID, gotID)
+	}
+	if status != "completed" {
+		t.Errorf("expected status 'completed', got %q", status)
 	}
 }
 
-func TestFindInProgressRun_DifferentSave(t *testing.T) {
+func TestFindLatestRun_DifferentSave(t *testing.T) {
 	tracker := newTestTracker(t)
 	save1, _ := tracker.FindOrCreateSave("ds3", 0, "Knight")
-	save2, _ := tracker.FindOrCreateSave("ds3", 1, "Pyromancer")
+	tracker.FindOrCreateSave("ds3", 1, "Pyromancer")
 
 	tracker.StartRouteRun("ds3-any", "ds3", save1)
 
-	_, found, err := tracker.FindInProgressRun("ds3-any", save2)
+	_, _, found, err := tracker.FindLatestRun("ds3-any", 1, "Pyromancer")
 	if err != nil {
-		t.Fatalf("FindInProgressRun: %v", err)
+		t.Fatalf("FindLatestRun: %v", err)
 	}
 	if found {
 		t.Error("different save should not match")

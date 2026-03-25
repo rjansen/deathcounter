@@ -532,21 +532,26 @@ func (t *Tracker) LoadStateVars(runID int64) ([]StateVarRow, error) {
 	return result, rows.Err()
 }
 
-// FindInProgressRun returns the ID of the most recent in-progress route run
-// for the given route and save. Returns (0, false, nil) if no such run exists.
-func (t *Tracker) FindInProgressRun(routeID string, saveID int64) (int64, bool, error) {
+// FindLatestRun returns the ID and status of the most recent route run
+// matching the given route and save identity (slot index + character name).
+// Returns (0, "", false, nil) if no matching run exists.
+func (t *Tracker) FindLatestRun(routeID string, slotIndex int, charName string) (int64, string, bool, error) {
 	var runID int64
-	err := t.db.QueryRow(
-		"SELECT id FROM route_runs WHERE route_id = ? AND save_id = ? AND status = 'in_progress' ORDER BY start_time DESC LIMIT 1",
-		routeID, saveID,
-	).Scan(&runID)
+	var status string
+	err := t.db.QueryRow(`
+		SELECT r.id, r.status FROM route_runs r
+		JOIN saves s ON r.save_id = s.id
+		WHERE r.route_id = ? AND s.slot_index = ? AND s.character_name = ?
+		ORDER BY r.start_time DESC LIMIT 1`,
+		routeID, slotIndex, charName,
+	).Scan(&runID, &status)
 	if err == sql.ErrNoRows {
-		return 0, false, nil
+		return 0, "", false, nil
 	}
 	if err != nil {
-		return 0, false, fmt.Errorf("failed to find in-progress run: %w", err)
+		return 0, "", false, fmt.Errorf("failed to find latest run: %w", err)
 	}
-	return runID, true, nil
+	return runID, status, true, nil
 }
 
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
