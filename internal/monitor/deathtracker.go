@@ -37,7 +37,7 @@ func (t *DeathTracker) OnDetach() {
 
 // Tick performs one monitoring cycle: detect save, read death count.
 func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error) {
-	t.detectSave(reader) // best-effort
+	_, _ = t.detectSave(reader) // best-effort
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {

@@ -110,9 +110,13 @@ func (b *baseTracker) recordDeathIfChanged(count uint32) bool {
 	if count != b.lastCount {
 		log.Printf("[%s] Death count: %d (previous: %d)", b.gameID, count, b.lastCount)
 		if b.currentSaveID > 0 {
-			b.repo.RecordDeathForSave(count, b.currentSaveID)
+			if err := b.repo.RecordDeathForSave(count, b.currentSaveID); err != nil {
+				log.Printf("[%s] Failed to record death for save: %v", b.gameID, err)
+			}
 		} else {
-			b.repo.RecordDeath(count)
+			if err := b.repo.RecordDeath(count); err != nil {
+				log.Printf("[%s] Failed to record death: %v", b.gameID, err)
+			}
 		}
 		b.lastCount = count
 		return true

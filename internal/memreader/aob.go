@@ -32,7 +32,9 @@ func parseAOBPattern(pattern string) aobPattern {
 			p.mask[i] = false
 		} else {
 			var b byte
-			fmt.Sscanf(tok, "%x", &b)
+			if _, err := fmt.Sscanf(tok, "%x", &b); err != nil {
+				continue
+			}
 			p.bytes[i] = b
 			p.mask[i] = true
 		}

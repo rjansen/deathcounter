@@ -63,22 +63,22 @@ func FindGame(ops ProcessOps, gameID string) (*GameConfig, *ProcessInfo, error) 
 
 	baseAddr, err := ops.GetModuleBaseAddress(pid, cfg.ProcessName+".exe")
 	if err != nil {
-		ops.CloseHandle(handle)
+		_ = ops.CloseHandle(handle)
 		return nil, nil, fmt.Errorf("failed to get base address: %w", err)
 	}
 
 	is64Bit, err := ops.IsProcess64Bit(handle)
 	if err != nil {
-		ops.CloseHandle(handle)
+		_ = ops.CloseHandle(handle)
 		return nil, nil, fmt.Errorf("failed to detect architecture: %w", err)
 	}
 
 	if is64Bit && cfg.Offsets64 == nil {
-		ops.CloseHandle(handle)
+		_ = ops.CloseHandle(handle)
 		return nil, nil, fmt.Errorf("no 64-bit offsets for %s", gameID)
 	}
 	if !is64Bit && cfg.Offsets32 == nil {
-		ops.CloseHandle(handle)
+		_ = ops.CloseHandle(handle)
 		return nil, nil, fmt.Errorf("no 32-bit offsets for %s", gameID)
 	}
 
@@ -114,7 +114,7 @@ func (r *GameReader) SetTestAOBAddresses(gameDataMan, gameMan int64) {
 // Detach closes the process handle.
 func (r *GameReader) Detach() {
 	if r.processHandle != 0 {
-		r.ops.CloseHandle(r.processHandle)
+		_ = r.ops.CloseHandle(r.processHandle)
 		r.processHandle = 0
 		r.attached = false
 		r.currentGame = ""
