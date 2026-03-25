@@ -14,12 +14,11 @@ import (
 // It implements GameTracker.
 type RouteTracker struct {
 	baseTracker
-	runner      *route.Runner
-	route       *route.Route
-	routeID     string
-	routesDir   string
-	backupCount int
-	running     bool // true when a route run is active
+	runner    *route.Runner
+	route     *route.Route
+	routeID   string
+	routesDir string
+	running   bool // true when a route run is active
 }
 
 // NewRouteTracker creates a new route tracker.
@@ -49,10 +48,10 @@ func (t *RouteTracker) OnAttach(gameID string) error {
 	return nil
 }
 
-// OnDetach handles game detachment: abandons active run and clears state.
+// OnDetach handles game detachment: pauses active run and clears state.
 func (t *RouteTracker) OnDetach() {
 	if t.isRunning() {
-		t.runner.Abandon()
+		t.runner.Pause()
 	}
 	t.route = nil
 	t.runner = nil
@@ -85,24 +84,18 @@ func (t *RouteTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 
 func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) {
 	if t.isRunning() {
-		t.runner.Abandon()
+		t.runner.Pause()
 	}
-	t.stats.EndCurrentSession()
 	t.running = false
 	t.startRouteRun(reader)
 }
 
 func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, error) {
-	events, err := t.runner.Tick(reader)
+	_, err := t.runner.Tick(reader)
 	if err != nil {
 		return t.buildUpdate(), err
 	}
 	t.recordDeathIfChanged(t.runner.LastDeathCount())
-	for _, evt := range events {
-		log.Printf("[Route] Checkpoint: %s (IGT: %dms, Deaths: %d)",
-			evt.Checkpoint.Name, evt.IGT, evt.Deaths)
-	}
-	t.backupCount += t.countBackups(events)
 	return t.buildUpdate(), nil
 }
 
@@ -112,13 +105,13 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	}
 
 	t.runner = route.NewRunner(t.route, t.stats, nil)
-	t.backupCount = 0
 
-	// Try to find the latest run for this route+save identity
-	runID, status, found, err := t.stats.FindLatestRun(t.route.ID, t.currentSlotIdx, t.currentCharName)
-	if err != nil {
+	// Try to find the latest run for this route+save
+	runID, status, err := t.stats.FindLatestRun(t.route.ID, t.currentSaveID)
+	if err != nil && !errors.Is(err, stats.ErrNotFound) {
 		log.Printf("[Route] Failed to find latest run: %v", err)
-	} else if found && (status == string(route.RunNotStarted) || status == string(route.RunInProgress)) {
+	}
+	if err == nil && (status == string(route.RunNotStarted) || status == string(route.RunInProgress) || status == string(route.RunPaused)) {
 		if err := t.runner.Resume(runID, 0); err != nil {
 			log.Printf("[Route] Failed to resume run %d: %v", runID, err)
 		} else {
@@ -144,16 +137,6 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	} else {
 		t.runner = nil
 	}
-}
-
-func (t *RouteTracker) countBackups(events []route.CheckpointEvent) int {
-	count := 0
-	for _, evt := range events {
-		if evt.Checkpoint.BackupFlagCheck == nil {
-			count++
-		}
-	}
-	return count
 }
 
 func (t *RouteTracker) statusText() string {
@@ -186,7 +169,6 @@ func (t *RouteTracker) buildUpdate() DisplayUpdate {
 			TotalCount:        t.runner.TotalCount(),
 			CurrentCheckpoint: cpName,
 			SegmentDeaths:     t.runner.SegmentDeaths(),
-			BackupCount:       t.backupCount,
 		}
 	}
 

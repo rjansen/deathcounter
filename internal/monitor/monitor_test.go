@@ -419,22 +419,6 @@ func TestRouteTracker_OnAttach_GameMismatch(t *testing.T) {
 	_ = mock // mock unused in this test but kept for consistency
 }
 
-func TestRouteTracker_countBackups(t *testing.T) {
-	tracker := newTestTracker(t)
-	rt := NewRouteTracker("ds3", "", "", tracker)
-
-	events := []route.CheckpointEvent{
-		{Checkpoint: route.Checkpoint{ID: "boss1", BackupFlagCheck: &route.EventFlagCheck{FlagID: 101}}}, // has encounter flag → NOT counted
-		{Checkpoint: route.Checkpoint{ID: "boss2"}},                                                      // no encounter flag → counted (kill-based)
-		{Checkpoint: route.Checkpoint{ID: "boss3"}},                                                      // no encounter flag → counted
-	}
-
-	count := rt.countBackups(events)
-	if count != 2 {
-		t.Errorf("expected 2 kill-based backups, got %d", count)
-	}
-}
-
 func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 	mock := newMockProcessOps()
 	tracker := newTestTracker(t)
@@ -676,7 +660,7 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	}
 }
 
-func TestRouteTracker_SaveChange_AbandonsRun(t *testing.T) {
+func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	mock := setupDS3Mock(0)
 	tracker := newTestTracker(t)
 
@@ -701,7 +685,7 @@ func TestRouteTracker_SaveChange_AbandonsRun(t *testing.T) {
 	// Change character name to simulate save switch
 	setCharacterName(mock, "Pyromancer")
 
-	// Third tick: save changed → abandon + restart
+	// Third tick: save changed → pause + restart
 	tick(t, mon)
 
 	select {

@@ -56,5 +56,4 @@ type RouteDisplay struct {
 	TotalCount        int
 	CurrentCheckpoint string
 	SegmentDeaths     uint32
-	BackupCount       int
 }
