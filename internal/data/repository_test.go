@@ -1,11 +1,12 @@
 package data
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/rjansen/deathcounter/internal/data/model"
 )
 
 func newTestRepository(t *testing.T) *Repository {
@@ -282,29 +283,32 @@ func TestGetSessionHistory_OpenSession(t *testing.T) {
 func TestStartRouteRun(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	run, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
-	if runID <= 0 {
-		t.Errorf("got run ID %d, want > 0", runID)
+	if run.ID <= 0 {
+		t.Errorf("got run ID %d, want > 0", run.ID)
+	}
+	if run.Status != "in_progress" {
+		t.Errorf("got status %q, want in_progress", run.Status)
 	}
 }
 
 func TestRecordCheckpoint(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	run, err := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
-	if err := repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 
 	var count int
-	err = repo.db.QueryRow("SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ?", runID).Scan(&count)
+	err = repo.db.QueryRow("SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ?", run.ID).Scan(&count)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -316,17 +320,17 @@ func TestRecordCheckpoint(t *testing.T) {
 func TestEndRouteRun(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
-	repo.RecordCheckpoint(runID, "boss1", "Boss 1", 95000, 95000, 2)
+	run, _ := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
+	repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 95000, 95000, 2)
 
-	if err := repo.EndRouteRun(runID, "completed", 10, 400000); err != nil {
+	if err := repo.EndRouteRun(run.ID, "completed", 10, 400000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
 	}
 
 	var status string
 	var totalDeaths int
 	var finalIGT int64
-	err := repo.db.QueryRow("SELECT status, total_deaths, final_igt_ms FROM route_runs WHERE id = ?", runID).
+	err := repo.db.QueryRow("SELECT status, total_deaths, final_igt_ms FROM route_runs WHERE id = ?", run.ID).
 		Scan(&status, &totalDeaths, &finalIGT)
 	if err != nil {
 		t.Fatalf("query: %v", err)
@@ -356,8 +360,8 @@ func TestUpdatePersonalBest_NewPB(t *testing.T) {
 	if len(pbs) != 1 {
 		t.Fatalf("got %d PBs, want 1", len(pbs))
 	}
-	if pbs[0].IGTMs != 95000 {
-		t.Errorf("got IGT %d, want 95000", pbs[0].IGTMs)
+	if pbs[0].BestIGTMs != 95000 {
+		t.Errorf("got IGT %d, want 95000", pbs[0].BestIGTMs)
 	}
 }
 
@@ -371,11 +375,11 @@ func TestUpdatePersonalBest_BetterTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
-	if pbs[0].IGTMs != 90000 {
-		t.Errorf("got IGT %d, want 90000", pbs[0].IGTMs)
+	if pbs[0].BestIGTMs != 90000 {
+		t.Errorf("got IGT %d, want 90000", pbs[0].BestIGTMs)
 	}
-	if pbs[0].CheckpointDurationMs != 88000 {
-		t.Errorf("got checkpoint duration %d, want 88000", pbs[0].CheckpointDurationMs)
+	if pbs[0].BestSplitMs != 88000 {
+		t.Errorf("got split %d, want 88000", pbs[0].BestSplitMs)
 	}
 }
 
@@ -389,8 +393,8 @@ func TestUpdatePersonalBest_WorseTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPersonalBest: %v", err)
 	}
-	if pbs[0].IGTMs != 90000 {
-		t.Errorf("got IGT %d, want 90000 (should keep better time)", pbs[0].IGTMs)
+	if pbs[0].BestIGTMs != 90000 {
+		t.Errorf("got IGT %d, want 90000 (should keep better time)", pbs[0].BestIGTMs)
 	}
 }
 
@@ -410,21 +414,21 @@ func TestRouteRunLifecycle(t *testing.T) {
 	repo := newTestRepository(t)
 
 	// Start run
-	runID, err := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, err := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
 	// Record checkpoints
-	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	repo.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
+	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2)
 
 	// Update PBs
 	repo.UpdatePersonalBest("ds3-any", "boss1", 95000, 95000)
 	repo.UpdatePersonalBest("ds3-any", "boss2", 225000, 130000)
 
 	// End run
-	if err := repo.EndRouteRun(runID, "completed", 5, 225000); err != nil {
+	if err := repo.EndRouteRun(run.ID, "completed", 5, 225000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
 	}
 
@@ -483,40 +487,46 @@ func TestClose(t *testing.T) {
 func TestFindOrCreateSave_New(t *testing.T) {
 	repo := newTestRepository(t)
 
-	id, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("FindOrCreateSave: %v", err)
 	}
-	if id <= 0 {
-		t.Errorf("expected id > 0, got %d", id)
+	if save.ID <= 0 {
+		t.Errorf("expected id > 0, got %d", save.ID)
+	}
+	if save.Game != "Dark Souls III" {
+		t.Errorf("got game %q, want Dark Souls III", save.Game)
+	}
+	if save.CharacterName != "Knight" {
+		t.Errorf("got name %q, want Knight", save.CharacterName)
 	}
 }
 
 func TestFindOrCreateSave_Existing(t *testing.T) {
 	repo := newTestRepository(t)
 
-	id1, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save1, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 
-	id2, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save2, err := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 
-	if id1 != id2 {
-		t.Errorf("expected same ID, got %d and %d", id1, id2)
+	if save1.ID != save2.ID {
+		t.Errorf("expected same ID, got %d and %d", save1.ID, save2.ID)
 	}
 }
 
 func TestFindOrCreateSave_DifferentSlot(t *testing.T) {
 	repo := newTestRepository(t)
 
-	id1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	id2, _ := repo.FindOrCreateSave("Dark Souls III", 1, "Knight")
+	save1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save2, _ := repo.FindOrCreateSave("Dark Souls III", 1, "Knight")
 
-	if id1 == id2 {
+	if save1.ID == save2.ID {
 		t.Error("different slots should produce different IDs")
 	}
 }
@@ -524,10 +534,10 @@ func TestFindOrCreateSave_DifferentSlot(t *testing.T) {
 func TestFindOrCreateSave_DifferentName(t *testing.T) {
 	repo := newTestRepository(t)
 
-	id1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	id2, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Pyromancer")
+	save1, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save2, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Pyromancer")
 
-	if id1 == id2 {
+	if save1.ID == save2.ID {
 		t.Error("different names on same slot should produce different IDs")
 	}
 }
@@ -535,27 +545,27 @@ func TestFindOrCreateSave_DifferentName(t *testing.T) {
 func TestStartRouteRun_WithSaveID(t *testing.T) {
 	repo := newTestRepository(t)
 
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	runID, err := repo.StartRouteRun("ds3-any", "Dark Souls III", saveID)
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	run, err := repo.StartRouteRun("ds3-any", "Dark Souls III", save.ID)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
 	var storedSaveID int64
-	err = repo.db.QueryRow("SELECT save_id FROM route_runs WHERE id = ?", runID).Scan(&storedSaveID)
+	err = repo.db.QueryRow("SELECT save_id FROM route_runs WHERE id = ?", run.ID).Scan(&storedSaveID)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if storedSaveID != saveID {
-		t.Errorf("expected save_id %d, got %d", saveID, storedSaveID)
+	if storedSaveID != save.ID {
+		t.Errorf("expected save_id %d, got %d", save.ID, storedSaveID)
 	}
 }
 
 func TestRecordDeathForSave(t *testing.T) {
 	repo := newTestRepository(t)
 
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
-	if err := repo.RecordDeathForSave(5, saveID); err != nil {
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	if err := repo.RecordDeathForSave(5, save.ID); err != nil {
 		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
@@ -567,48 +577,48 @@ func TestRecordDeathForSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if sessionSaveID != saveID {
-		t.Errorf("expected session save_id %d, got %d", saveID, sessionSaveID)
+	if sessionSaveID != save.ID {
+		t.Errorf("expected session save_id %d, got %d", save.ID, sessionSaveID)
 	}
 }
 
 func TestGetOrCreateSessionForSave(t *testing.T) {
 	repo := newTestRepository(t)
 
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "Knight")
 
 	// First call creates a session
-	sid1, err := repo.GetOrCreateSessionForSave(saveID)
+	s1, err := repo.GetOrCreateSessionForSave(save.ID)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	if sid1 <= 0 {
-		t.Errorf("expected session id > 0, got %d", sid1)
+	if s1.ID <= 0 {
+		t.Errorf("expected session id > 0, got %d", s1.ID)
 	}
 
 	// Second call reuses the same session
-	sid2, err := repo.GetOrCreateSessionForSave(saveID)
+	s2, err := repo.GetOrCreateSessionForSave(save.ID)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	if sid1 != sid2 {
-		t.Errorf("expected same session ID, got %d and %d", sid1, sid2)
+	if s1.ID != s2.ID {
+		t.Errorf("expected same session ID, got %d and %d", s1.ID, s2.ID)
 	}
 }
 
 func TestSaveAndLoadStateVars(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	if err := repo.SaveStateVar(runID, "embers", 0x400001F4, 3, 5); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(runID, "firebombs", 0x40000124, 2, 2); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 2, 2); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
-	rows, err := repo.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(run.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -617,7 +627,7 @@ func TestSaveAndLoadStateVars(t *testing.T) {
 	}
 
 	// Find the embers row
-	var embers *StateVarRow
+	var embers *model.RouteStateVar
 	for i := range rows {
 		if rows[i].VarName == "embers" {
 			embers = &rows[i]
@@ -640,12 +650,12 @@ func TestSaveAndLoadStateVars(t *testing.T) {
 func TestSaveStateVar_Upsert(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	repo.SaveStateVar(runID, "embers", 0x400001F4, 2, 2)
-	repo.SaveStateVar(runID, "embers", 0x400001F4, 5, 7) // update
+	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 2)
+	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 5, 7) // update
 
-	rows, err := repo.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(run.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -663,9 +673,9 @@ func TestSaveStateVar_Upsert(t *testing.T) {
 func TestLoadStateVars_Empty(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	rows, err := repo.LoadStateVars(runID)
+	rows, err := repo.LoadStateVars(run.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -677,10 +687,10 @@ func TestLoadStateVars_Empty(t *testing.T) {
 func TestLoadCompletedCheckpoints(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// No checkpoints yet
-	ids, err := repo.LoadCompletedCheckpoints(runID)
+	ids, err := repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -689,10 +699,10 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 	}
 
 	// Record some checkpoints
-	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
-	repo.RecordCheckpoint(runID, "boss2", "Vordt", 225000, 130000, 2)
+	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3)
+	repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 2)
 
-	ids, err = repo.LoadCompletedCheckpoints(runID)
+	ids, err = repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -712,12 +722,12 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 	repo := newTestRepository(t)
 
-	runID, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
+	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// Caught-up checkpoints have IGT=0, duration=0, deaths=0
-	repo.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 0, 0, 0)
+	repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 0, 0, 0)
 
-	ids, err := repo.LoadCompletedCheckpoints(runID)
+	ids, err := repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -728,48 +738,48 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 
 func TestFindLatestRun_NoRun(t *testing.T) {
 	repo := newTestRepository(t)
-	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
+	save, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	_, _, err := repo.FindLatestRun("ds3-any", saveID)
-	if !errors.Is(err, ErrNotFound) {
+	_, err := repo.FindLatestRun("ds3-any", save.ID)
+	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestFindLatestRun_InProgress(t *testing.T) {
 	repo := newTestRepository(t)
-	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
+	save, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	runID, _ := repo.StartRouteRun("ds3-any", "ds3", saveID)
+	run, _ := repo.StartRouteRun("ds3-any", "ds3", save.ID)
 
-	gotID, status, err := repo.FindLatestRun("ds3-any", saveID)
+	got, err := repo.FindLatestRun("ds3-any", save.ID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
 	}
-	if gotID != runID {
-		t.Errorf("expected run ID %d, got %d", runID, gotID)
+	if got.ID != run.ID {
+		t.Errorf("expected run ID %d, got %d", run.ID, got.ID)
 	}
-	if status != "in_progress" {
-		t.Errorf("expected status 'in_progress', got %q", status)
+	if got.Status != "in_progress" {
+		t.Errorf("expected status 'in_progress', got %q", got.Status)
 	}
 }
 
 func TestFindLatestRun_Completed(t *testing.T) {
 	repo := newTestRepository(t)
-	saveID, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
+	save, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 
-	runID, _ := repo.StartRouteRun("ds3-any", "ds3", saveID)
-	repo.EndRouteRun(runID, "completed", 10, 400000)
+	run, _ := repo.StartRouteRun("ds3-any", "ds3", save.ID)
+	repo.EndRouteRun(run.ID, "completed", 10, 400000)
 
-	gotID, status, err := repo.FindLatestRun("ds3-any", saveID)
+	got, err := repo.FindLatestRun("ds3-any", save.ID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
 	}
-	if gotID != runID {
-		t.Errorf("expected run ID %d, got %d", runID, gotID)
+	if got.ID != run.ID {
+		t.Errorf("expected run ID %d, got %d", run.ID, got.ID)
 	}
-	if status != "completed" {
-		t.Errorf("expected status 'completed', got %q", status)
+	if got.Status != "completed" {
+		t.Errorf("expected status 'completed', got %q", got.Status)
 	}
 }
 
@@ -778,10 +788,10 @@ func TestFindLatestRun_DifferentSave(t *testing.T) {
 	save1, _ := repo.FindOrCreateSave("ds3", 0, "Knight")
 	save2, _ := repo.FindOrCreateSave("ds3", 1, "Pyromancer")
 
-	repo.StartRouteRun("ds3-any", "ds3", save1)
+	repo.StartRouteRun("ds3-any", "ds3", save1.ID)
 
-	_, _, err := repo.FindLatestRun("ds3-any", save2)
-	if !errors.Is(err, ErrNotFound) {
+	_, err := repo.FindLatestRun("ds3-any", save2.ID)
+	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

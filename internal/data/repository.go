@@ -1,38 +1,23 @@
 package data
 
 import (
+	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/rjansen/deathcounter/internal/data/dbm"
+	"github.com/rjansen/deathcounter/internal/data/model"
 
 	_ "modernc.org/sqlite"
 )
 
 // ErrNotFound is returned when a queried record does not exist.
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = dbm.ErrNotFound
 
 // Repository handles death statistics and persistence
 type Repository struct {
 	db *sql.DB
-}
-
-// Session represents a gaming session
-type Session struct {
-	ID        int64
-	StartTime time.Time
-	EndTime   *time.Time
-	Deaths    uint32
-}
-
-// Save represents a character save slot identity.
-type Save struct {
-	ID            int64
-	Game          string
-	SlotIndex     int
-	CharacterName string
-	CreatedAt     time.Time
-	LastSeenAt    time.Time
 }
 
 // NewRepository creates a new data repository with SQLite backend
@@ -59,6 +44,7 @@ func NewRepository(dbPath string) (*Repository, error) {
 
 // initDB creates the necessary tables
 func (r *Repository) initDB() error {
+	ctx := context.Background()
 	schema := `
 	CREATE TABLE IF NOT EXISTS sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +118,7 @@ func (r *Repository) initDB() error {
 	);
 	`
 
-	_, err := r.db.Exec(schema)
+	_, err := dbm.Exec[any](ctx, r.db, schema)
 	return err
 }
 
@@ -168,10 +154,9 @@ func (r *Repository) migrateDB() error {
 
 // tableExists checks if a table exists in the database.
 func (r *Repository) tableExists(table string) bool {
-	var name string
-	err := r.db.QueryRow(
-		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
-	).Scan(&name)
+	ctx := context.Background()
+	_, err := dbm.QueryOne[string](ctx, r.db,
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
 	return err == nil
 }
 
@@ -198,135 +183,112 @@ func (r *Repository) columnExists(table, column string) bool {
 	return false
 }
 
-// FindOrCreateSave returns the ID of a save slot, creating it if necessary.
-func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName string) (int64, error) {
+// FindOrCreateSave returns a save slot, creating it if necessary.
+func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName string) (model.Save, error) {
+	ctx := context.Background()
 	now := time.Now()
-	_, err := r.db.Exec(`
+	_, err := dbm.Exec[any](ctx, r.db, `
 		INSERT INTO saves (game, slot_index, character_name, created_at, last_seen_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(game, slot_index, character_name) DO UPDATE SET last_seen_at = ?`,
 		game, slotIndex, charName, now, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to upsert save: %w", err)
+		return model.Save{}, fmt.Errorf("failed to upsert save: %w", err)
 	}
 
-	var id int64
-	err = r.db.QueryRow(
-		"SELECT id FROM saves WHERE game = ? AND slot_index = ? AND character_name = ?",
+	return dbm.QueryOne[model.Save](ctx, r.db,
+		"SELECT id, game, slot_index, character_name, created_at, last_seen_at FROM saves WHERE game = ? AND slot_index = ? AND character_name = ?",
 		game, slotIndex, charName,
-	).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query save id: %w", err)
-	}
-	return id, nil
+	)
 }
 
 // GetOrCreateSessionForSave finds an open session for the given save, or creates one.
-func (r *Repository) GetOrCreateSessionForSave(saveID int64) (int64, error) {
-	var sessionID int64
-	err := r.db.QueryRow(
-		"SELECT id FROM sessions WHERE end_time IS NULL AND save_id = ? ORDER BY start_time DESC LIMIT 1",
+func (r *Repository) GetOrCreateSessionForSave(saveID int64) (model.Session, error) {
+	ctx := context.Background()
+	session, err := dbm.QueryOne[model.Session](ctx, r.db,
+		"SELECT id, start_time, end_time, deaths, save_id FROM sessions WHERE end_time IS NULL AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		saveID,
-	).Scan(&sessionID)
+	)
+	if err == nil {
+		return session, nil
+	}
+	if err != ErrNotFound {
+		return model.Session{}, err
+	}
 
-	if err == sql.ErrNoRows {
-		result, err := r.db.Exec(
-			"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, ?)",
-			time.Now(), saveID,
-		)
-		if err != nil {
-			return 0, fmt.Errorf("failed to create session for save: %w", err)
-		}
-		return result.LastInsertId()
-	}
-	if err != nil {
-		return 0, err
-	}
-	return sessionID, nil
+	return dbm.QueryOne[model.Session](ctx, r.db,
+		"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, ?) RETURNING id, start_time, end_time, deaths, save_id",
+		time.Now(), saveID,
+	)
 }
 
 // RecordDeathForSave records a death count update linked to a save slot.
 func (r *Repository) RecordDeathForSave(count uint32, saveID int64) error {
-	sessionID, err := r.GetOrCreateSessionForSave(saveID)
+	ctx := context.Background()
+	session, err := r.GetOrCreateSessionForSave(saveID)
 	if err != nil {
 		return err
 	}
 
-	_, err = r.db.Exec(
+	_, err = dbm.Exec[any](ctx, r.db,
 		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
-		sessionID, count, time.Now(),
+		session.ID, count, time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to record death: %w", err)
 	}
 
-	_, err = r.db.Exec("UPDATE sessions SET deaths = ? WHERE id = ?", count, sessionID)
+	_, err = dbm.Exec[any](ctx, r.db, "UPDATE sessions SET deaths = ? WHERE id = ?", count, session.ID)
 	return err
 }
 
 // RecordDeath records a death count update
 func (r *Repository) RecordDeath(count uint32) error {
-	// Get or create current session
-	sessionID, err := r.getCurrentSession()
+	ctx := context.Background()
+	session, err := r.getCurrentSession()
 	if err != nil {
 		return err
 	}
 
-	// Record death event
-	_, err = r.db.Exec(
+	_, err = dbm.Exec[any](ctx, r.db,
 		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
-		sessionID,
-		count,
-		time.Now(),
+		session.ID, count, time.Now(),
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to record death: %w", err)
 	}
 
-	// Update session death count
-	_, err = r.db.Exec(
+	_, err = dbm.Exec[any](ctx, r.db,
 		"UPDATE sessions SET deaths = ? WHERE id = ?",
-		count,
-		sessionID,
+		count, session.ID,
 	)
-
 	return err
 }
 
 // getCurrentSession gets or creates the current gaming session
-func (r *Repository) getCurrentSession() (int64, error) {
-	// Check if there's an open session (no end_time)
-	var sessionID int64
-	err := r.db.QueryRow(
-		"SELECT id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
-	).Scan(&sessionID)
-
-	if err == sql.ErrNoRows {
-		// Create new session
-		result, err := r.db.Exec(
-			"INSERT INTO sessions (start_time, deaths) VALUES (?, 0)",
-			time.Now(),
-		)
-		if err != nil {
-			return 0, fmt.Errorf("failed to create session: %w", err)
-		}
-
-		sessionID, err = result.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
-	} else if err != nil {
-		return 0, err
+func (r *Repository) getCurrentSession() (model.Session, error) {
+	ctx := context.Background()
+	session, err := dbm.QueryOne[model.Session](ctx, r.db,
+		"SELECT id, start_time, end_time, deaths, save_id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
+	)
+	if err == nil {
+		return session, nil
+	}
+	if err != ErrNotFound {
+		return model.Session{}, err
 	}
 
-	return sessionID, nil
+	return dbm.QueryOne[model.Session](ctx, r.db,
+		"INSERT INTO sessions (start_time, deaths) VALUES (?, 0) RETURNING id, start_time, end_time, deaths, save_id",
+		time.Now(),
+	)
 }
 
 // EndCurrentSession marks the current session as ended
 func (r *Repository) EndCurrentSession() error {
-	_, err := r.db.Exec(
+	ctx := context.Background()
+	_, err := dbm.Exec[any](ctx, r.db,
 		"UPDATE sessions SET end_time = ? WHERE end_time IS NULL",
 		time.Now(),
 	)
@@ -335,23 +297,23 @@ func (r *Repository) EndCurrentSession() error {
 
 // GetTotalDeaths returns the total death count across all sessions
 func (r *Repository) GetTotalDeaths() (uint32, error) {
+	ctx := context.Background()
 	var total sql.NullInt64
-	err := r.db.QueryRow("SELECT SUM(deaths) FROM sessions").Scan(&total)
+	err := r.db.QueryRowContext(ctx, "SELECT SUM(deaths) FROM sessions").Scan(&total)
 	if err != nil {
 		return 0, err
 	}
-
 	if !total.Valid {
 		return 0, nil
 	}
-
 	return uint32(total.Int64), nil
 }
 
 // GetCurrentSessionDeaths returns deaths in the current session
 func (r *Repository) GetCurrentSessionDeaths() (uint32, error) {
+	ctx := context.Background()
 	var deaths sql.NullInt64
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(ctx,
 		"SELECT deaths FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
 	).Scan(&deaths)
 
@@ -361,80 +323,43 @@ func (r *Repository) GetCurrentSessionDeaths() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	if !deaths.Valid {
 		return 0, nil
 	}
-
 	return uint32(deaths.Int64), nil
 }
 
 // GetSessionHistory returns recent sessions
-func (r *Repository) GetSessionHistory(limit int) ([]Session, error) {
-	rows, err := r.db.Query(`
-		SELECT id, start_time, end_time, deaths
+func (r *Repository) GetSessionHistory(limit int) ([]model.Session, error) {
+	ctx := context.Background()
+	return dbm.Query[model.Session](ctx, r.db, `
+		SELECT id, start_time, end_time, deaths, save_id
 		FROM sessions
 		ORDER BY start_time DESC
 		LIMIT ?
 	`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var sessions []Session
-	for rows.Next() {
-		var s Session
-		var endTime sql.NullTime
-		err := rows.Scan(&s.ID, &s.StartTime, &endTime, &s.Deaths)
-		if err != nil {
-			return nil, err
-		}
-
-		if endTime.Valid {
-			s.EndTime = &endTime.Time
-		}
-
-		sessions = append(sessions, s)
-	}
-
-	return sessions, rows.Err()
 }
 
-// RouteCheckpoint represents a recorded checkpoint in a route run.
-type RouteCheckpoint struct {
-	CheckpointID         string
-	CheckpointName       string
-	IGTMs                int64
-	CheckpointDurationMs int64
-	Deaths               uint32
-}
-
-// StartRouteRun creates a new route run record and returns its ID.
+// StartRouteRun creates a new route run record and returns it.
 // If saveID is non-zero, it is stored as a foreign key to the saves table.
-func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (int64, error) {
-	var result sql.Result
-	var err error
+func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (model.RouteRun, error) {
+	ctx := context.Background()
 	if saveID > 0 {
-		result, err = r.db.Exec(
-			"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES (?, ?, 'in_progress', ?, ?)",
+		return dbm.QueryOne[model.RouteRun](ctx, r.db,
+			"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES (?, ?, 'in_progress', ?, ?) RETURNING id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id",
 			routeID, game, time.Now(), saveID,
 		)
-	} else {
-		result, err = r.db.Exec(
-			"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?)",
-			routeID, game, time.Now(),
-		)
 	}
-	if err != nil {
-		return 0, fmt.Errorf("failed to start route run: %w", err)
-	}
-	return result.LastInsertId()
+	return dbm.QueryOne[model.RouteRun](ctx, r.db,
+		"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?) RETURNING id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id",
+		routeID, game, time.Now(),
+	)
 }
 
 // RecordCheckpoint records a completed checkpoint.
 func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
-	_, err := r.db.Exec(
+	ctx := context.Background()
+	_, err := dbm.Exec[any](ctx, r.db,
 		`INSERT INTO route_checkpoints (run_id, checkpoint_id, checkpoint_name, igt_ms, checkpoint_duration_ms, deaths, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runID, checkpointID, name, igtMs, checkpointMs, deaths, time.Now(),
@@ -447,7 +372,8 @@ func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, ig
 
 // EndRouteRun marks a route run as finished.
 func (r *Repository) EndRouteRun(runID int64, status string, totalDeaths uint32, finalIGT int64) error {
-	_, err := r.db.Exec(
+	ctx := context.Background()
+	_, err := dbm.Exec[any](ctx, r.db,
 		"UPDATE route_runs SET status = ?, end_time = ?, total_deaths = ?, final_igt_ms = ? WHERE id = ?",
 		status, time.Now(), totalDeaths, finalIGT, runID,
 	)
@@ -455,31 +381,18 @@ func (r *Repository) EndRouteRun(runID int64, status string, totalDeaths uint32,
 }
 
 // GetPersonalBest returns the personal best checkpoints for a route.
-func (r *Repository) GetPersonalBest(routeID string) ([]RouteCheckpoint, error) {
-	rows, err := r.db.Query(
-		"SELECT checkpoint_id, '', best_igt_ms, best_split_ms, 0 FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
+func (r *Repository) GetPersonalBest(routeID string) ([]model.RoutePB, error) {
+	ctx := context.Background()
+	return dbm.Query[model.RoutePB](ctx, r.db,
+		"SELECT id, route_id, checkpoint_id, best_igt_ms, best_split_ms FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
 		routeID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var checkpoints []RouteCheckpoint
-	for rows.Next() {
-		var c RouteCheckpoint
-		if err := rows.Scan(&c.CheckpointID, &c.CheckpointName, &c.IGTMs, &c.CheckpointDurationMs, &c.Deaths); err != nil {
-			return nil, err
-		}
-		checkpoints = append(checkpoints, c)
-	}
-	return checkpoints, rows.Err()
 }
 
 // UpdatePersonalBest updates the PB for a checkpoint if the new time is better.
 func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitMs int64) error {
-	// Try to insert, or update if existing PB is worse
-	_, err := r.db.Exec(`
+	ctx := context.Background()
+	_, err := dbm.Exec[any](ctx, r.db, `
 		INSERT INTO route_pbs (route_id, checkpoint_id, best_igt_ms, best_split_ms)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(route_id, checkpoint_id) DO UPDATE SET
@@ -489,24 +402,18 @@ func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, spl
 	return err
 }
 
-// StateVarRow represents a persisted state variable for cumulative inventory tracking.
-type StateVarRow struct {
-	VarName      string
-	ItemID       uint32
-	LastQuantity uint32
-	Accumulated  uint32
-}
-
 // SaveStateVar upserts a state variable for the given run.
 func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, accumulated uint32) error {
-	_, err := r.db.Exec(`
+	ctx := context.Background()
+	sv := model.RouteStateVar{RunID: runID, VarName: varName, ItemID: itemID, LastQuantity: lastQty, Accumulated: accumulated}
+	_, err := dbm.Exec[model.RouteStateVar](ctx, r.db, `
 		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, accumulated)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES (:run_id, :var_name, :item_id, :last_quantity, :accumulated)
 		ON CONFLICT(run_id, var_name) DO UPDATE SET
 			item_id = excluded.item_id,
 			last_quantity = excluded.last_quantity,
 			accumulated = excluded.accumulated`,
-		runID, varName, itemID, lastQty, accumulated,
+		sv,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save state var: %w", err)
@@ -515,64 +422,30 @@ func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, 
 }
 
 // LoadStateVars loads all state variables for a run.
-func (r *Repository) LoadStateVars(runID int64) ([]StateVarRow, error) {
-	rows, err := r.db.Query(
-		"SELECT var_name, item_id, last_quantity, accumulated FROM route_state_vars WHERE run_id = ?",
+func (r *Repository) LoadStateVars(runID int64) ([]model.RouteStateVar, error) {
+	ctx := context.Background()
+	return dbm.Query[model.RouteStateVar](ctx, r.db,
+		"SELECT id, run_id, var_name, item_id, last_quantity, accumulated FROM route_state_vars WHERE run_id = ?",
 		runID,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load state vars: %w", err)
-	}
-	defer rows.Close()
-
-	var result []StateVarRow
-	for rows.Next() {
-		var r StateVarRow
-		if err := rows.Scan(&r.VarName, &r.ItemID, &r.LastQuantity, &r.Accumulated); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
 }
 
-// FindLatestRun returns the ID and status of the most recent route run
-// for the given route and save. Returns ErrNotFound if no matching run exists.
-func (r *Repository) FindLatestRun(routeID string, saveID int64) (int64, string, error) {
-	var runID int64
-	var status string
-	err := r.db.QueryRow(
-		"SELECT id, status FROM route_runs WHERE route_id = ? AND save_id = ? ORDER BY start_time DESC LIMIT 1",
+// FindLatestRun returns the most recent route run for the given route and save.
+// Returns ErrNotFound if no matching run exists.
+func (r *Repository) FindLatestRun(routeID string, saveID int64) (model.RouteRun, error) {
+	ctx := context.Background()
+	return dbm.QueryOne[model.RouteRun](ctx, r.db,
+		"SELECT id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id FROM route_runs WHERE route_id = ? AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		routeID, saveID,
-	).Scan(&runID, &status)
-	if err == sql.ErrNoRows {
-		return 0, "", ErrNotFound
-	}
-	if err != nil {
-		return 0, "", fmt.Errorf("failed to find latest run: %w", err)
-	}
-	return runID, status, nil
+	)
 }
 
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
 func (r *Repository) LoadCompletedCheckpoints(runID int64) ([]string, error) {
-	rows, err := r.db.Query(
+	ctx := context.Background()
+	return dbm.Query[string](ctx, r.db,
 		"SELECT checkpoint_id FROM route_checkpoints WHERE run_id = ?", runID,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load completed checkpoints: %w", err)
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 // DB returns the underlying database connection for advanced queries.

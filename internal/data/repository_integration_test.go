@@ -4,10 +4,11 @@ package data
 
 import (
 	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/rjansen/deathcounter/internal/data/model"
 )
 
 const testDBName = "deathcounter_test.db"
@@ -43,14 +44,14 @@ func TestIntegration_DeathTrackingLifecycle(t *testing.T) {
 	defer repo.Close()
 
 	// Create save identity
-	saveID, err := repo.FindOrCreateSave("Dark Souls III", 0, "IntegrationKnight")
+	save, err := repo.FindOrCreateSave("Dark Souls III", 0, "IntegrationKnight")
 	if err != nil {
 		t.Fatalf("FindOrCreateSave: %v", err)
 	}
 
 	// Session 1: record deaths 1..5
 	for i := uint32(1); i <= 5; i++ {
-		if err := repo.RecordDeathForSave(i, saveID); err != nil {
+		if err := repo.RecordDeathForSave(i, save.ID); err != nil {
 			t.Fatalf("RecordDeathForSave(%d): %v", i, err)
 		}
 	}
@@ -60,7 +61,7 @@ func TestIntegration_DeathTrackingLifecycle(t *testing.T) {
 
 	// Session 2: record deaths 1..3
 	for i := uint32(1); i <= 3; i++ {
-		if err := repo.RecordDeathForSave(i, saveID); err != nil {
+		if err := repo.RecordDeathForSave(i, save.ID); err != nil {
 			t.Fatalf("RecordDeathForSave(%d): %v", i, err)
 		}
 	}
@@ -130,12 +131,12 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	repo := openTestRepo(t)
 	defer repo.Close()
 
-	saveID, err := repo.FindOrCreateSave("Dark Souls III", 0, "RouteRunner")
+	save, err := repo.FindOrCreateSave("Dark Souls III", 0, "RouteRunner")
 	if err != nil {
 		t.Fatalf("FindOrCreateSave: %v", err)
 	}
 
-	runID, err := repo.StartRouteRun("ds3-all-bosses-integ", "Dark Souls III", saveID)
+	run, err := repo.StartRouteRun("ds3-all-bosses-integ", "Dark Souls III", save.ID)
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	}
 
 	for _, cp := range checkpoints {
-		if err := repo.RecordCheckpoint(runID, cp.id, cp.name, cp.igtMs, cp.durationMs, cp.deaths); err != nil {
+		if err := repo.RecordCheckpoint(run.ID, cp.id, cp.name, cp.igtMs, cp.durationMs, cp.deaths); err != nil {
 			t.Fatalf("RecordCheckpoint(%s): %v", cp.id, err)
 		}
 		if err := repo.UpdatePersonalBest("ds3-all-bosses-integ", cp.id, cp.igtMs, cp.durationMs); err != nil {
@@ -162,21 +163,21 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	}
 
 	// Save state vars for cumulative inventory
-	if err := repo.SaveStateVar(runID, "embers", 0x400001F4, 4, 6); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 6); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(runID, "firebombs", 0x40000124, 10, 10); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 10, 10); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
 	// End run
 	totalDeaths := uint32(2 + 1 + 3 + 5)
-	if err := repo.EndRouteRun(runID, "completed", totalDeaths, 680000); err != nil {
+	if err := repo.EndRouteRun(run.ID, "completed", totalDeaths, 680000); err != nil {
 		t.Fatalf("EndRouteRun: %v", err)
 	}
 
 	// Verify completed checkpoints
-	completed, err := repo.LoadCompletedCheckpoints(runID)
+	completed, err := repo.LoadCompletedCheckpoints(run.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -198,7 +199,7 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	}
 
 	// Verify state vars
-	vars, err := repo.LoadStateVars(runID)
+	vars, err := repo.LoadStateVars(run.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -221,17 +222,17 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 
 	// Verify FK: route_runs → saves
 	var runSaveID sql.NullInt64
-	err = repo.DB().QueryRow("SELECT save_id FROM route_runs WHERE id = ?", runID).Scan(&runSaveID)
+	err = repo.DB().QueryRow("SELECT save_id FROM route_runs WHERE id = ?", run.ID).Scan(&runSaveID)
 	if err != nil {
 		t.Fatalf("query route_runs save_id: %v", err)
 	}
-	if !runSaveID.Valid || runSaveID.Int64 != saveID {
-		t.Errorf("route_runs.save_id: got %v, want %d", runSaveID, saveID)
+	if !runSaveID.Valid || runSaveID.Int64 != save.ID {
+		t.Errorf("route_runs.save_id: got %v, want %d", runSaveID, save.ID)
 	}
 
 	// Verify run status
 	var status string
-	err = repo.DB().QueryRow("SELECT status FROM route_runs WHERE id = ?", runID).Scan(&status)
+	err = repo.DB().QueryRow("SELECT status FROM route_runs WHERE id = ?", run.ID).Scan(&status)
 	if err != nil {
 		t.Fatalf("query status: %v", err)
 	}
@@ -247,23 +248,23 @@ func TestIntegration_MultipleRunsPBTracking(t *testing.T) {
 	defer repo.Close()
 
 	routeID := "ds3-pb-tracking-integ"
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "PBTracker")
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "PBTracker")
 
 	// Run 1
-	run1, _ := repo.StartRouteRun(routeID, "Dark Souls III", saveID)
-	repo.RecordCheckpoint(run1, "boss1", "Iudex Gundyr", 100000, 100000, 3)
-	repo.RecordCheckpoint(run1, "boss2", "Vordt", 250000, 150000, 2)
+	run1, _ := repo.StartRouteRun(routeID, "Dark Souls III", save.ID)
+	repo.RecordCheckpoint(run1.ID, "boss1", "Iudex Gundyr", 100000, 100000, 3)
+	repo.RecordCheckpoint(run1.ID, "boss2", "Vordt", 250000, 150000, 2)
 	repo.UpdatePersonalBest(routeID, "boss1", 100000, 100000)
 	repo.UpdatePersonalBest(routeID, "boss2", 250000, 150000)
-	repo.EndRouteRun(run1, "completed", 5, 250000)
+	repo.EndRouteRun(run1.ID, "completed", 5, 250000)
 
 	// Run 2: boss1 faster, boss2 slower
-	run2, _ := repo.StartRouteRun(routeID, "Dark Souls III", saveID)
-	repo.RecordCheckpoint(run2, "boss1", "Iudex Gundyr", 85000, 85000, 1)
-	repo.RecordCheckpoint(run2, "boss2", "Vordt", 260000, 175000, 4)
+	run2, _ := repo.StartRouteRun(routeID, "Dark Souls III", save.ID)
+	repo.RecordCheckpoint(run2.ID, "boss1", "Iudex Gundyr", 85000, 85000, 1)
+	repo.RecordCheckpoint(run2.ID, "boss2", "Vordt", 260000, 175000, 4)
 	repo.UpdatePersonalBest(routeID, "boss1", 85000, 85000)
 	repo.UpdatePersonalBest(routeID, "boss2", 260000, 175000)
-	repo.EndRouteRun(run2, "completed", 5, 260000)
+	repo.EndRouteRun(run2.ID, "completed", 5, 260000)
 
 	// Verify PBs kept the best of each
 	pbs, err := repo.GetPersonalBest(routeID)
@@ -274,25 +275,25 @@ func TestIntegration_MultipleRunsPBTracking(t *testing.T) {
 		t.Fatalf("PBs: got %d, want 2", len(pbs))
 	}
 
-	pbMap := map[string]RouteCheckpoint{}
+	pbMap := map[string]model.RoutePB{}
 	for _, pb := range pbs {
 		pbMap[pb.CheckpointID] = pb
 	}
 
 	// boss1: run2 was faster (85000 < 100000)
-	if pb := pbMap["boss1"]; pb.IGTMs != 85000 {
-		t.Errorf("boss1 PB IGT: got %d, want 85000", pb.IGTMs)
+	if pb := pbMap["boss1"]; pb.BestIGTMs != 85000 {
+		t.Errorf("boss1 PB IGT: got %d, want 85000", pb.BestIGTMs)
 	}
-	if pb := pbMap["boss1"]; pb.CheckpointDurationMs != 85000 {
-		t.Errorf("boss1 PB split: got %d, want 85000", pb.CheckpointDurationMs)
+	if pb := pbMap["boss1"]; pb.BestSplitMs != 85000 {
+		t.Errorf("boss1 PB split: got %d, want 85000", pb.BestSplitMs)
 	}
 
 	// boss2: run1 was faster (250000 < 260000, 150000 < 175000)
-	if pb := pbMap["boss2"]; pb.IGTMs != 250000 {
-		t.Errorf("boss2 PB IGT: got %d, want 250000", pb.IGTMs)
+	if pb := pbMap["boss2"]; pb.BestIGTMs != 250000 {
+		t.Errorf("boss2 PB IGT: got %d, want 250000", pb.BestIGTMs)
 	}
-	if pb := pbMap["boss2"]; pb.CheckpointDurationMs != 150000 {
-		t.Errorf("boss2 PB split: got %d, want 150000", pb.CheckpointDurationMs)
+	if pb := pbMap["boss2"]; pb.BestSplitMs != 150000 {
+		t.Errorf("boss2 PB split: got %d, want 150000", pb.BestSplitMs)
 	}
 }
 
@@ -307,49 +308,49 @@ func TestIntegration_SaveChangeMidRun(t *testing.T) {
 	saveB, _ := repo.FindOrCreateSave("Dark Souls III", 1, "KnightB")
 
 	// Start run for save A, record a checkpoint
-	runA, err := repo.StartRouteRun(routeID, "Dark Souls III", saveA)
+	runA, err := repo.StartRouteRun(routeID, "Dark Souls III", saveA.ID)
 	if err != nil {
 		t.Fatalf("StartRouteRun(A): %v", err)
 	}
-	repo.RecordCheckpoint(runA, "boss1", "Iudex Gundyr", 95000, 95000, 2)
+	repo.RecordCheckpoint(runA.ID, "boss1", "Iudex Gundyr", 95000, 95000, 2)
 
 	// Character changes — abandon run A
-	if err := repo.EndRouteRun(runA, "abandoned", 2, 95000); err != nil {
+	if err := repo.EndRouteRun(runA.ID, "abandoned", 2, 95000); err != nil {
 		t.Fatalf("EndRouteRun(abandon): %v", err)
 	}
 
 	// Start new run for save B
-	runB, err := repo.StartRouteRun(routeID, "Dark Souls III", saveB)
+	runB, err := repo.StartRouteRun(routeID, "Dark Souls III", saveB.ID)
 	if err != nil {
 		t.Fatalf("StartRouteRun(B): %v", err)
 	}
 
 	// FindLatestRun for save A should return the abandoned run
-	gotID, gotStatus, err := repo.FindLatestRun(routeID, saveA)
+	gotA, err := repo.FindLatestRun(routeID, saveA.ID)
 	if err != nil {
 		t.Fatalf("FindLatestRun(A): %v", err)
 	}
-	if gotID != runA {
-		t.Errorf("FindLatestRun(A) ID: got %d, want %d", gotID, runA)
+	if gotA.ID != runA.ID {
+		t.Errorf("FindLatestRun(A) ID: got %d, want %d", gotA.ID, runA.ID)
 	}
-	if gotStatus != "abandoned" {
-		t.Errorf("FindLatestRun(A) status: got %q, want abandoned", gotStatus)
+	if gotA.Status != "abandoned" {
+		t.Errorf("FindLatestRun(A) status: got %q, want abandoned", gotA.Status)
 	}
 
 	// FindLatestRun for save B should return the in_progress run
-	gotID, gotStatus, err = repo.FindLatestRun(routeID, saveB)
+	gotB, err := repo.FindLatestRun(routeID, saveB.ID)
 	if err != nil {
 		t.Fatalf("FindLatestRun(B): %v", err)
 	}
-	if gotID != runB {
-		t.Errorf("FindLatestRun(B) ID: got %d, want %d", gotID, runB)
+	if gotB.ID != runB.ID {
+		t.Errorf("FindLatestRun(B) ID: got %d, want %d", gotB.ID, runB.ID)
 	}
-	if gotStatus != "in_progress" {
-		t.Errorf("FindLatestRun(B) status: got %q, want in_progress", gotStatus)
+	if gotB.Status != "in_progress" {
+		t.Errorf("FindLatestRun(B) status: got %q, want in_progress", gotB.Status)
 	}
 
 	// Abandoned run's checkpoints should still be intact
-	completed, err := repo.LoadCompletedCheckpoints(runA)
+	completed, err := repo.LoadCompletedCheckpoints(runA.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints(A): %v", err)
 	}
@@ -357,7 +358,7 @@ func TestIntegration_SaveChangeMidRun(t *testing.T) {
 		t.Errorf("abandoned run checkpoints: got %v, want [boss1]", completed)
 	}
 
-	repo.EndRouteRun(runB, "completed", 0, 0) // cleanup
+	repo.EndRouteRun(runB.ID, "completed", 0, 0) // cleanup
 }
 
 // --- Test 5: Run Resume After Restart ---
@@ -371,10 +372,10 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 		t.Fatalf("NewRepository (phase 1): %v", err)
 	}
 
-	saveID, _ := repo1.FindOrCreateSave("Dark Souls III", 0, "ResumeKnight")
-	runID, _ := repo1.StartRouteRun(routeID, "Dark Souls III", saveID)
-	repo1.RecordCheckpoint(runID, "boss1", "Iudex Gundyr", 95000, 95000, 2)
-	repo1.SaveStateVar(runID, "embers", 0x400001F4, 3, 5)
+	save, _ := repo1.FindOrCreateSave("Dark Souls III", 0, "ResumeKnight")
+	run, _ := repo1.StartRouteRun(routeID, "Dark Souls III", save.ID)
+	repo1.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 2)
+	repo1.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5)
 
 	// Close (simulates app shutdown)
 	if err := repo1.Close(); err != nil {
@@ -389,25 +390,25 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	defer repo2.Close()
 
 	// Re-resolve save
-	saveID2, _ := repo2.FindOrCreateSave("Dark Souls III", 0, "ResumeKnight")
-	if saveID2 != saveID {
-		t.Errorf("save ID changed across restart: %d -> %d", saveID, saveID2)
+	save2, _ := repo2.FindOrCreateSave("Dark Souls III", 0, "ResumeKnight")
+	if save2.ID != save.ID {
+		t.Errorf("save ID changed across restart: %d -> %d", save.ID, save2.ID)
 	}
 
 	// Find the in-progress run
-	foundID, status, err := repo2.FindLatestRun(routeID, saveID2)
+	found, err := repo2.FindLatestRun(routeID, save2.ID)
 	if err != nil {
 		t.Fatalf("FindLatestRun: %v", err)
 	}
-	if foundID != runID {
-		t.Errorf("run ID: got %d, want %d", foundID, runID)
+	if found.ID != run.ID {
+		t.Errorf("run ID: got %d, want %d", found.ID, run.ID)
 	}
-	if status != "in_progress" {
-		t.Errorf("status: got %q, want in_progress", status)
+	if found.Status != "in_progress" {
+		t.Errorf("status: got %q, want in_progress", found.Status)
 	}
 
 	// Load completed checkpoints from previous session
-	completed, err := repo2.LoadCompletedCheckpoints(foundID)
+	completed, err := repo2.LoadCompletedCheckpoints(found.ID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
 	}
@@ -416,7 +417,7 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	}
 
 	// Load state vars from previous session
-	vars, err := repo2.LoadStateVars(foundID)
+	vars, err := repo2.LoadStateVars(found.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -428,16 +429,16 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	}
 
 	// Continue the run
-	repo2.RecordCheckpoint(foundID, "boss2", "Vordt", 225000, 130000, 1)
-	repo2.SaveStateVar(foundID, "embers", 0x400001F4, 5, 8)
-	repo2.EndRouteRun(foundID, "completed", 3, 225000)
+	repo2.RecordCheckpoint(found.ID, "boss2", "Vordt", 225000, 130000, 1)
+	repo2.SaveStateVar(found.ID, "embers", 0x400001F4, 5, 8)
+	repo2.EndRouteRun(found.ID, "completed", 3, 225000)
 
 	// Verify final state
-	completed, _ = repo2.LoadCompletedCheckpoints(foundID)
+	completed, _ = repo2.LoadCompletedCheckpoints(found.ID)
 	if len(completed) != 2 {
 		t.Errorf("final completed checkpoints: got %d, want 2", len(completed))
 	}
-	vars, _ = repo2.LoadStateVars(foundID)
+	vars, _ = repo2.LoadStateVars(found.ID)
 	if len(vars) != 1 || vars[0].Accumulated != 8 {
 		t.Errorf("final state var: got %+v, want accumulated=8", vars)
 	}
@@ -453,16 +454,16 @@ func TestIntegration_ConcurrentSaveSessions(t *testing.T) {
 	save2, _ := repo.FindOrCreateSave("Dark Souls III", 1, "ConcurrentB")
 
 	// Record deaths for each save independently
-	repo.RecordDeathForSave(5, save1)
-	repo.RecordDeathForSave(10, save2)
+	repo.RecordDeathForSave(5, save1.ID)
+	repo.RecordDeathForSave(10, save2.ID)
 
 	// Verify sessions are isolated — each save has its own session
 	var count1, count2 int
 	repo.DB().QueryRow(
-		"SELECT COUNT(*) FROM sessions WHERE save_id = ? AND end_time IS NULL", save1,
+		"SELECT COUNT(*) FROM sessions WHERE save_id = ? AND end_time IS NULL", save1.ID,
 	).Scan(&count1)
 	repo.DB().QueryRow(
-		"SELECT COUNT(*) FROM sessions WHERE save_id = ? AND end_time IS NULL", save2,
+		"SELECT COUNT(*) FROM sessions WHERE save_id = ? AND end_time IS NULL", save2.ID,
 	).Scan(&count2)
 
 	if count1 != 1 {
@@ -475,10 +476,10 @@ func TestIntegration_ConcurrentSaveSessions(t *testing.T) {
 	// Verify each session has the correct death count
 	var deaths1, deaths2 uint32
 	repo.DB().QueryRow(
-		"SELECT deaths FROM sessions WHERE save_id = ? AND end_time IS NULL", save1,
+		"SELECT deaths FROM sessions WHERE save_id = ? AND end_time IS NULL", save1.ID,
 	).Scan(&deaths1)
 	repo.DB().QueryRow(
-		"SELECT deaths FROM sessions WHERE save_id = ? AND end_time IS NULL", save2,
+		"SELECT deaths FROM sessions WHERE save_id = ? AND end_time IS NULL", save2.ID,
 	).Scan(&deaths2)
 
 	if deaths1 != 5 {
@@ -505,23 +506,23 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 	repo := openTestRepo(t)
 	defer repo.Close()
 
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "StateVarTracker")
-	runID, _ := repo.StartRouteRun("ds3-statevar-integ", "Dark Souls III", saveID)
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "StateVarTracker")
+	run, _ := repo.StartRouteRun("ds3-statevar-integ", "Dark Souls III", save.ID)
 
 	// Initial tick: picked up 3 embers and 5 firebombs
-	repo.SaveStateVar(runID, "embers", 0x400001F4, 3, 3)
-	repo.SaveStateVar(runID, "firebombs", 0x40000124, 5, 5)
+	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 3)
+	repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 5, 5)
 
 	// Tick 2: used 1 ember (qty drops to 2), picked up 2 more firebombs
-	repo.SaveStateVar(runID, "embers", 0x400001F4, 2, 3) // accumulated stays at 3
-	repo.SaveStateVar(runID, "firebombs", 0x40000124, 7, 7)
+	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 3) // accumulated stays at 3
+	repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7)
 
 	// Tick 3: picked up 2 embers (qty now 4, net +2 since last positive)
-	repo.SaveStateVar(runID, "embers", 0x400001F4, 4, 5) // accumulated 3+2=5
-	repo.SaveStateVar(runID, "firebombs", 0x40000124, 7, 7) // unchanged
+	repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 5) // accumulated 3+2=5
+	repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7) // unchanged
 
 	// Verify only latest values persisted (no duplicates)
-	vars, err := repo.LoadStateVars(runID)
+	vars, err := repo.LoadStateVars(run.ID)
 	if err != nil {
 		t.Fatalf("LoadStateVars: %v", err)
 	}
@@ -529,7 +530,7 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 		t.Fatalf("expected 2 state vars, got %d", len(vars))
 	}
 
-	varMap := map[string]StateVarRow{}
+	varMap := map[string]model.RouteStateVar{}
 	for _, v := range vars {
 		varMap[v.VarName] = v
 	}
@@ -553,7 +554,7 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 	// Verify via raw SQL that no duplicates exist
 	var rowCount int
 	err = repo.DB().QueryRow(
-		"SELECT COUNT(*) FROM route_state_vars WHERE run_id = ?", runID,
+		"SELECT COUNT(*) FROM route_state_vars WHERE run_id = ?", run.ID,
 	).Scan(&rowCount)
 	if err != nil {
 		t.Fatalf("count query: %v", err)
@@ -562,7 +563,7 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 		t.Errorf("route_state_vars rows: got %d, want 2", rowCount)
 	}
 
-	repo.EndRouteRun(runID, "completed", 0, 0)
+	repo.EndRouteRun(run.ID, "completed", 0, 0)
 }
 
 // --- Test 8: FindOrCreateSave Upsert Updates last_seen_at ---
@@ -573,7 +574,7 @@ func TestIntegration_SaveUpsertUpdatesLastSeen(t *testing.T) {
 
 	game, slot, name := "Dark Souls III", 0, "UpsertKnight"
 
-	id1, err := repo.FindOrCreateSave(game, slot, name)
+	save1, err := repo.FindOrCreateSave(game, slot, name)
 	if err != nil {
 		t.Fatalf("first FindOrCreateSave: %v", err)
 	}
@@ -581,21 +582,21 @@ func TestIntegration_SaveUpsertUpdatesLastSeen(t *testing.T) {
 	// Read initial last_seen_at
 	var lastSeen1 string
 	repo.DB().QueryRow(
-		"SELECT last_seen_at FROM saves WHERE id = ?", id1,
+		"SELECT last_seen_at FROM saves WHERE id = ?", save1.ID,
 	).Scan(&lastSeen1)
 
 	// Call again — should return same ID but update last_seen_at
-	id2, err := repo.FindOrCreateSave(game, slot, name)
+	save2, err := repo.FindOrCreateSave(game, slot, name)
 	if err != nil {
 		t.Fatalf("second FindOrCreateSave: %v", err)
 	}
-	if id1 != id2 {
-		t.Errorf("IDs differ: %d vs %d", id1, id2)
+	if save1.ID != save2.ID {
+		t.Errorf("IDs differ: %d vs %d", save1.ID, save2.ID)
 	}
 
 	var lastSeen2 string
 	repo.DB().QueryRow(
-		"SELECT last_seen_at FROM saves WHERE id = ?", id2,
+		"SELECT last_seen_at FROM saves WHERE id = ?", save2.ID,
 	).Scan(&lastSeen2)
 
 	if lastSeen2 < lastSeen1 {
@@ -609,10 +610,10 @@ func TestIntegration_FindLatestRunNotFound(t *testing.T) {
 	repo := openTestRepo(t)
 	defer repo.Close()
 
-	saveID, _ := repo.FindOrCreateSave("Dark Souls III", 0, "NotFoundKnight")
+	save, _ := repo.FindOrCreateSave("Dark Souls III", 0, "NotFoundKnight")
 
-	_, _, err := repo.FindLatestRun("nonexistent-route", saveID)
-	if !errors.Is(err, ErrNotFound) {
+	_, err := repo.FindLatestRun("nonexistent-route", save.ID)
+	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
