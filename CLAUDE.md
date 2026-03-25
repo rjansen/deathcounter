@@ -56,12 +56,11 @@ go mod tidy
 ### Core Components
 
 1. **main.go**: Application entry point
-   - Initializes stats tracker, memory reader, and monitor
-   - Creates `DeathCounterMonitor` or `RouteMonitor` based on flags/routes
-   - Passes monitor to tray; tray consumes `DisplayUpdates()` channel
-   - Loads route definitions from `routes/` directory
-   - Monitor owns the tick loop (500ms poll)
-   - `routeAdapter` bridges `route.Runner` to `tray.RouteInfo` interface
+   - Initializes stats tracker and process operations
+   - Creates `GameTracker` (`DeathTracker` or `RouteTracker`) based on flags
+   - Creates `GameMonitor` with the tracker; passes monitor to tray
+   - Tray consumes `DisplayUpdates()` channel
+   - GameMonitor owns the tick loop (500ms poll)
 
 2. **internal/memreader**: Multi-game Windows memory reading
    - Supports 6 FromSoftware games with game-specific offsets
@@ -123,17 +122,27 @@ go mod tidy
    - `ResolveSavePath` expands environment variables and glob patterns
    - Auto-creates backup directory
 
-6. **internal/monitor**: Game monitoring lifecycle
-   - `MonitorPhase` enum: `PhaseDisconnected` → `PhaseConnected` → `PhaseLoaded` → `PhaseRouteRunning`
-   - `GameMonitor[S Displayable]` — generic base with attach/detach lifecycle, save detection, death recording
-   - `DeathCounterMonitor` — simple death counting (wraps `GameMonitor`), gates death reading on `PhaseLoaded`
-   - `RouteMonitor` — death counting + route tracking, gates route start on `PhaseLoaded`
-   - `Monitor` interface: `Tick()` and `DisplayUpdates() <-chan DisplayUpdate`
-   - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and extra fields
-   - `TryDetectSave()` — reads character name + save slot via memreader, creates DB record via `FindOrCreateSave()`, transitions from `PhaseConnected` to `PhaseLoaded` on success, rejects slot 255 as uninitialized
-   - Save change detection: if identity changes mid-run → abandon run, end session, restart route
-   - Log spam prevention: `saveLoggedOnce` and `loadLoggedOnce` flags reset on attach/detach
-   - Key files: `monitor.go`, `deathcounter.go`, `routemonitor.go`, `state.go`
+6. **internal/monitor**: Game monitoring lifecycle (two-level architecture)
+   - **GameMonitor** (monitor.go) — owns the 500ms tick loop, app phases, display update stream, and game attach/detach
+     - `MonitorPhase` enum: `PhaseDetached` → `PhaseAttached` → `PhaseLoaded`
+     - `Monitor` interface: `Start()`, `Stop()`, `DisplayUpdates() <-chan DisplayUpdate`
+     - `Attach()`/`Detach()` manage process discovery and reader lifecycle
+     - Delegates per-tick processing to a `GameTracker` interface
+   - **GameTracker** interface — receives `GameReader` each tick, processes data, returns `DisplayUpdate` synchronously
+     - `OnAttach(gameID string) error` — called when game process is first attached
+     - `OnDetach()` — called when game process disconnects
+     - `Tick(reader *GameReader) (DisplayUpdate, error)` — called each 500ms while loaded
+   - **baseTracker** (tracker.go) — shared struct embedded by both tracker implementations
+     - `detectSave()` — reads character name + save slot, creates DB record, rejects slot 255
+     - `recordDeathIfChanged()` — records death count changes to DB
+     - `resetOnDetach()` — clears all tracking state on game disconnect
+     - Log spam prevention: `saveLoggedOnce` and `loadLoggedOnce` flags
+   - **DeathTracker** (deathtracker.go) — simple death counting, embeds `baseTracker`
+   - **RouteTracker** (routetracker.go) — death counting + route tracking, embeds `baseTracker`
+     - Manages route runner lifecycle, `running` flag for "Tracking route" status
+     - Save change detection: if identity changes mid-run → abandon run, end session, restart route
+   - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and route display
+   - Key files: `monitor.go`, `tracker.go`, `deathtracker.go`, `routetracker.go`, `state.go`
 
 7. **internal/tray**: System tray UI
    - Displays currently monitored game
@@ -141,7 +150,7 @@ go mod tidy
    - Shows death counts in tray menu
    - Shows connection status
    - Displays route progress (name, completion %, current checkpoint, split deaths)
-   - `RouteInfo` interface for decoupled progress reporting
+   - Receives `DisplayUpdate` structs containing optional `RouteDisplay` data
    - Consumes `DisplayUpdates()` channel from monitor
    - Provides access to statistics
    - Graceful shutdown handling
@@ -163,33 +172,41 @@ Each game has a unique pointer chain that must be followed from the module base 
 ### Data Flow
 
 ```
-Monitor Tick (500ms) → TryAttach() → Phase check:
-  PhaseDisconnected → publish empty state, return
-  PhaseConnected    → TryDetectSave() → if loaded: start route → publish, return
-  PhaseLoaded+      → TryDetectSave() (save change check)
-                    → ReadDeathCount() → RecordDeathIfChanged() → Update Stats DB
-                    → Route Runner Tick → Read Event Flags + Memory Values + Inventory Items
-                      → ProcessTick (state machine) → Record Checkpoints → Update PBs
-                      → Trigger Save Backup → Update Route Progress UI
-                    → PublishState() → DisplayUpdates channel → Tray UI
+GameMonitor Tick (500ms) → Attach() → Phase check:
+  PhaseDetached  → try attach, if failed: wait, continue
+  PhaseAttached  → tracker.OnAttach(gameID) → PhaseLoaded, continue
+  PhaseLoaded    → tracker.Tick(reader) → returns DisplayUpdate
+                   → publish(update) → DisplayUpdates channel → Tray UI
+
+GameTracker.Tick (DeathTracker):
+  detectSave() → ReadDeathCount() → recordDeathIfChanged() → return DisplayUpdate
+
+GameTracker.Tick (RouteTracker):
+  detectSave() → save change? → abandon run, restart
+  → startRouteRun() if not running
+  → runner.Tick(reader) → Read Event Flags + Memory Values + Inventory Items
+    → ProcessTick (state machine) → Record Checkpoints → Update PBs
+    → Trigger Save Backup
+  → recordDeathIfChanged() → return DisplayUpdate (with route info)
 ```
 
 ### Route Runner Startup Flow
 
 When the app detects a matching game, the route runner starts with this sequence:
 
-1. **Game Detection**: `RouteMonitor.TryAttach()` detects game process → `PhaseConnected`
-2. **Save Detection**: `TryDetectSave()` reads character name + save slot, rejects slot 255, creates save record in DB → `PhaseLoaded` (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
-3. **Route Start** (`startMatchingRoute`→`runner.go:Start`): Only called when `Phase >= PhaseLoaded` and `CurrentSaveID > 0`. Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, transitions to `PhaseRouteRunning`, initializes `LastDeathCount`
-4. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
+1. **Game Detection**: `GameMonitor.Attach()` detects game process → `PhaseAttached`
+2. **OnAttach**: `RouteTracker.OnAttach()` loads route definition from disk → `PhaseLoaded`
+3. **Save Detection**: `RouteTracker.Tick()` calls `detectSave()` — reads character name + save slot, rejects slot 255, creates save record in DB (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
+4. **Route Start** (`startRouteRun`→`runner.go:Start`): Only called when `currentSaveID > 0`. Creates run record in SQLite (with `saveID`), sets state to `RunInProgress`, sets `running = true`, initializes `LastDeathCount`
+5. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
    - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
      - Scans `.text` section for SprjEventFlagMan, FieldArea, and GameMan AOB patterns
      - Resolves RIP-relative addresses and caches them (one-time cost per attach)
    - Scans all checkpoint flags and inventory conditions — marks already-set ones as completed with `[Route] Already completed: X`
    - Marks backup as done for already-completed bosses (prevents unnecessary backups)
    - Returns `false` on `ErrNullPointer` (game still loading) → retries next tick
-5. **Death Count Read**: Logs initial death count after CatchUp completes
-6. **Normal Tick Loop** (`runner.go:Tick`): Every 500ms:
+6. **Death Count Read**: Logs initial death count after CatchUp completes
+7. **Normal Tick Loop** (`runner.go:Tick`): Every 500ms:
    - Reads **backup flags** (boss encounter) for uncompleted checkpoints
    - Reads **event flags** (boss kill) for uncompleted checkpoints
    - Reads **memory values** (level, weapon upgrade) for `mem_check` checkpoints
@@ -200,7 +217,7 @@ When the app detects a matching game, the route runner starts with this sequence
      - `CheckpointEvent`: kill condition met → records split in DB, updates PB
      - If no `backup_flag_id` configured, backup triggers on kill instead
    - When all required checkpoints are done → marks run as `RunCompleted`
-7. **Save Change Detection**: If `TryDetectSave()` detects different character/slot mid-run → abandon run, end session, restart route with new save identity
+8. **Save Change Detection**: If `detectSave()` detects different character/slot mid-run → abandon run, end session, restart route with new save identity
 
 ### DS3 Event Flag Algorithm
 

@@ -201,51 +201,62 @@ When using `"path": "player_stats"` for Dark Souls III:
 
 ## Monitor State Machine
 
-The app uses an explicit phase-based state machine to manage the game monitoring lifecycle:
+The app uses a two-level architecture: **GameMonitor** manages the tick loop and game attachment phases, while a **GameTracker** (either `DeathTracker` or `RouteTracker`) processes game data each tick.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Disconnected
+    [*] --> Detached
 
-    Disconnected --> Connected : Game process found
-    Connected --> Loaded : Save detected<br/>(char name + slot)
-    Connected --> Loaded : Save unsupported<br/>(non-DS3, pass-through)
-    Loaded --> RouteRunning : Route matched<br/>& started
+    Detached --> Attached : Game process found
+    Attached --> Loaded : tracker.OnAttach() succeeds
 
-    Connected --> Disconnected : Process exited
-    Loaded --> Disconnected : Process exited<br/>or fatal read error
-    RouteRunning --> Disconnected : Process exited<br/>(run abandoned)
+    Attached --> Detached : OnAttach error
+    Loaded --> Detached : Process exited<br/>or fatal read error
 
-    RouteRunning --> Loaded : Save changed<br/>(run abandoned,<br/>restart route)
-
-    state Disconnected {
+    state Detached {
         [*] --> WaitingForGame
         WaitingForGame : Scanning for game processes
     }
 
-    state Connected {
-        [*] --> DetectingSave
-        DetectingSave : AOB scanning<br/>Reading char name + slot<br/>Rejects slot 255
+    state Attached {
+        [*] --> InitTracker
+        InitTracker : Loading route definition<br/>(RouteTracker only)
     }
 
     state Loaded {
-        [*] --> TrackingDeaths
-        TrackingDeaths : Reading death count<br/>Recording to DB<br/>Monitoring save changes
-    }
+        [*] --> Ticking
+        Ticking : tracker.Tick(reader) each 500ms
 
-    state RouteRunning {
-        [*] --> CatchUp
-        CatchUp --> TickLoop : Pre-existing progress scanned
-        TickLoop : Reading event flags<br/>Reading memory values<br/>Recording checkpoints<br/>Updating PBs<br/>Triggering backups
+        state DeathTracker {
+            [*] --> DetectSave_DT
+            DetectSave_DT --> ReadDeaths
+            ReadDeaths : Reading death count<br/>Recording to DB
+        }
+
+        state RouteTracker {
+            [*] --> DetectSave_RT
+            DetectSave_RT --> StartRoute : Save detected
+            StartRoute --> Running : CatchUp succeeds
+            Running --> Running : Tick loop<br/>Reading flags, memory,<br/>inventory, IGT<br/>Recording checkpoints
+            Running --> StartRoute : Save changed<br/>(run abandoned,<br/>restart route)
+        }
     }
 ```
 
+#### GameMonitor Phases
+
 | Phase | Status Text | Description |
 |-------|-------------|-------------|
-| **Disconnected** | "Waiting for game..." | No game process found |
-| **Connected** | "Connected" | Game attached, detecting save identity |
-| **Loaded** | "Loaded" | Save identified, death tracking active |
-| **RouteRunning** | "Tracking route" | Route started with valid save ID |
+| **Detached** | "Waiting for game..." | No game process found |
+| **Attached** | "Attached" | Game process found, OnAttach pending |
+| **Loaded** | "Loaded" | Tracker initialized, receiving ticks |
+
+#### RouteTracker Internal Status
+
+| State | Status Text | Description |
+|-------|-------------|-------------|
+| Not running | "Loaded" | Save detection or CatchUp pending |
+| Running | "Tracking route" | Route run active with valid save ID |
 
 ## How It Works
 
@@ -310,11 +321,12 @@ deathcounter/
 │   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, bonfire names
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
-│   ├── monitor/                     # Game monitoring lifecycle
-│   │   ├── monitor.go              # Generic GameMonitor base, save detection
-│   │   ├── deathcounter.go         # Death counter monitor
-│   │   ├── routemonitor.go         # Route tracking monitor
-│   │   └── state.go               # Display state types
+│   ├── monitor/                     # Game monitoring lifecycle (two-level)
+│   │   ├── monitor.go              # GameMonitor: tick loop, phases, attach/detach
+│   │   ├── tracker.go              # baseTracker: shared save detection, death recording
+│   │   ├── deathtracker.go         # DeathTracker: simple death counting
+│   │   ├── routetracker.go         # RouteTracker: death counting + route tracking
+│   │   └── state.go               # MonitorPhase, DisplayUpdate, RouteDisplay
 │   ├── stats/                       # Statistics tracking
 │   │   └── stats.go                # SQLite persistence, sessions, saves, route runs, PBs
 │   ├── route/                       # Speedrun route tracking
