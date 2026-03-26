@@ -1,5 +1,22 @@
 package monitor
 
+import "github.com/rjansen/deathcounter/internal/memreader"
+
+// MonitorState encapsulates behavior for a single phase of the monitor lifecycle.
+// States receive a pointer to GameMonitor and mutate it internally via setState().
+type MonitorState interface {
+	// Attach attempts to advance the connection lifecycle for this phase.
+	// Returns a scoped GameReader on success, or an error.
+	Attach(m *GameMonitor) (*memreader.GameReader, error)
+	// Detach tears down the current connection level and transitions state.
+	Detach(m *GameMonitor)
+	// Tick is the main loop entry point: calls Attach, handles errors,
+	// delegates to tracker.Tick if appropriate, and publishes updates.
+	Tick(m *GameMonitor) error
+	// Phase returns the MonitorPhase for display/status purposes.
+	Phase() MonitorPhase
+}
+
 // MonitorPhase represents the current phase of the game monitoring lifecycle.
 type MonitorPhase int
 
