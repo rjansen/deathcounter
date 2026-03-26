@@ -34,7 +34,7 @@ type stateVarData struct {
 type Runner struct {
 	state     *RunState
 	route     *Route
-	repo    *data.Repository
+	repo      *data.Repository
 	backup    *backup.Manager
 	runID     int64
 	stateVars map[string]*stateVarData // state_var name → tracking data

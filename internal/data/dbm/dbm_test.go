@@ -276,7 +276,7 @@ type team struct {
 }
 
 type member struct {
-	ID   int64 `db:"id"`
+	ID   int64  `db:"id"`
 	Name string `db:"name"`
 	Team team   `db:"team"`
 }

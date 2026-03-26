@@ -14,11 +14,11 @@ import (
 // embed it for reuse.
 type baseTracker struct {
 	gameID string
-	repo *data.Repository
+	repo   *data.Repository
 
-	lastCount      uint32
-	currentSaveID  int64
-	currentSlotIdx int
+	lastCount       uint32
+	currentSaveID   int64
+	currentSlotIdx  int
 	currentCharName string
 
 	saveDetected   bool // true after first successful save detection

@@ -143,9 +143,9 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 
 	// Record checkpoints with realistic data
 	checkpoints := []struct {
-		id, name                string
-		igtMs, durationMs      int64
-		deaths                 uint32
+		id, name          string
+		igtMs, durationMs int64
+		deaths            uint32
 	}{
 		{"iudex-gundyr", "Iudex Gundyr", 95000, 95000, 2},
 		{"vordt", "Vordt of the Boreal Valley", 225000, 130000, 1},

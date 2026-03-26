@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/data"
+	"github.com/rjansen/deathcounter/internal/memreader"
 )
 
 // mockGameReader implements GameReader for testing.

@@ -9,8 +9,8 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
-	"github.com/rjansen/deathcounter/internal/monitor"
 	"github.com/rjansen/deathcounter/internal/data"
+	"github.com/rjansen/deathcounter/internal/monitor"
 )
 
 // Shared walk resources — a single MainWindow+NotifyIcon lives for the

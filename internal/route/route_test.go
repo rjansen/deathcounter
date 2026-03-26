@@ -561,8 +561,8 @@ func TestLoadRoutesDir_MultipleGames(t *testing.T) {
 	for _, gameID := range []string{"ds3", "er"} {
 		gameDir := filepath.Join(dir, gameID)
 		if err := os.MkdirAll(gameDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+			t.Fatal(err)
+		}
 		route := Route{
 			ID:   gameID + "-route",
 			Name: gameID + " Route",
