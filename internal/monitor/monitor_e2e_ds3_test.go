@@ -36,20 +36,8 @@ func newE2ERepo(t *testing.T) *data.Repository {
 // tickE2E is a test helper for e2e tests: simulates one Start() loop cycle.
 func tickE2E(t *testing.T, mon *GameMonitor) {
 	t.Helper()
-	reader, err := mon.Attach()
-	if err != nil {
-		mon.tracker.OnDetach()
-		mon.publishDetached()
-		return
-	}
-	if mon.phase == PhaseAttached {
-		mon.tracker.OnAttach(mon.attachedGameID)
-		mon.phase = PhaseLoaded
-		return
-	}
-	update, err := mon.tracker.Tick(reader)
-	if err == nil {
-		mon.publish(update)
+	if err := mon.state.Tick(mon); err != nil {
+		t.Logf("tickE2E: %v", err)
 	}
 }
 
@@ -68,15 +56,15 @@ func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 
 	// Phase 1: Detached — no game attached yet... but since the process
 	// IS running, Attach will succeed on first tick.
-	if mon.phase != PhaseDetached {
-		t.Errorf("initial phase: got %s, want %s", mon.phase, PhaseDetached)
+	if mon.state.Phase() != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.state.Phase(), PhaseDetached)
 	}
 
 	// Phase 2: First tick → Attach succeeds → PhaseAttached → OnAttach → PhaseLoaded
 	tickE2E(t, mon)
 
-	if mon.phase < PhaseLoaded {
-		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.phase)
+	if mon.state.Phase() < PhaseLoaded {
+		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.state.Phase())
 	}
 
 	// Phase 3: Loaded — death count should now be readable on next tick
@@ -124,8 +112,8 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 	}
 
 	// Initial state
-	if mon.phase != PhaseDetached {
-		t.Errorf("initial phase: got %s, want %s", mon.phase, PhaseDetached)
+	if mon.state.Phase() != PhaseDetached {
+		t.Errorf("initial phase: got %s, want %s", mon.state.Phase(), PhaseDetached)
 	}
 
 	// Tick until the route is running (max 5 ticks to account for slow save detection)
@@ -134,7 +122,7 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 		tickE2E(t, mon)
 		update = drainUpdate(t, mon)
 		t.Logf("Tick %d: phase=%s, running=%v, status=%q, char=%q",
-			i+1, mon.phase, rt.running, update.Status, update.CharacterName)
+			i+1, mon.state.Phase(), rt.running, update.Status, update.CharacterName)
 
 		if rt.running {
 			break

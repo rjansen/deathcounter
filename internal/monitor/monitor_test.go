@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/rjansen/deathcounter/internal/data"
@@ -162,55 +163,32 @@ func newTestRepo(t *testing.T) *data.Repository {
 	return repo
 }
 
-// tick simulates one Start() loop iteration for a GameMonitor:
-// Attach, OnAttach (PhaseAttached→PhaseLoaded), and Tick (PhaseLoaded).
+// tick simulates one Start() loop iteration for a GameMonitor by delegating
+// to state.Tick(), which handles Attach, OnAttach, tracker.Tick, and publishing.
 func tick(t *testing.T, mon *GameMonitor) error {
 	t.Helper()
-	reader, err := mon.Attach()
-	if errors.Is(err, ErrGameDetached) {
-		mon.tracker.OnDetach()
-		mon.publishDetached()
-		return err
+	// Inject AOB addresses after attach so the reader can resolve pointers.
+	// We hook into this by checking if the reader was just created.
+	hadReader := mon.reader != nil
+	err := mon.state.Tick(mon)
+	if !hadReader && mon.reader != nil {
+		mon.reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
 	}
-	if err != nil {
-		return err
-	}
-	// Always inject AOB addresses (idempotent)
-	reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
-
-	// PhaseAttached → PhaseLoaded (via OnAttach)
-	if mon.phase == PhaseAttached {
-		if err := mon.tracker.OnAttach(mon.attachedGameID); err != nil {
-			return err
-		}
-		mon.phase = PhaseLoaded
-		return nil // no Tick this cycle, matches Start() behavior
-	}
-
-	// PhaseLoaded: Tick
-	update, err := mon.tracker.Tick(reader)
-	if err != nil {
-		if errors.Is(err, memreader.ErrGameRead) {
-			mon.Detach()
-			mon.tracker.OnDetach()
-			mon.publishDetached()
-		}
-		return err
-	}
-	mon.publish(update)
-	return nil
+	return err
 }
 
 // attachMonitor attaches the monitor and transitions to PhaseLoaded,
 // bypassing OnAttach. Used by tests that inject tracker state directly.
 func attachMonitor(t *testing.T, mon *GameMonitor) {
 	t.Helper()
-	reader, err := mon.Attach()
+	// Use detachedState.Attach to find the game process and create the reader.
+	reader, err := mon.state.Attach(mon)
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
 	reader.SetTestAOBAddresses(int64(testGameDataManGlobalAddr), int64(testGameManGlobalAddr))
-	mon.phase = PhaseLoaded
+	// Skip OnAttach (attachedState.Attach) and go directly to loaded.
+	mon.setState(&loadedState{})
 }
 
 // newDeathMonitor creates a GameMonitor with a DeathTracker for testing.
@@ -243,9 +221,12 @@ func TestDeathTracker_NotAttached(t *testing.T) {
 	displayCh := initDisplayCh(mon)
 	err := tick(t, mon)
 
-	// ErrNoGame is returned when no game process is running
+	// detachedState.Tick wraps ErrNoGame with state context
 	if !errors.Is(err, ErrNoGame) {
-		t.Errorf("expected ErrNoGame, got %v", err)
+		t.Errorf("expected ErrNoGame in chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "detached_state.attach_error:") {
+		t.Errorf("expected detached_state.attach_error prefix, got %q", err.Error())
 	}
 
 	// No display update should be available
@@ -264,14 +245,19 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 	displayCh := initDisplayCh(mon)
 
-	// First tick: attach → PhaseAttached → OnAttach → PhaseLoaded (no Tick)
+	// Tick 1: detached → attach (find game) → attached
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
 
-	// Second tick: Tick reads death count
+	// Tick 2: attached → OnAttach → loaded
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 2: %v", err)
+	}
+
+	// Tick 3: loaded → tracker.Tick reads death count
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 3: %v", err)
 	}
 
 	select {
@@ -297,14 +283,19 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 	displayCh := initDisplayCh(mon)
 
-	// First tick: attach + load
+	// Tick 1: detached → attached
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
 
-	// Second tick: read initial count
+	// Tick 2: attached → loaded
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 2: %v", err)
+	}
+
+	// Tick 3: loaded → read initial count
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 3: %v", err)
 	}
 	<-displayCh
 
@@ -336,14 +327,19 @@ func TestDeathTracker_Detach(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 	displayCh := initDisplayCh(mon)
 
-	// First tick: attach + load
+	// Tick 1: detached → attached
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
 
-	// Second tick: read death count
+	// Tick 2: attached → loaded
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 2: %v", err)
+	}
+
+	// Tick 3: loaded → read death count
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 3: %v", err)
 	}
 	<-displayCh
 
@@ -358,7 +354,10 @@ func TestDeathTracker_Detach(t *testing.T) {
 	// Next tick: Attach returns existing reader (still non-nil), Tick fails on read → detach
 	err := tick(t, mon)
 	if !errors.Is(err, memreader.ErrGameRead) {
-		t.Fatalf("expected ErrGameRead, got %v", err)
+		t.Fatalf("expected ErrGameRead in chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "loaded_state.tick_error:") {
+		t.Errorf("expected loaded_state.tick_error prefix, got %q", err.Error())
 	}
 
 	select {
@@ -372,6 +371,51 @@ func TestDeathTracker_Detach(t *testing.T) {
 	}
 }
 
+func TestLoadedState_NilReader_AttachError(t *testing.T) {
+	mock := setupDS3Mock(0)
+	repo := newTestRepo(t)
+
+	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
+
+	// Tick 1: detached → attached
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+
+	// Tick 2: attached → loaded
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+
+	// Simulate reader disappearing while in loaded state
+	mon.reader = nil
+
+	// Tick 3: loadedState.Tick → Attach fails (nil reader) → ErrGameDetached
+	err := tick(t, mon)
+	if !errors.Is(err, ErrGameDetached) {
+		t.Fatalf("expected ErrGameDetached in chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "loaded_state.attach_error:") {
+		t.Errorf("expected loaded_state.attach_error prefix, got %q", err.Error())
+	}
+
+	// Should publish detached status
+	select {
+	case update := <-displayCh:
+		if update.Status != "Waiting for game..." {
+			t.Errorf("expected 'Waiting for game...' after nil reader, got %q", update.Status)
+		}
+	default:
+		t.Fatal("expected a display update")
+	}
+
+	// Monitor should be back in detached state
+	if mon.state.Phase() != PhaseDetached {
+		t.Errorf("expected PhaseDetached, got %s", mon.state.Phase())
+	}
+}
+
 func TestRouteTracker_NoRoute(t *testing.T) {
 	mock := setupDS3Mock(0)
 	repo := newTestRepo(t)
@@ -379,10 +423,18 @@ func TestRouteTracker_NoRoute(t *testing.T) {
 	// Use a non-existent route ID so OnAttach returns error
 	mon := newRouteMonitor("ds3", "nonexistent-route", "testdata", mock, repo)
 
-	// First tick: attach → OnAttach fails (route not found) → error returned
+	// Tick 1: detached → attached (find game)
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+
+	// Tick 2: attached → OnAttach fails (route not found) → error returned
 	err := tick(t, mon)
 	if err == nil {
 		t.Fatal("expected error from OnAttach when route doesn't exist")
+	}
+	if !strings.Contains(err.Error(), "attached_state.attach_error:") {
+		t.Errorf("expected attached_state.attach_error prefix, got %q", err.Error())
 	}
 	rt := routeTracker(mon)
 	if rt.route != nil {
@@ -479,14 +531,19 @@ func TestDeathTracker_SaveDetection(t *testing.T) {
 	mon := newDeathMonitor("ds3", mock, repo)
 	displayCh := initDisplayCh(mon)
 
-	// First tick: attach + load (no Tick)
+	// Tick 1: detached → attached
 	if err := tick(t, mon); err != nil {
-		t.Fatalf("tick: %v", err)
+		t.Fatalf("tick 1: %v", err)
 	}
 
-	// Second tick: Tick → detectSave detects "Knight" slot 0
+	// Tick 2: attached → loaded
 	if err := tick(t, mon); err != nil {
-		t.Fatalf("tick: %v", err)
+		t.Fatalf("tick 2: %v", err)
+	}
+
+	// Tick 3: loaded → detectSave detects "Knight" slot 0
+	if err := tick(t, mon); err != nil {
+		t.Fatalf("tick 3: %v", err)
 	}
 
 	select {
@@ -575,14 +632,14 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	}
 
 	// Attach and inject AOB with null GameDataMan (simulating game loading)
-	reader, err := mon.Attach()
+	reader, err := mon.state.Attach(mon)
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
 	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), 0)
 
 	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
-	mon.phase = PhaseLoaded
+	mon.setState(&loadedState{})
 
 	// Tick: save detection fails (null GameDataMan) → route CatchUp also fails
 	update, tickErr := mon.tracker.Tick(reader)
@@ -665,14 +722,14 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	}
 
 	// Attach and inject AOB addresses
-	reader, err := mon.Attach()
+	reader, err := mon.state.Attach(mon)
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
 	reader.SetTestAOBAddresses(int64(gameDataManGlobalAddr), int64(gameManGlobalAddr))
 
 	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
-	mon.phase = PhaseLoaded
+	mon.setState(&loadedState{})
 
 	update, tickErr := mon.tracker.Tick(reader)
 	if tickErr == nil {
@@ -762,11 +819,11 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	displayCh := initDisplayCh(mon)
 
 	// Attach → PhaseAttached, manually transition to PhaseLoaded (OnAttach no-op)
-	reader, err := mon.Attach()
+	reader, err := mon.state.Attach(mon)
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
-	mon.phase = PhaseLoaded
+	mon.setState(&loadedState{})
 
 	// First Tick: detectSave (unsupported) + ReadDeathCount
 	update, tickErr := mon.tracker.Tick(reader)
