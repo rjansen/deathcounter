@@ -92,9 +92,9 @@ func (a *App) Run() error {
 	}
 
 	// Start monitor tick loop and consume display updates
-	a.monitor.Start()
+	updates := a.monitor.Start()
 	go func() {
-		for update := range a.monitor.DisplayUpdates() {
+		for update := range updates {
 			a.mainWindow.Synchronize(func() {
 				a.refreshDisplay(update)
 			})

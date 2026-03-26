@@ -223,6 +223,13 @@ func newRouteMonitor(gameID, routeID, routesDir string, ops memreader.ProcessOps
 	return NewGameMonitor(gameID, ops, NewRouteTracker(gameID, routeID, routesDir, repo))
 }
 
+// initDisplayCh creates the display channel for tests that call tick() directly
+// instead of Start(). Returns the receive-only channel for assertions.
+func initDisplayCh(mon *GameMonitor) <-chan DisplayUpdate {
+	mon.displayCh = make(chan DisplayUpdate, 1)
+	return mon.displayCh
+}
+
 // routeTracker extracts the RouteTracker from a GameMonitor for test assertions.
 func routeTracker(mon *GameMonitor) *RouteTracker {
 	return mon.tracker.(*RouteTracker)
@@ -233,6 +240,7 @@ func TestDeathTracker_NotAttached(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 	err := tick(t, mon)
 
 	// ErrNoGame is returned when no game process is running
@@ -242,7 +250,7 @@ func TestDeathTracker_NotAttached(t *testing.T) {
 
 	// No display update should be available
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		t.Errorf("expected no display update, got %+v", update)
 	default:
 		// expected
@@ -254,6 +262,7 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// First tick: attach → PhaseAttached → OnAttach → PhaseLoaded (no Tick)
 	if err := tick(t, mon); err != nil {
@@ -266,7 +275,7 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.GameName != "Dark Souls III" {
 			t.Errorf("expected 'Dark Souls III', got %q", update.GameName)
 		}
@@ -286,6 +295,7 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// First tick: attach + load
 	if err := tick(t, mon); err != nil {
@@ -296,7 +306,7 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 2: %v", err)
 	}
-	<-mon.DisplayUpdates()
+	<-displayCh
 
 	// Update death count in memory
 	valueAddr := uintptr(0x200000000 + 0x98)
@@ -310,7 +320,7 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.DeathCount != 15 {
 			t.Errorf("expected death count 15, got %d", update.DeathCount)
 		}
@@ -324,6 +334,7 @@ func TestDeathTracker_Detach(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// First tick: attach + load
 	if err := tick(t, mon); err != nil {
@@ -334,7 +345,7 @@ func TestDeathTracker_Detach(t *testing.T) {
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick 2: %v", err)
 	}
-	<-mon.DisplayUpdates()
+	<-displayCh
 
 	// Remove the process to simulate game exit
 	delete(mock.processes, "DarkSoulsIII.exe")
@@ -351,7 +362,7 @@ func TestDeathTracker_Detach(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		// After detach, status reverts to "Waiting for game..."
 		if update.Status != "Waiting for game..." {
 			t.Errorf("expected 'Waiting for game...' after detach, got %q", update.Status)
@@ -384,6 +395,7 @@ func TestRouteTracker_MatchingRoute(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
+	displayCh := initDisplayCh(mon)
 	rt := routeTracker(mon)
 	// Inject route directly and skip OnAttach (which would fail loading from disk)
 	rt.route = &route.Route{
@@ -404,7 +416,7 @@ func TestRouteTracker_MatchingRoute(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.Status != "Loaded" {
 			t.Errorf("expected 'Loaded' status (CatchUp pending), got %q", update.Status)
 		}
@@ -438,6 +450,7 @@ func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// Publish multiple states without consuming — should not block
 	for i := 0; i < 5; i++ {
@@ -448,7 +461,7 @@ func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 
 	// Should get the latest state
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.DeathCount != 4 {
 			t.Errorf("expected latest death count 4, got %d", update.DeathCount)
 		}
@@ -464,6 +477,7 @@ func TestDeathTracker_SaveDetection(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("ds3", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// First tick: attach + load (no Tick)
 	if err := tick(t, mon); err != nil {
@@ -476,7 +490,7 @@ func TestDeathTracker_SaveDetection(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.CharacterName != "Knight" {
 			t.Errorf("expected 'Knight', got %q", update.CharacterName)
 		}
@@ -496,6 +510,7 @@ func TestRouteTracker_DetectsSave(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
+	displayCh := initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -515,7 +530,7 @@ func TestRouteTracker_DetectsSave(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.CharacterName != "Knight" {
 			t.Errorf("expected 'Knight', got %q", update.CharacterName)
 		}
@@ -548,6 +563,7 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
+	displayCh := initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -575,7 +591,7 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	}
 
 	select {
-	case got := <-mon.DisplayUpdates():
+	case got := <-displayCh:
 		if got.Status != "Loaded" {
 			t.Errorf("expected 'Loaded' status while save pending, got %q", got.Status)
 		}
@@ -637,6 +653,7 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
+	displayCh := initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -664,7 +681,7 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 
 	// Slot 255 rejected → save pending, route CatchUp fails → no route active
 	select {
-	case got := <-mon.DisplayUpdates():
+	case got := <-displayCh:
 		if got.Status != "Loaded" {
 			t.Errorf("expected 'Loaded' with slot 255, got %q", got.Status)
 		}
@@ -685,6 +702,7 @@ func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
+	displayCh := initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -702,7 +720,7 @@ func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
-	<-mon.DisplayUpdates()
+	<-displayCh
 
 	// Change character name to simulate save switch
 	setCharacterName(mock, "Pyromancer")
@@ -713,7 +731,7 @@ func TestRouteTracker_SaveChange_PausesRun(t *testing.T) {
 	}
 
 	select {
-	case update := <-mon.DisplayUpdates():
+	case update := <-displayCh:
 		if update.CharacterName != "Pyromancer" {
 			t.Errorf("expected 'Pyromancer', got %q", update.CharacterName)
 		}
@@ -741,6 +759,7 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newDeathMonitor("er", mock, repo)
+	displayCh := initDisplayCh(mon)
 
 	// Attach → PhaseAttached, manually transition to PhaseLoaded (OnAttach no-op)
 	reader, err := mon.Attach()
@@ -757,7 +776,7 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	mon.publish(update)
 
 	select {
-	case got := <-mon.DisplayUpdates():
+	case got := <-displayCh:
 		if got.GameName != "Elden Ring" {
 			t.Errorf("expected 'Elden Ring', got %q", got.GameName)
 		}

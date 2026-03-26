@@ -21,9 +21,8 @@ var (
 
 // Monitor is the interface tray.App uses to drive the monitoring lifecycle.
 type Monitor interface {
-	Start()
+	Start() <-chan DisplayUpdate
 	Stop()
-	DisplayUpdates() <-chan DisplayUpdate
 }
 
 // GameTracker processes game data each tick and returns a display state.
@@ -55,17 +54,11 @@ type GameMonitor struct {
 // NewGameMonitor creates a GameMonitor that delegates tick processing to the tracker.
 func NewGameMonitor(gameID string, ops memreader.ProcessOps, tracker GameTracker) *GameMonitor {
 	return &GameMonitor{
-		ops:       ops,
-		gameID:    gameID,
-		tracker:   tracker,
-		displayCh: make(chan DisplayUpdate, 1),
-		phase:     PhaseDetached,
+		ops:     ops,
+		gameID:  gameID,
+		tracker: tracker,
+		phase:   PhaseDetached,
 	}
-}
-
-// DisplayUpdates returns the display channel consumed by tray.
-func (m *GameMonitor) DisplayUpdates() <-chan DisplayUpdate {
-	return m.displayCh
 }
 
 // GameID returns the target game ID.
@@ -105,13 +98,16 @@ func (m *GameMonitor) Detach() {
 	m.phase = PhaseDetached
 }
 
-// Start creates a 500ms ticker and runs the tick loop.
+// Start creates a 500ms ticker, runs the tick loop, and returns the display
+// channel. The channel is closed when the monitor stops.
 // It manages PhaseDetached → PhaseAttached → PhaseLoaded transitions.
 // Tick is only called when Phase == PhaseLoaded.
-func (m *GameMonitor) Start() {
+func (m *GameMonitor) Start() <-chan DisplayUpdate {
+	m.displayCh = make(chan DisplayUpdate, 1)
 	m.stopCh = make(chan struct{})
 	m.ticker = time.NewTicker(500 * time.Millisecond)
 	go func() {
+		defer close(m.displayCh)
 		for {
 			select {
 			case <-m.ticker.C:
@@ -156,9 +152,10 @@ func (m *GameMonitor) Start() {
 			}
 		}
 	}()
+	return m.displayCh
 }
 
-// Stop halts the tick loop and closes the display channel.
+// Stop halts the tick loop. The display channel is closed by the goroutine.
 func (m *GameMonitor) Stop() {
 	m.stopOnce.Do(func() {
 		if m.ticker != nil {
@@ -167,7 +164,6 @@ func (m *GameMonitor) Stop() {
 		if m.stopCh != nil {
 			close(m.stopCh)
 		}
-		close(m.displayCh)
 	})
 }
 

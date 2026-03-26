@@ -20,9 +20,8 @@ func newMockMonitor() *mockMonitor {
 	}
 }
 
-func (m *mockMonitor) Start()                                       {}
-func (m *mockMonitor) Stop()                                        {}
-func (m *mockMonitor) DisplayUpdates() <-chan monitor.DisplayUpdate { return m.updatesCh }
+func (m *mockMonitor) Start() <-chan monitor.DisplayUpdate { return m.updatesCh }
+func (m *mockMonitor) Stop()                               {}
 
 func TestNewApp(t *testing.T) {
 	mon := newMockMonitor()

@@ -221,7 +221,7 @@ func TestE2E_DeathTracker_Slot255NotAccepted(t *testing.T) {
 func drainUpdate(t *testing.T, mon *GameMonitor) DisplayUpdate {
 	t.Helper()
 	select {
-	case u := <-mon.DisplayUpdates():
+	case u := <-mon.displayCh:
 		return u
 	default:
 		t.Fatal("expected a display update but channel was empty")
