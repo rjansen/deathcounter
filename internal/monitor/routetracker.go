@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/rjansen/deathcounter/internal/data"
@@ -18,7 +17,7 @@ type RouteTracker struct {
 	route     *route.Route
 	routeID   string
 	routesDir string
-	running   bool // true when a route run is active
+	state     trackerState
 }
 
 // NewRouteTracker creates a new route tracker.
@@ -30,63 +29,35 @@ func NewRouteTracker(gameID, routeID, routesDir string, repo *data.Repository) *
 		},
 		routeID:   routeID,
 		routesDir: routesDir,
+		state:     &routeStoppedState{},
 	}
 }
 
-// OnAttach validates the attached game and loads the route definition.
+// setTrackerState transitions the tracker to a new state.
+func (t *RouteTracker) setTrackerState(s trackerState) {
+	t.state = s
+}
+
+// OnAttach delegates to the current state.
 func (t *RouteTracker) OnAttach(gameID string) error {
-	if t.gameID != gameID {
-		log.Printf("[Route] Selected game %q does not match attached game %q", t.gameID, gameID)
-		return ErrAttachedGameMismatch
-	}
-	r, err := route.LoadRouteByID(gameID, t.routeID, t.routesDir)
-	if err != nil {
-		log.Printf("[Route] Failed to load route %q: %v", t.routeID, err)
-		return fmt.Errorf("failed to load route %q of the game %q: %w", t.routeID, t.gameID, err)
-	}
-	t.route = r
-	return nil
+	return t.state.OnAttach(t, gameID)
 }
 
-// OnDetach handles game detachment: pauses active run and clears state.
+// OnDetach delegates to the current state.
 func (t *RouteTracker) OnDetach() {
-	if t.isRunning() {
-		t.runner.Pause()
-	}
-	t.route = nil
-	t.runner = nil
-	t.running = false
-	t.resetOnDetach()
+	t.state.OnDetach(t)
 }
 
-// isRunning returns true if the runner exists and is actively tracking a run.
-func (t *RouteTracker) isRunning() bool {
-	return t.runner != nil && t.runner.IsActive()
-}
-
-// Tick performs one monitoring cycle with route tracking.
+// Tick delegates to the current state.
 func (t *RouteTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error) {
-	_, err := t.detectSave(reader)
-	if errors.Is(err, ErrSaveChanged) {
-		t.handleSaveChanged(reader)
-	}
-
-	if !t.isRunning() {
-		t.startRouteRun(reader)
-	}
-
-	if t.running && t.isRunning() {
-		return t.tickRun(reader)
-	}
-
-	return t.buildUpdate(), nil
+	return t.state.Tick(t, reader)
 }
 
 func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) {
-	if t.isRunning() {
+	if t.runner != nil && t.runner.IsActive() {
 		t.runner.Pause()
 	}
-	t.running = false
+	t.setTrackerState(&routeStoppedState{})
 	t.startRouteRun(reader)
 }
 
@@ -117,7 +88,7 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 		} else {
 			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
 			if err := t.runner.CatchUp(reader); err == nil {
-				t.running = true
+				t.setTrackerState(&routeRunningState{})
 			} else {
 				t.runner = nil
 			}
@@ -133,14 +104,14 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	}
 	log.Printf("[Route] Started route: %s", t.route.Name)
 	if err := t.runner.CatchUp(reader); err == nil {
-		t.running = true
+		t.setTrackerState(&routeRunningState{})
 	} else {
 		t.runner = nil
 	}
 }
 
 func (t *RouteTracker) statusText() string {
-	if t.running && t.isRunning() {
+	if t.state.IsRunning() {
 		return "Tracking route"
 	}
 	return PhaseLoaded.StatusText()
@@ -155,7 +126,7 @@ func (t *RouteTracker) buildUpdate() DisplayUpdate {
 		SaveSlotIndex: t.currentSlotIdx,
 	}
 
-	if t.isRunning() {
+	if t.state.IsRunning() && t.runner != nil {
 		update.IGT = t.runner.LastIGT()
 		r := t.runner.GetRoute()
 		cp := t.runner.CurrentCheckpoint()
