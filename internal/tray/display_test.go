@@ -203,6 +203,78 @@ func TestResolveRouteTexts_ZeroValueRoute(t *testing.T) {
 	}
 }
 
+func TestFormatCheckpointNotification(t *testing.T) {
+	tests := []struct {
+		name           string
+		notification   monitor.CheckpointNotification
+		wantTitle      string
+		wantCheckpoint string
+		wantStats      string
+	}{
+		{
+			name: "typical boss kill",
+			notification: monitor.CheckpointNotification{
+				Name:     "Iudex Gundyr",
+				IGT:      222000,
+				Duration: 180000,
+				Deaths:   3,
+			},
+			wantTitle:      "🎉 Checkpoint Complete!",
+			wantCheckpoint: "Iudex Gundyr",
+			wantStats:      "Segment: 3:00  |  Deaths: 3",
+		},
+		{
+			name: "zero deaths and short segment",
+			notification: monitor.CheckpointNotification{
+				Name:     "Vordt of the Boreal Valley",
+				IGT:      600000,
+				Duration: 45000,
+				Deaths:   0,
+			},
+			wantTitle:      "🎉 Checkpoint Complete!",
+			wantCheckpoint: "Vordt of the Boreal Valley",
+			wantStats:      "Segment: 0:45  |  Deaths: 0",
+		},
+		{
+			name: "long segment with many deaths",
+			notification: monitor.CheckpointNotification{
+				Name:     "Nameless King",
+				IGT:      3600000,
+				Duration: 1234000,
+				Deaths:   42,
+			},
+			wantTitle:      "🎉 Checkpoint Complete!",
+			wantCheckpoint: "Nameless King",
+			wantStats:      "Segment: 20:34  |  Deaths: 42",
+		},
+		{
+			name: "zero duration",
+			notification: monitor.CheckpointNotification{
+				Name:     "Already Done",
+				Duration: 0,
+				Deaths:   0,
+			},
+			wantTitle:      "🎉 Checkpoint Complete!",
+			wantCheckpoint: "Already Done",
+			wantStats:      "Segment: 0:00  |  Deaths: 0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTitle, gotCP, gotStats := formatCheckpointNotification(tt.notification)
+			if gotTitle != tt.wantTitle {
+				t.Errorf("title = %q, want %q", gotTitle, tt.wantTitle)
+			}
+			if gotCP != tt.wantCheckpoint {
+				t.Errorf("checkpoint = %q, want %q", gotCP, tt.wantCheckpoint)
+			}
+			if gotStats != tt.wantStats {
+				t.Errorf("stats = %q, want %q", gotStats, tt.wantStats)
+			}
+		})
+	}
+}
+
 func TestIconPNGOffset(t *testing.T) {
 	if iconPNGOffset != 22 {
 		t.Fatalf("iconPNGOffset = %d, want 22", iconPNGOffset)

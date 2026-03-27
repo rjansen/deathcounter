@@ -852,6 +852,150 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	}
 }
 
+// --- buildUpdate event propagation tests ---
+
+func TestRouteTracker_BuildUpdate_WithEvents(t *testing.T) {
+	repo := newTestRepo(t)
+
+	rt := NewRouteTracker("ds3", "", "", repo)
+	rt.route = &route.Route{
+		ID:   "ds3-any",
+		Name: "DS3 Any%",
+		Game: "ds3",
+		Checkpoints: []route.Checkpoint{
+			{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill"},
+			{ID: "boss2", Name: "Vordt", EventType: "boss_kill"},
+		},
+	}
+	rt.runner = route.NewRunner(rt.route, repo, nil)
+	rt.setTrackerState(&routeRunningState{})
+
+	events := []route.CheckpointEvent{
+		{
+			Checkpoint:         route.Checkpoint{ID: "boss1", Name: "Iudex Gundyr"},
+			IGT:                180000,
+			CheckpointDuration: 180000,
+			Deaths:             3,
+		},
+	}
+
+	update := rt.buildUpdate(events)
+
+	if update.Route == nil {
+		t.Fatal("expected Route to be non-nil")
+	}
+	if len(update.Route.CompletedEvents) != 1 {
+		t.Fatalf("expected 1 CompletedEvent, got %d", len(update.Route.CompletedEvents))
+	}
+
+	evt := update.Route.CompletedEvents[0]
+	if evt.Name != "Iudex Gundyr" {
+		t.Errorf("Name = %q, want %q", evt.Name, "Iudex Gundyr")
+	}
+	if evt.IGT != 180000 {
+		t.Errorf("IGT = %d, want %d", evt.IGT, 180000)
+	}
+	if evt.Duration != 180000 {
+		t.Errorf("Duration = %d, want %d", evt.Duration, 180000)
+	}
+	if evt.Deaths != 3 {
+		t.Errorf("Deaths = %d, want %d", evt.Deaths, 3)
+	}
+}
+
+func TestRouteTracker_BuildUpdate_NilEvents(t *testing.T) {
+	repo := newTestRepo(t)
+
+	rt := NewRouteTracker("ds3", "", "", repo)
+	rt.route = &route.Route{
+		ID:   "ds3-any",
+		Name: "DS3 Any%",
+		Game: "ds3",
+		Checkpoints: []route.Checkpoint{
+			{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill"},
+		},
+	}
+	rt.runner = route.NewRunner(rt.route, repo, nil)
+	rt.setTrackerState(&routeRunningState{})
+
+	update := rt.buildUpdate(nil)
+
+	if update.Route == nil {
+		t.Fatal("expected Route to be non-nil")
+	}
+	if len(update.Route.CompletedEvents) != 0 {
+		t.Errorf("expected 0 CompletedEvents, got %d", len(update.Route.CompletedEvents))
+	}
+}
+
+func TestRouteTracker_BuildUpdate_MultipleEvents(t *testing.T) {
+	repo := newTestRepo(t)
+
+	rt := NewRouteTracker("ds3", "", "", repo)
+	rt.route = &route.Route{
+		ID:   "ds3-any",
+		Name: "DS3 Any%",
+		Game: "ds3",
+		Checkpoints: []route.Checkpoint{
+			{ID: "boss1", Name: "Iudex Gundyr", EventType: "boss_kill"},
+			{ID: "boss2", Name: "Vordt", EventType: "boss_kill"},
+		},
+	}
+	rt.runner = route.NewRunner(rt.route, repo, nil)
+	rt.setTrackerState(&routeRunningState{})
+
+	events := []route.CheckpointEvent{
+		{
+			Checkpoint:         route.Checkpoint{ID: "boss1", Name: "Iudex Gundyr"},
+			IGT:                180000,
+			CheckpointDuration: 180000,
+			Deaths:             3,
+		},
+		{
+			Checkpoint:         route.Checkpoint{ID: "boss2", Name: "Vordt"},
+			IGT:                360000,
+			CheckpointDuration: 180000,
+			Deaths:             0,
+		},
+	}
+
+	update := rt.buildUpdate(events)
+
+	if len(update.Route.CompletedEvents) != 2 {
+		t.Fatalf("expected 2 CompletedEvents, got %d", len(update.Route.CompletedEvents))
+	}
+	if update.Route.CompletedEvents[0].Name != "Iudex Gundyr" {
+		t.Errorf("event[0].Name = %q, want %q", update.Route.CompletedEvents[0].Name, "Iudex Gundyr")
+	}
+	if update.Route.CompletedEvents[1].Name != "Vordt" {
+		t.Errorf("event[1].Name = %q, want %q", update.Route.CompletedEvents[1].Name, "Vordt")
+	}
+	if update.Route.CompletedEvents[1].Deaths != 0 {
+		t.Errorf("event[1].Deaths = %d, want %d", update.Route.CompletedEvents[1].Deaths, 0)
+	}
+}
+
+func TestRouteTracker_BuildUpdate_NotRunning_IgnoresEvents(t *testing.T) {
+	repo := newTestRepo(t)
+
+	rt := NewRouteTracker("ds3", "", "", repo)
+	// State is routeStoppedState (default), runner is nil
+
+	events := []route.CheckpointEvent{
+		{
+			Checkpoint: route.Checkpoint{ID: "boss1", Name: "Iudex Gundyr"},
+			IGT:        180000,
+		},
+	}
+
+	update := rt.buildUpdate(events)
+
+	// Route should be nil when not running
+	if update.Route != nil {
+		t.Errorf("expected nil Route when not running, got %+v", update.Route)
+	}
+}
+
 // setCharacterName updates the character name in mock memory (PlayerGameData + 0x88).
 func setCharacterName(mock *mockProcessOps, name string) {
 	mock.memory[uintptr(0x400000088)] = encodeUTF16LE(name)
