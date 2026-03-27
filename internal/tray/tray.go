@@ -29,6 +29,7 @@ type App struct {
 	menuRouteProgress *walk.Action
 	menuRouteCurrent  *walk.Action
 	menuRouteSegmentD *walk.Action
+	notification      *NotificationPopup
 }
 
 // NewApp creates a new system tray application
@@ -47,6 +48,12 @@ func (a *App) Run() error {
 	a.mainWindow, err = walk.NewMainWindow()
 	if err != nil {
 		return fmt.Errorf("failed to create main window: %w", err)
+	}
+
+	// Create notification popup
+	a.notification, err = NewNotificationPopup()
+	if err != nil {
+		log.Printf("Warning: could not create notification popup: %v", err)
 	}
 
 	// Create notify icon
@@ -255,6 +262,13 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 	a.updateTotalDeaths()
 
 	a.refreshRouteDisplay(update.Route)
+
+	// Show achievement popup for newly completed checkpoints
+	if a.notification != nil && update.Route != nil {
+		for _, evt := range update.Route.CompletedEvents {
+			a.notification.Show(evt)
+		}
+	}
 }
 
 // refreshRouteDisplay updates route-specific menu items.

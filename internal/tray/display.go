@@ -83,6 +83,18 @@ func resolveRouteTexts(route *monitor.RouteDisplay) routeDisplayTexts {
 	}
 }
 
+// formatCheckpointNotification returns the title, checkpoint name, and stats
+// text for a checkpoint completion notification popup.
+func formatCheckpointNotification(n monitor.CheckpointNotification) (title, checkpoint, stats string) {
+	title = "🎉 Checkpoint Complete!"
+	checkpoint = n.Name
+	secs := n.Duration / 1000
+	mins := secs / 60
+	secs = secs % 60
+	stats = fmt.Sprintf("Segment: %d:%02d  |  Deaths: %d", mins, secs, n.Deaths)
+	return title, checkpoint, stats
+}
+
 // iconPNGOffset is the byte offset where the PNG payload starts in the ICO data.
 // ICO format: 6-byte ICONDIR + 16-byte ICONDIRENTRY = 22 bytes.
 const iconPNGOffset = 22
