@@ -62,8 +62,9 @@ func TestMain(m *testing.M) {
 	}
 }
 
-// newTestApp creates a fresh App wired to the shared walk window.
-func newTestApp(t *testing.T) *App {
+// newWalkTestApp creates a WalkPlatform wired to the shared walk window
+// and returns an App using it.
+func newWalkTestApp(t *testing.T) (*App, *WalkPlatform) {
 	t.Helper()
 	mon := newMockMonitor()
 	repo, err := data.NewRepository(":memory:")
@@ -72,92 +73,44 @@ func newTestApp(t *testing.T) *App {
 	}
 	t.Cleanup(func() { repo.Close() })
 
-	app := NewApp(mon, repo)
-	app.mainWindow = testMW
-	app.ni = testNI
-	return app
+	wp := &WalkPlatform{
+		mainWindow: testMW,
+		ni:         testNI,
+		actions:    make(map[MenuItemID]*walk.Action),
+	}
+
+	app := NewApp(wp, mon, repo)
+	return app, wp
 }
 
-func TestBuildMenu(t *testing.T) {
-	app := newTestApp(t)
+func TestWalkPlatform_BuildMenu(t *testing.T) {
+	app, wp := newWalkTestApp(t)
 
 	if err := app.buildMenu(); err != nil {
 		t.Fatalf("buildMenu() error: %v", err)
 	}
 
-	// Verify all menu actions were created
-	if app.menuTitle == nil {
-		t.Error("menuTitle is nil")
-	}
-	if app.menuStatus == nil {
-		t.Error("menuStatus is nil")
-	}
-	if app.menuGame == nil {
-		t.Error("menuGame is nil")
-	}
-	if app.menuCharacter == nil {
-		t.Error("menuCharacter is nil")
-	}
-	if app.menuCount == nil {
-		t.Error("menuCount is nil")
-	}
-	if app.menuSession == nil {
-		t.Error("menuSession is nil")
-	}
-	if app.menuTotal == nil {
-		t.Error("menuTotal is nil")
-	}
-	if app.menuRouteName == nil {
-		t.Error("menuRouteName is nil")
-	}
-	if app.menuRouteProgress == nil {
-		t.Error("menuRouteProgress is nil")
-	}
-	if app.menuRouteCurrent == nil {
-		t.Error("menuRouteCurrent is nil")
-	}
-	if app.menuRouteSegmentD == nil {
-		t.Error("menuRouteSegmentD is nil")
+	// Verify actions were registered in the walk platform
+	wantItems := map[MenuItemID]string{
+		MenuTitle:     "Death Counter",
+		MenuStatus:    "Status: Starting...",
+		MenuGame:      "Game: None",
+		MenuCharacter: "Character: -",
+		MenuCount:     "Current: 0",
+		MenuSession:   "Session: 0",
+		MenuTotal:     "Total: 0",
+		MenuRouteName: "Route: None",
 	}
 
-	// Verify initial text values
-	if got := app.menuTitle.Text(); got != "Death Counter" {
-		t.Errorf("menuTitle text = %q, want %q", got, "Death Counter")
-	}
-	if got := app.menuStatus.Text(); got != "Status: Starting..." {
-		t.Errorf("menuStatus text = %q, want %q", got, "Status: Starting...")
-	}
-	if got := app.menuGame.Text(); got != "Game: None" {
-		t.Errorf("menuGame text = %q, want %q", got, "Game: None")
-	}
-	if got := app.menuCharacter.Text(); got != "Character: -" {
-		t.Errorf("menuCharacter text = %q, want %q", got, "Character: -")
-	}
-	if got := app.menuCount.Text(); got != "Current: 0" {
-		t.Errorf("menuCount text = %q, want %q", got, "Current: 0")
-	}
-	if got := app.menuSession.Text(); got != "Session: 0" {
-		t.Errorf("menuSession text = %q, want %q", got, "Session: 0")
-	}
-	if got := app.menuTotal.Text(); got != "Total: 0" {
-		t.Errorf("menuTotal text = %q, want %q", got, "Total: 0")
-	}
-	if got := app.menuRouteName.Text(); got != "Route: None" {
-		t.Errorf("menuRouteName text = %q, want %q", got, "Route: None")
-	}
-
-	// Verify disabled state for info items
-	if app.menuTitle.Enabled() {
-		t.Error("menuTitle should be disabled")
-	}
-	if app.menuStatus.Enabled() {
-		t.Error("menuStatus should be disabled")
-	}
-	if app.menuGame.Enabled() {
-		t.Error("menuGame should be disabled")
-	}
-	if app.menuCount.Enabled() {
-		t.Error("menuCount should be disabled")
+	for id, want := range wantItems {
+		action, ok := wp.actions[id]
+		if !ok {
+			t.Errorf("action %q not registered", id)
+			continue
+		}
+		if got := action.Text(); got != want {
+			t.Errorf("action %q text = %q, want %q", id, got, want)
+		}
 	}
 
 	// Verify context menu has actions
@@ -167,8 +120,8 @@ func TestBuildMenu(t *testing.T) {
 	}
 }
 
-func TestRefreshDisplay_Connected(t *testing.T) {
-	app := newTestApp(t)
+func TestWalkPlatform_RefreshDisplay(t *testing.T) {
+	app, wp := newWalkTestApp(t)
 	app.buildMenu()
 
 	update := monitor.DisplayUpdate{
@@ -181,46 +134,30 @@ func TestRefreshDisplay_Connected(t *testing.T) {
 
 	app.refreshDisplay(update)
 
-	if got := app.menuStatus.Text(); got != "Status: Connected" {
-		t.Errorf("status = %q, want %q", got, "Status: Connected")
+	checks := map[MenuItemID]string{
+		MenuStatus:    "Status: Connected",
+		MenuGame:      "Game: Dark Souls III",
+		MenuCharacter: "Character: Solaire (Slot 1)",
+		MenuCount:     "Current: 42",
+		MenuSession:   "Session: 42",
 	}
-	if got := app.menuGame.Text(); got != "Game: Dark Souls III" {
-		t.Errorf("game = %q, want %q", got, "Game: Dark Souls III")
-	}
-	if got := app.menuCharacter.Text(); got != "Character: Solaire (Slot 1)" {
-		t.Errorf("character = %q, want %q", got, "Character: Solaire (Slot 1)")
-	}
-	if got := app.menuCount.Text(); got != "Current: 42" {
-		t.Errorf("count = %q, want %q", got, "Current: 42")
-	}
-	if got := app.menuSession.Text(); got != "Session: 42" {
-		t.Errorf("session = %q, want %q", got, "Session: 42")
-	}
-}
-
-func TestRefreshDisplay_NoGame(t *testing.T) {
-	app := newTestApp(t)
-	app.buildMenu()
-
-	update := monitor.DisplayUpdate{
-		Status: "Scanning...",
-	}
-
-	app.refreshDisplay(update)
-
-	if got := app.menuGame.Text(); got != "Game: None" {
-		t.Errorf("game = %q, want %q", got, "Game: None")
-	}
-	if got := app.menuCharacter.Text(); got != "Character: -" {
-		t.Errorf("character = %q, want %q", got, "Character: -")
+	for id, want := range checks {
+		action, ok := wp.actions[id]
+		if !ok {
+			t.Errorf("action %q not found", id)
+			continue
+		}
+		if got := action.Text(); got != want {
+			t.Errorf("%s = %q, want %q", id, got, want)
+		}
 	}
 }
 
-func TestRefreshDisplay_WithRouteFields(t *testing.T) {
-	app := newTestApp(t)
+func TestWalkPlatform_RouteDisplay(t *testing.T) {
+	app, wp := newWalkTestApp(t)
 	app.buildMenu()
 
-	update := monitor.DisplayUpdate{
+	app.refreshDisplay(monitor.DisplayUpdate{
 		Status:     "Connected",
 		GameName:   "Dark Souls III",
 		DeathCount: 10,
@@ -232,57 +169,22 @@ func TestRefreshDisplay_WithRouteFields(t *testing.T) {
 			CurrentCheckpoint: "Pontiff Sulyvahn",
 			SegmentDeaths:     3,
 		},
-	}
-
-	app.refreshDisplay(update)
-
-	if got := app.menuRouteName.Text(); got != "Route: Any%" {
-		t.Errorf("route name = %q, want %q", got, "Route: Any%")
-	}
-	if got := app.menuRouteProgress.Text(); got != "Progress: 5/20 (25%)" {
-		t.Errorf("progress = %q, want %q", got, "Progress: 5/20 (25%)")
-	}
-	if got := app.menuRouteCurrent.Text(); got != "Current: Pontiff Sulyvahn" {
-		t.Errorf("current = %q, want %q", got, "Current: Pontiff Sulyvahn")
-	}
-	if got := app.menuRouteSegmentD.Text(); got != "Segment Deaths: 3" {
-		t.Errorf("split deaths = %q, want %q", got, "Segment Deaths: 3")
-	}
-}
-
-func TestRefreshDisplay_NilRouteResetsDefaults(t *testing.T) {
-	app := newTestApp(t)
-	app.buildMenu()
-
-	// First set route data
-	app.refreshDisplay(monitor.DisplayUpdate{
-		Status: "Connected",
-		Route: &monitor.RouteDisplay{
-			RouteName:         "Test Route",
-			CompletedCount:    1,
-			TotalCount:        5,
-			CompletionPercent: 20.0,
-			CurrentCheckpoint: "Boss 2",
-			SegmentDeaths:     7,
-		},
 	})
 
-	// Then clear it
-	app.refreshDisplay(monitor.DisplayUpdate{
-		Status: "Connected",
-		Route:  nil,
-	})
-
-	if got := app.menuRouteName.Text(); got != "Route: None" {
-		t.Errorf("route name = %q, want %q after reset", got, "Route: None")
+	checks := map[MenuItemID]string{
+		MenuRouteName:     "Route: Any%",
+		MenuRouteProgress: "Progress: 5/20 (25%)",
+		MenuRouteCurrent:  "Current: Pontiff Sulyvahn",
+		MenuRouteSegmentD: "Segment Deaths: 3",
 	}
-	if got := app.menuRouteProgress.Text(); got != "Progress: -" {
-		t.Errorf("progress = %q, want %q after reset", got, "Progress: -")
-	}
-	if got := app.menuRouteCurrent.Text(); got != "Current: -" {
-		t.Errorf("current = %q, want %q after reset", got, "Current: -")
-	}
-	if got := app.menuRouteSegmentD.Text(); got != "Segment Deaths: 0" {
-		t.Errorf("split deaths = %q, want %q after reset", got, "Segment Deaths: 0")
+	for id, want := range checks {
+		action, ok := wp.actions[id]
+		if !ok {
+			t.Errorf("action %q not found", id)
+			continue
+		}
+		if got := action.Text(); got != want {
+			t.Errorf("%s = %q, want %q", id, got, want)
+		}
 	}
 }

@@ -54,7 +54,7 @@ func main() {
 	mon := monitor.NewGameMonitor(*gameID, ops, tracker)
 
 	// Run system tray (blocks until quit; monitor owns its own tick loop)
-	trayApp := tray.NewApp(mon, repo)
+	trayApp := tray.NewApp(tray.NewWalkPlatform(), mon, repo)
 	if err := trayApp.Run(); err != nil {
 		log.Fatalf("System tray error: %v", err)
 	}

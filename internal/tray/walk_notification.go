@@ -8,7 +8,6 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
-	"github.com/rjansen/deathcounter/internal/monitor"
 )
 
 const notificationWindowClass = `DeathCounter_Notification`
@@ -109,10 +108,9 @@ func NewNotificationPopup() (*NotificationPopup, error) {
 	return p, nil
 }
 
-// Show displays the notification popup with the given checkpoint data.
+// Show displays the notification popup with the given pre-formatted text.
 // The popup auto-dismisses after dismissDelayMs milliseconds.
-func (p *NotificationPopup) Show(n monitor.CheckpointNotification) {
-	title, checkpoint, stats := formatCheckpointNotification(n)
+func (p *NotificationPopup) Show(title, checkpoint, stats string) {
 	p.lblTitle.SetText(title)
 	p.lblCheckpoint.SetText(checkpoint)
 	p.lblStats.SetText(stats)

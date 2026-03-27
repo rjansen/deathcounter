@@ -1,20 +1,15 @@
-//go:build windows
-
 package tray
 
 import (
 	"bytes"
+	"image"
 	"image/png"
-
-	"github.com/lxn/walk"
 )
 
-// loadIcon extracts the PNG from the embedded ICO data and creates a walk.Icon.
-func loadIcon() (*walk.Icon, error) {
+// loadIconImage extracts the PNG from the embedded ICO data and returns
+// a stdlib image.Image. The platform implementation converts this to
+// its native icon format.
+func loadIconImage() (image.Image, error) {
 	pngBytes := iconData[iconPNGOffset:]
-	img, err := png.Decode(bytes.NewReader(pngBytes))
-	if err != nil {
-		return nil, err
-	}
-	return walk.NewIconFromImageForDPI(img, 96)
+	return png.Decode(bytes.NewReader(pngBytes))
 }
