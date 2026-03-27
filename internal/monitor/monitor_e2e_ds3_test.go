@@ -122,14 +122,14 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 		tickE2E(t, mon)
 		update = drainUpdate(t, mon)
 		t.Logf("Tick %d: phase=%s, running=%v, status=%q, char=%q",
-			i+1, mon.state.Phase(), rt.running, update.Status, update.CharacterName)
+			i+1, mon.state.Phase(), rt.state.IsRunning(), update.Status, update.CharacterName)
 
-		if rt.running {
+		if rt.state.IsRunning() {
 			break
 		}
 	}
 
-	if !rt.running {
+	if !rt.state.IsRunning() {
 		t.Fatalf("expected tracker to be running after ticks")
 	}
 
