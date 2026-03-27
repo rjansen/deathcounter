@@ -19,6 +19,7 @@ A system tray application that tracks your death count in FromSoftware games by 
 - **Checkpoint Timing**: Records IGT-based checkpoint times and per-segment death counts
 - **Personal Best Tracking**: Automatically tracks and compares against your best checkpoint times
 - **Save File Backup**: Automatically backs up save files at each checkpoint
+- **Checkpoint Achievement Popups**: Displays a topmost notification when a route checkpoint is completed
 - **System Tray Integration**: Runs quietly in the background with easy access
 - **Session Statistics**: Tracks deaths per gaming session
 - **Save Identity Tracking**: Detects character name and save slot for per-character statistics (DS3)
@@ -29,7 +30,7 @@ For a quick start, see [QUICKSTART.md](QUICKSTART.md).
 
 ## Prerequisites
 
-- Windows OS (required for memory reading and lxn/walk GUI)
+- Windows OS (required for memory reading and Windows GUI)
 - One or more supported FromSoftware games installed
 - Go 1.25+ (for building from source)
 
@@ -226,39 +227,26 @@ The app uses the **GoF State pattern**: **GameMonitor** owns the 500ms tick loop
 stateDiagram-v2
     [*] --> detachedState
 
-    detachedState --> attachedState : Attach: FindGame() ok
-    attachedState --> loadedState : Attach: tracker.OnAttach() ok
+    detachedState --> attachedState : FindGame() succeeds
 
-    attachedState --> detachedState : Detach: OnAttach error
-    loadedState --> detachedState : Detach: ErrGameRead<br/>or nil reader
+    attachedState --> loadedState : tracker.OnAttach() succeeds
+    attachedState --> detachedState : tracker.OnAttach() fails
+
+    loadedState --> detachedState : ErrGameRead or nil reader
 
     state detachedState {
-        [*] --> WaitingForGame
-        WaitingForGame : Scanning for game processes
+        [*] --> Scanning
+        Scanning : Scanning for game processes<br/>every 500ms
     }
 
     state attachedState {
         [*] --> InitTracker
-        InitTracker : Loading route definition<br/>(RouteTracker only)
+        InitTracker : Calls tracker.OnAttach()<br/>RouteTracker loads route definition<br/>DeathTracker is a no-op
     }
 
     state loadedState {
         [*] --> Ticking
-        Ticking : tracker.Tick(reader) each 500ms
-
-        state DeathTracker {
-            [*] --> DetectSave_DT
-            DetectSave_DT --> ReadDeaths
-            ReadDeaths : Reading death count<br/>Recording to DB
-        }
-
-        state RouteTracker {
-            [*] --> DetectSave_RT
-            DetectSave_RT --> StartRoute : Save detected
-            StartRoute --> Running : CatchUp succeeds
-            Running --> Running : Tick loop<br/>Reading flags, memory,<br/>inventory, IGT<br/>Recording checkpoints
-            Running --> StartRoute : Save changed<br/>(run abandoned,<br/>restart route)
-        }
+        Ticking : Verifies reader is alive<br/>Calls tracker.Tick(reader) each 500ms<br/>Publishes DisplayUpdate to channel
     }
 ```
 
@@ -270,12 +258,51 @@ stateDiagram-v2
 | `attachedState` | **Attached** | "Attached" | Calls `tracker.OnAttach()` to load game resources |
 | `loadedState` | **Loaded** | "Loaded" | Verifies reader, delegates to `tracker.Tick()`, publishes updates |
 
-#### RouteTracker Internal Status
+## RouteTracker State Machine
 
-| State | Status Text | Description |
-|-------|-------------|-------------|
-| Not running | "Loaded" | Save detection or CatchUp pending |
-| Running | "Tracking route" | Route run active with valid save ID |
+The **RouteTracker** uses a second, independent State pattern nested within the monitor's loaded state. The `trackerState` interface defines two concrete states that manage the route run lifecycle.
+
+```mermaid
+stateDiagram-v2
+    [*] --> routeStoppedState
+
+    routeStoppedState --> routeRunningState : startRouteRun() +<br/>CatchUp() succeeds
+
+    routeRunningState --> routeStoppedState : Save identity changed<br/>(run paused, restart)
+    routeRunningState --> routeStoppedState : OnDetach<br/>(game disconnected,<br/>run paused)
+
+    state routeStoppedState {
+        [*] --> DetectSave
+        DetectSave --> StartRoute : Save detected
+        StartRoute : Attempts startRouteRun() each tick<br/>Creates or resumes run in SQLite<br/>Calls CatchUp to scan pre-existing progress
+    }
+
+    state routeRunningState {
+        [*] --> ActiveTracking
+        ActiveTracking : runner.Tick(reader) each 500ms<br/>Reads event flags, memory values,<br/>inventory items, IGT<br/>Records checkpoints, updates PBs<br/>Triggers save backups<br/>Generates CheckpointNotifications
+    }
+```
+
+#### trackerState Implementations
+
+| State | IsRunning | Status Text | Description |
+|-------|-----------|-------------|-------------|
+| `routeStoppedState` | `false` | "Loaded" | Loads route on attach, detects save, attempts `startRouteRun` each tick |
+| `routeRunningState` | `true` | "Tracking route" | Active checkpoint tracking via `runner.Tick()`, death recording |
+
+## DeathTracker
+
+The **DeathTracker** is the simpler of the two `GameTracker` implementations. It has **no internal state machine** — it performs a straightforward read-and-record cycle each tick:
+
+1. **Best-effort save detection**: Reads character name + save slot (non-blocking, ignores errors)
+2. **Read death count**: Follows pointer chain to the death count value
+   - On `ErrNullPointer` (game still loading): returns a "Loaded" update with no count
+   - On unrecoverable error: returns `ErrGameRead` which triggers Monitor detach
+3. **Record changes**: If the death count changed since last tick, records the new count to SQLite
+4. **Best-effort IGT read**: Reads in-game time if available
+5. **Return DisplayUpdate**: Carries game name, death count, character name, save slot, IGT
+
+The DeathTracker tracks deaths ephemerally — it only maintains the last-seen death count for change detection. All persistence is delegated to the `Repository`.
 
 ## How It Works
 
@@ -360,7 +387,10 @@ deathcounter/
 │   │   ├── state_attached.go       # attachedState: calls tracker.OnAttach
 │   │   ├── state_loaded.go         # loadedState: delegates to tracker.Tick
 │   │   ├── tracker.go              # baseTracker: shared save detection, death recording
-│   │   ├── deathtracker.go         # DeathTracker: simple death counting
+│   │   ├── tracker_state.go        # trackerState interface (RouteTracker states)
+│   │   ├── tracker_state_stopped.go # routeStoppedState: route start/resume
+│   │   ├── tracker_state_running.go # routeRunningState: active checkpoint tracking
+│   │   ├── deathtracker.go         # DeathTracker: stateless death counting
 │   │   └── routetracker.go         # RouteTracker: death counting + route tracking
 │   ├── data/                        # Data persistence layer
 │   │   ├── repository.go           # Repository: SQLite sessions, saves, route runs, PBs
@@ -374,11 +404,14 @@ deathcounter/
 │   │   └── runner.go               # Runner orchestrator (reader + data + backup)
 │   ├── backup/                      # Save file backup
 │   │   └── backup.go               # Timestamped file copy manager
-│   └── tray/                        # System tray UI (lxn/walk NotifyIcon)
-│       ├── tray.go                 # Menu, route progress display, event handling
-│       ├── display.go              # Text formatting for menu items
-│       ├── icon.go                 # Icon loading from embedded PNG
-│       └── icon_data.go            # Generated PNG icon byte data
+│   └── tray/                        # System tray UI (Bridge pattern)
+│       ├── platform.go              # TrayPlatform interface (Bridge abstraction)
+│       ├── app.go                   # Platform-agnostic tray app logic
+│       ├── walk_platform.go         # lxn/walk implementation (Windows only)
+│       ├── walk_notification.go     # Checkpoint achievement popup (Windows only)
+│       ├── display.go               # Text formatting for menu items
+│       ├── icon.go                  # Icon loading (returns image.Image)
+│       └── icon_data.go             # Generated PNG icon byte data
 ├── routes/                          # Route definition files (JSON)
 │   └── ds3/                        # Dark Souls III routes
 │       ├── 01-glitchless-any-percent-e2e.json

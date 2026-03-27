@@ -181,25 +181,52 @@ go mod tidy
      - `recordDeathIfChanged()` — records death count changes to DB
      - `resetOnDetach()` — clears all tracking state on game disconnect
      - Log spam prevention: `saveLoggedOnce` and `loadLoggedOnce` flags
-   - **DeathTracker** (deathtracker.go) — simple death counting, embeds `baseTracker`
+   - **DeathTracker** (deathtracker.go) — stateless death counting, embeds `baseTracker`
+     - No internal state machine; reads death count each tick, records changes to DB
+     - Best-effort save detection and IGT reading
+     - Returns `ErrGameRead` on unrecoverable read failure → triggers Monitor detach
    - **RouteTracker** (routetracker.go) — death counting + route tracking, embeds `baseTracker`
-     - Manages route runner lifecycle, `running` flag for "Tracking route" status
-     - Save change detection: if identity changes mid-run → abandon run, end session, restart route
-   - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and route display
-   - Key files: `monitor.go`, `state.go`, `state_detached.go`, `state_attached.go`, `state_loaded.go`, `tracker.go`, `deathtracker.go`, `routetracker.go`
+     - Uses **State pattern** via `trackerState` interface with two concrete states
+     - Save change detection: if identity changes mid-run → pause run, transition to stopped, restart
+   - **trackerState** interface (tracker_state.go) — GoF State pattern for route lifecycle
+     - `OnAttach(t *RouteTracker, gameID string) error`
+     - `OnDetach(t *RouteTracker)`
+     - `Tick(t *RouteTracker, reader *GameReader) (DisplayUpdate, error)`
+     - `IsRunning() bool`
+   - **routeStoppedState** (tracker_state_stopped.go) — loads route on attach, detects save, attempts startRouteRun each tick
+   - **routeRunningState** (tracker_state_running.go) — active tracking via runner.Tick, checkpoint recording, backup triggers
+   - `DisplayUpdate` struct: carries game name, status, death count, IGT, character name, save slot index, and route display
+   - `RouteDisplay` struct: route name, completion %, checkpoint counts, current checkpoint, segment deaths, `CompletedEvents`
+   - `CheckpointNotification` struct: name, IGT, duration, deaths — drives achievement popup
+   - Key files: `monitor.go`, `state.go`, `state_detached.go`, `state_attached.go`, `state_loaded.go`, `tracker.go`, `tracker_state.go`, `tracker_state_stopped.go`, `tracker_state_running.go`, `deathtracker.go`, `routetracker.go`
 
-7. **internal/tray**: System tray UI (lxn/walk NotifyIcon)
-   - **tray.go**: Main tray app using `lxn/walk` NotifyIcon menu
-   - **display.go**: Extracted text formatting logic (`formatStatusText`, `formatGameText`, `formatCharacterText`, `formatDeathCountText`, `resolveRouteTexts`)
-   - **icon.go**: Icon loading from embedded PNG data via `walk.NewIconFromImageForDPI`
+7. **internal/tray**: System tray UI (Bridge pattern)
+   - **platform.go**: Bridge abstraction — `TrayPlatform` interface composed of 4 ISP sub-interfaces:
+     - `TrayIcon` — icon management (`SetIcon`, `SetTooltip`, `SetVisible`, `SetLeftClickShowsMenu`)
+     - `MenuBuilder` — context menu (`AddMenuItem`, `AddClickableMenuItem`, `SetMenuItemText`, `AddSubmenu`)
+     - `Notifier` — popup notifications (`ShowNotification`)
+     - `Lifecycle` — window lifecycle (`Init`, `RunMessagePump`, `Synchronize`, `Shutdown`)
+   - `MenuItemID` string constants identify menu items across the bridge boundary
+   - **app.go**: Platform-agnostic tray application (no build tag, no walk imports)
+     - `App` struct holds `TrayPlatform`, `monitor.Monitor`, `*data.Repository`
+     - `NewApp(platform, mon, repo)` — constructor with dependency injection
+     - `Run()` — full lifecycle: Init → icon → menu → Start monitor → consume updates → RunMessagePump → onExit
+     - `buildMenu()` — creates menu via `platform.AddMenuItem`/`AddSubmenu`
+     - `refreshDisplay(DisplayUpdate)` — updates menu items via `platform.SetMenuItemText`
+     - `refreshRouteDisplay(*RouteDisplay)` — updates route-specific items
+   - **walk_platform.go**: `WalkPlatform` implementing `TrayPlatform` via lxn/walk (`//go:build windows`)
+     - Holds `*walk.MainWindow`, `*walk.NotifyIcon`, `map[MenuItemID]*walk.Action`
+     - Converts `image.Image` to `*walk.Icon` in `SetIcon`
+     - `Synchronize` delegates to `mainWindow.Synchronize(fn)`
+   - **walk_notification.go**: Checkpoint achievement popup (`//go:build windows`)
+     - Borderless topmost window showing checkpoint name, segment time, deaths
+     - Auto-dismisses after 4 seconds; positioned top-center of primary monitor
+   - **display.go**: Pure text formatting functions (no walk dependency)
+     - `formatStatusText`, `formatGameText`, `formatCharacterText`, `formatDeathCountText`, `resolveRouteTexts`, `formatCheckpointNotification`
+   - **icon.go**: Returns `image.Image` from embedded PNG (no walk dependency, no build tag)
    - **icon_data.go**: Generated ICO/PNG byte data
-   - Displays currently monitored game, character name and save slot
-   - Shows death counts, connection status, route progress
-   - Receives `DisplayUpdate` structs containing optional `RouteDisplay` data
-   - Consumes `DisplayUpdates()` channel from monitor
-   - Provides access to statistics
-   - Graceful shutdown handling
-   - Requires Windows manifest resource (embedded via `rsrc` at build time)
+   - Requires Windows manifest resource (embedded via `rsrc` at build time) for WalkPlatform
+   - Key files: `platform.go`, `app.go`, `walk_platform.go`, `walk_notification.go`, `display.go`
 
 ### Memory Reading Flow
 
@@ -224,18 +251,24 @@ GameMonitor Start (500ms ticker) → state.Tick(m):
   loadedState.Tick    → Attach: verify reader → tracker.Tick(reader) → publish(update)
                       → on ErrGameRead: Detach → setState(detached), publish detached
 
-DisplayUpdate → DisplayUpdates channel → Tray UI
+DisplayUpdate → channel → App goroutine → platform.Synchronize → refreshDisplay:
+  → platform.SetMenuItemText for each menu field
+  → platform.SetTooltip for tooltip
+  → CompletedEvents → platform.ShowNotification per checkpoint
 
 GameTracker.Tick (DeathTracker):
   detectSave() → ReadDeathCount() → recordDeathIfChanged() → return DisplayUpdate
 
 GameTracker.Tick (RouteTracker):
-  detectSave() → save change? → abandon run, restart
-  → startRouteRun() if not running
-  → runner.Tick(reader) → Read Event Flags + Memory Values + Inventory Items
-    → ProcessTick (state machine) → Record Checkpoints → Update PBs
-    → Trigger Save Backup
-  → recordDeathIfChanged() → return DisplayUpdate (with route info)
+  routeStoppedState.Tick:
+    detectSave() → save change? → handleSaveChanged
+    → startRouteRun() → CatchUp → transition to routeRunningState
+  routeRunningState.Tick:
+    detectSave() → save change? → handleSaveChanged → transition to routeStoppedState
+    → runner.Tick(reader) → Read Event Flags + Memory Values + Inventory Items
+      → ProcessTick (state machine) → Record Checkpoints → Update PBs
+      → Trigger Save Backup → Generate CheckpointNotifications
+    → recordDeathIfChanged() → return DisplayUpdate (with route + CompletedEvents)
 ```
 
 ### Route Runner Startup Flow
@@ -245,7 +278,7 @@ When the app detects a matching game, the route runner starts with this sequence
 1. **Game Detection**: `detachedState.Attach()` finds game process → `setState(attachedState)`
 2. **OnAttach**: `attachedState.Attach()` calls `RouteTracker.OnAttach()` → loads route → `setState(loadedState)`
 3. **Save Detection**: `RouteTracker.Tick()` calls `detectSave()` — reads character name + save slot, rejects slot 255, creates save record in DB (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
-4. **Route Start** (`startRouteRun`): Calls `FindLatestRun(routeID, slotIdx, charName)` to find the most recent run by game identity. If found with status `not_started` or `in_progress`, resumes it; otherwise creates a new run in SQLite. Sets `running = true` after successful CatchUp
+4. **Route Start** (`startRouteRun`): Calls `FindLatestRun(routeID, saveID)` to find the most recent run by save identity. If found with status `not_started` or `in_progress`, resumes it; otherwise creates a new run in SQLite. Transitions to `routeRunningState` after successful CatchUp
 5. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable
    - First `ReadEventFlag()` call triggers **lazy AOB initialization** (`initEventFlagPointers`):
      - Scans `.text` section for SprjEventFlagMan, FieldArea, and GameMan AOB patterns
@@ -345,6 +378,32 @@ Each item entry (stride 0x10):
 
 Example (DS3): `PathBases["player_stats"] = "game_data_man"` means `ReadMemoryValue("player_stats", ...)` first resolves GameDataMan via AOB, then applies the `MemoryPaths["player_stats"]` offsets `{0x10}` from that base. This indirection allows multiple paths to share the same AOB-resolved singleton — `player_stats`, `player_game_data`, and `game_data_man` all start from the GameDataMan pointer.
 
+## Design Patterns
+
+### State Pattern — GameMonitor (monitor package)
+- **Problem**: Game monitoring has distinct phases (scanning, attaching, tracking) with different behaviors per phase
+- **Implementation**: `MonitorState` interface with 3 concrete states (`detachedState`, `attachedState`, `loadedState`)
+- **Files**: `state.go`, `state_detached.go`, `state_attached.go`, `state_loaded.go`
+- States mutate the monitor internally via `setState()` — classic GoF State pattern
+
+### State Pattern — RouteTracker (monitor package)
+- **Problem**: Route tracking toggles between "trying to start" and "actively tracking" with different tick behavior
+- **Implementation**: `trackerState` interface with 2 concrete states (`routeStoppedState`, `routeRunningState`)
+- **Files**: `tracker_state.go`, `tracker_state_stopped.go`, `tracker_state_running.go`
+- Nested within Monitor's loaded state — a second independent state machine
+
+### Bridge Pattern — Tray UI (tray package)
+- **Problem**: Tray app logic was directly coupled to `lxn/walk` Windows GUI toolkit, making it impossible to test on macOS/Linux or without a Windows desktop session
+- **Implementation**: `TrayPlatform` interface (composed of 4 ISP sub-interfaces: `TrayIcon`, `MenuBuilder`, `Notifier`, `Lifecycle`) separates the abstraction (`App`) from the implementation (`WalkPlatform`)
+- **Files**: `platform.go` (interfaces), `app.go` (abstraction), `walk_platform.go` (implementation)
+- **Benefit**: `app.go` has zero `lxn/walk` imports; tests use `mockPlatform`; fully cross-platform testable
+
+### Strategy Pattern — GameTracker (monitor package)
+- **Problem**: Two tracking modes (death-only vs route tracking) with shared base behavior (save detection, death recording)
+- **Implementation**: `GameTracker` interface with `DeathTracker` (stateless) and `RouteTracker` (stateful) strategies
+- **Files**: `deathtracker.go`, `routetracker.go`, `tracker.go` (shared `baseTracker`)
+- Selected at startup via `-dc` flag in `main.go`
+
 ## Important Notes
 
 ### Memory Address Configuration
@@ -412,7 +471,10 @@ Other games do not have anti-cheat and work normally.
   - `ds3_offsets_test.go`: Flag constant validation (counts, uniqueness, bit patterns, pinned CT values)
 - **Route integration tests** (`internal/route/`): `route_integration_test.go` validates route file flag IDs against exported `memreader` constants
 - **Monitor tests** (`internal/monitor/`): Uses mock ProcessOps, tests save detection gate, save change handling, display updates
-- **Tray tests** (`internal/tray/`): Display formatting unit tests (`display_test.go`), walk UI tests (`tray_ui_test.go`, requires Windows desktop + manifest)
+- **Tray tests** (`internal/tray/`):
+  - `display_test.go`: Pure text formatting tests (cross-platform)
+  - `app_test.go`: App lifecycle, menu building, display refresh, notification dispatch, channel consumption, stats callbacks — uses `mockPlatform` (cross-platform, no walk dependency)
+  - `tray_ui_test.go`: WalkPlatform integration tests (requires Windows desktop + manifest, `e2e && ui` tags)
 - **E2e tests** (`internal/memreader/`): Cover all 25 DS3 boss defeated flags, 17 encountered flags, and 22 inventory item constants (goods, rings, weapons)
 - Manual testing with actual games recommended for end-to-end validation
 
@@ -424,6 +486,17 @@ Other games do not have anti-cheat and work normally.
 - Concurrency: Main monitoring loop runs in goroutine; system tray blocks main thread
 - Windows API: Use `syscall.LazyDLL` for Windows API access
 - Memory addresses: Store as `int64` for pointer arithmetic
+
+### Quality Gates (Mandatory)
+
+After every code change, run the full quality gate before considering the work complete:
+
+1. `make fmt` — format all Go files
+2. `make vet` — run go vet
+3. `make lint` — run golangci-lint (includes errcheck, unused, etc.)
+4. `make test` — run all unit tests
+
+All four must pass cleanly before committing. Use the `/cc` skill for commits.
 
 ## Common Development Tasks
 
@@ -540,7 +613,7 @@ To expose a new data structure for route checkpoints:
 1. Add model struct to `internal/data/model/model.go` if needed
 2. Modify schema in `internal/data/repository.go` (`initDB`)
 3. Add query methods to `Repository` struct using `dbm.Query`/`dbm.QueryOne`
-4. Update tray menu in `internal/tray/tray.go` to display
+4. Update tray menu in `internal/tray/app.go` to display
 5. Consider adding menu items for new stats
 
 ### Changing Update Interval
