@@ -157,13 +157,22 @@ go mod tidy
    - `ResolveSavePath` expands environment variables and glob patterns
    - Auto-creates backup directory
 
-6. **internal/monitor**: Game monitoring lifecycle (two-level architecture)
-   - **GameMonitor** (monitor.go) — owns the 500ms tick loop, app phases, display update stream, and game attach/detach
-     - `MonitorPhase` enum: `PhaseDetached` → `PhaseAttached` → `PhaseLoaded`
-     - `Monitor` interface: `Start()`, `Stop()`, `DisplayUpdates() <-chan DisplayUpdate`
-     - `Attach()`/`Detach()` manage process discovery and reader lifecycle
-     - Delegates per-tick processing to a `GameTracker` interface
-   - **GameTracker** interface — receives `GameReader` each tick, processes data, returns `DisplayUpdate` synchronously
+6. **internal/monitor**: Game monitoring lifecycle (State pattern)
+   - **GameMonitor** (monitor.go) — owns the 500ms tick loop, display update stream, and `MonitorState`
+     - Delegates each tick to `m.state.Tick(m)` — no inline phase checks
+     - `Monitor` interface: `Start()`, `Stop()`
+     - `setState(s MonitorState)` — transitions the monitor to a new state
+     - `detachReader()` — closes reader without touching state or tracker
+     - `publish(update DisplayUpdate)` — non-blocking display channel send
+   - **MonitorState** interface (state.go) — GoF State pattern, states mutate GameMonitor internally
+     - `Attach(m *GameMonitor) (*GameReader, error)` — state-specific attach logic
+     - `Detach(m *GameMonitor)` — tears down connection, transitions to detached
+     - `Tick(m *GameMonitor) error` — calls Attach, handles errors, delegates to tracker
+     - `Phase() MonitorPhase` — returns phase for display/status
+   - **detachedState** (state_detached.go) — scans for game process via FindGame
+   - **attachedState** (state_attached.go) — calls tracker.OnAttach to load game resources
+   - **loadedState** (state_loaded.go) — verifies reader, delegates to tracker.Tick, publishes updates
+   - **GameTracker** interface — receives GameReader each tick, processes data, returns DisplayUpdate
      - `OnAttach(gameID string) error` — called when game process is first attached
      - `OnDetach()` — called when game process disconnects
      - `Tick(reader *GameReader) (DisplayUpdate, error)` — called each 500ms while loaded
@@ -177,7 +186,7 @@ go mod tidy
      - Manages route runner lifecycle, `running` flag for "Tracking route" status
      - Save change detection: if identity changes mid-run → abandon run, end session, restart route
    - `DisplayUpdate` struct: carries game name, status, death count, character name, save slot index, and route display
-   - Key files: `monitor.go`, `tracker.go`, `deathtracker.go`, `routetracker.go`, `state.go`
+   - Key files: `monitor.go`, `state.go`, `state_detached.go`, `state_attached.go`, `state_loaded.go`, `tracker.go`, `deathtracker.go`, `routetracker.go`
 
 7. **internal/tray**: System tray UI (lxn/walk NotifyIcon)
    - **tray.go**: Main tray app using `lxn/walk` NotifyIcon menu
@@ -209,11 +218,13 @@ Each game has a unique pointer chain that must be followed from the module base 
 ### Data Flow
 
 ```
-GameMonitor Tick (500ms) → Attach() → Phase check:
-  PhaseDetached  → try attach, if failed: wait, continue
-  PhaseAttached  → tracker.OnAttach(gameID) → PhaseLoaded, continue
-  PhaseLoaded    → tracker.Tick(reader) → returns DisplayUpdate
-                   → publish(update) → DisplayUpdates channel → Tray UI
+GameMonitor Start (500ms ticker) → state.Tick(m):
+  detachedState.Tick  → Attach: FindGame → found? setState(attached), return
+  attachedState.Tick  → Attach: tracker.OnAttach → ok? setState(loaded), return
+  loadedState.Tick    → Attach: verify reader → tracker.Tick(reader) → publish(update)
+                      → on ErrGameRead: Detach → setState(detached), publish detached
+
+DisplayUpdate → DisplayUpdates channel → Tray UI
 
 GameTracker.Tick (DeathTracker):
   detectSave() → ReadDeathCount() → recordDeathIfChanged() → return DisplayUpdate
@@ -231,8 +242,8 @@ GameTracker.Tick (RouteTracker):
 
 When the app detects a matching game, the route runner starts with this sequence:
 
-1. **Game Detection**: `GameMonitor.Attach()` detects game process → `PhaseAttached`
-2. **OnAttach**: `RouteTracker.OnAttach()` loads route definition from disk → `PhaseLoaded`
+1. **Game Detection**: `detachedState.Attach()` finds game process → `setState(attachedState)`
+2. **OnAttach**: `attachedState.Attach()` calls `RouteTracker.OnAttach()` → loads route → `setState(loadedState)`
 3. **Save Detection**: `RouteTracker.Tick()` calls `detectSave()` — reads character name + save slot, rejects slot 255, creates save record in DB (retries on `ErrNullPointer` while game loads, logs once to avoid spam)
 4. **Route Start** (`startRouteRun`): Calls `FindLatestRun(routeID, slotIdx, charName)` to find the most recent run by game identity. If found with status `not_started` or `in_progress`, resumes it; otherwise creates a new run in SQLite. Sets `running = true` after successful CatchUp
 5. **CatchUp Loop** (`runner.go:CatchUp`): Retries each tick until event flags are readable

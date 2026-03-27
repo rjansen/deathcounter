@@ -220,29 +220,29 @@ When using `"path": "player_stats"` for Dark Souls III:
 
 ## Monitor State Machine
 
-The app uses a two-level architecture: **GameMonitor** manages the tick loop and game attachment phases, while a **GameTracker** (either `DeathTracker` or `RouteTracker`) processes game data each tick.
+The app uses the **GoF State pattern**: **GameMonitor** owns the 500ms tick loop and delegates each tick to a `MonitorState` interface. Three concrete states (`detachedState`, `attachedState`, `loadedState`) implement `Attach`, `Detach`, and `Tick` — states mutate the monitor internally via `setState()`. A **GameTracker** (either `DeathTracker` or `RouteTracker`) processes game data each tick once the loaded state is reached.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Detached
+    [*] --> detachedState
 
-    Detached --> Attached : Game process found
-    Attached --> Loaded : tracker.OnAttach() succeeds
+    detachedState --> attachedState : Attach: FindGame() ok
+    attachedState --> loadedState : Attach: tracker.OnAttach() ok
 
-    Attached --> Detached : OnAttach error
-    Loaded --> Detached : Process exited<br/>or fatal read error
+    attachedState --> detachedState : Detach: OnAttach error
+    loadedState --> detachedState : Detach: ErrGameRead<br/>or nil reader
 
-    state Detached {
+    state detachedState {
         [*] --> WaitingForGame
         WaitingForGame : Scanning for game processes
     }
 
-    state Attached {
+    state attachedState {
         [*] --> InitTracker
         InitTracker : Loading route definition<br/>(RouteTracker only)
     }
 
-    state Loaded {
+    state loadedState {
         [*] --> Ticking
         Ticking : tracker.Tick(reader) each 500ms
 
@@ -262,13 +262,13 @@ stateDiagram-v2
     }
 ```
 
-#### GameMonitor Phases
+#### MonitorState Implementations
 
-| Phase | Status Text | Description |
-|-------|-------------|-------------|
-| **Detached** | "Waiting for game..." | No game process found |
-| **Attached** | "Attached" | Game process found, OnAttach pending |
-| **Loaded** | "Loaded" | Tracker initialized, receiving ticks |
+| State | Phase | Status Text | Description |
+|-------|-------|-------------|-------------|
+| `detachedState` | **Detached** | "Waiting for game..." | Scans for game process via `FindGame()` |
+| `attachedState` | **Attached** | "Attached" | Calls `tracker.OnAttach()` to load game resources |
+| `loadedState` | **Loaded** | "Loaded" | Verifies reader, delegates to `tracker.Tick()`, publishes updates |
 
 #### RouteTracker Internal Status
 
@@ -353,12 +353,15 @@ deathcounter/
 │   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, item IDs
 │   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
 │   │   └── process_ops_windows.go  # Windows API implementation
-│   ├── monitor/                     # Game monitoring lifecycle (two-level)
-│   │   ├── monitor.go              # GameMonitor: tick loop, phases, attach/detach
+│   ├── monitor/                     # Game monitoring lifecycle (State pattern)
+│   │   ├── monitor.go              # GameMonitor: tick loop, setState, publish
+│   │   ├── state.go                # MonitorState interface, MonitorPhase, DisplayUpdate
+│   │   ├── state_detached.go       # detachedState: scans for game process
+│   │   ├── state_attached.go       # attachedState: calls tracker.OnAttach
+│   │   ├── state_loaded.go         # loadedState: delegates to tracker.Tick
 │   │   ├── tracker.go              # baseTracker: shared save detection, death recording
 │   │   ├── deathtracker.go         # DeathTracker: simple death counting
-│   │   ├── routetracker.go         # RouteTracker: death counting + route tracking
-│   │   └── state.go               # MonitorPhase, DisplayUpdate, RouteDisplay
+│   │   └── routetracker.go         # RouteTracker: death counting + route tracking
 │   ├── data/                        # Data persistence layer
 │   │   ├── repository.go           # Repository: SQLite sessions, saves, route runs, PBs
 │   │   ├── dbm/                    # Generic database mapper (Query, QueryOne, Exec)
