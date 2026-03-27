@@ -62,12 +62,12 @@ func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) {
 }
 
 func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, error) {
-	_, err := t.runner.Tick(reader)
+	events, err := t.runner.Tick(reader)
 	if err != nil {
-		return t.buildUpdate(), err
+		return t.buildUpdate(nil), err
 	}
 	t.recordDeathIfChanged(t.runner.LastDeathCount())
-	return t.buildUpdate(), nil
+	return t.buildUpdate(events), nil
 }
 
 func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
@@ -117,7 +117,7 @@ func (t *RouteTracker) statusText() string {
 	return PhaseLoaded.StatusText()
 }
 
-func (t *RouteTracker) buildUpdate() DisplayUpdate {
+func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate {
 	update := DisplayUpdate{
 		GameName:      t.gameLabel(),
 		Status:        t.statusText(),
@@ -141,6 +141,18 @@ func (t *RouteTracker) buildUpdate() DisplayUpdate {
 			TotalCount:        t.runner.TotalCount(),
 			CurrentCheckpoint: cpName,
 			SegmentDeaths:     t.runner.SegmentDeaths(),
+		}
+		if len(events) > 0 {
+			notifs := make([]CheckpointNotification, len(events))
+			for i, evt := range events {
+				notifs[i] = CheckpointNotification{
+					Name:     evt.Checkpoint.Name,
+					IGT:      evt.IGT,
+					Duration: evt.CheckpointDuration,
+					Deaths:   evt.Deaths,
+				}
+			}
+			update.Route.CompletedEvents = notifs
 		}
 	}
 

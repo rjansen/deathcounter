@@ -46,5 +46,5 @@ func (s *routeStoppedState) Tick(t *RouteTracker, reader *memreader.GameReader) 
 
 	t.startRouteRun(reader)
 
-	return t.buildUpdate(), nil
+	return t.buildUpdate(nil), nil
 }

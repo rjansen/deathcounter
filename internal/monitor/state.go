@@ -65,6 +65,14 @@ type DisplayUpdate struct {
 	Route         *RouteDisplay // nil when no route is active
 }
 
+// CheckpointNotification carries display data for a newly completed checkpoint.
+type CheckpointNotification struct {
+	Name     string
+	IGT      int64  // total IGT at completion (ms)
+	Duration int64  // segment duration (ms)
+	Deaths   uint32 // segment deaths
+}
+
 // RouteDisplay holds route-specific display data.
 // Used as a pointer in DisplayUpdate: nil when no route is active.
 type RouteDisplay struct {
@@ -74,4 +82,5 @@ type RouteDisplay struct {
 	TotalCount        int
 	CurrentCheckpoint string
 	SegmentDeaths     uint32
+	CompletedEvents   []CheckpointNotification // newly completed this tick
 }
