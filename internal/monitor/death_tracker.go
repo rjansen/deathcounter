@@ -36,9 +36,7 @@ func (t *DeathTracker) OnDetach() {
 // Tick performs one monitoring cycle: detect save, read death count.
 func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error) {
 	if err := t.detectSave(reader); err != nil {
-		if errors.Is(err, ErrSaveNotSupported) {
-			// Game doesn't support save detection — continue without it
-		} else if errors.Is(err, ErrSavePending) && !t.saveDetected {
+		if errors.Is(err, ErrSavePending) && !t.saveDetected {
 			// Game data not loaded yet — wait for next tick
 			return DisplayUpdate{
 				GameName:      t.gameLabel(),
@@ -46,7 +44,10 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 				CharacterName: t.currentCharName,
 				SaveSlotIndex: t.currentSlotIdx,
 			}, nil
-		} else {
+		}
+
+		// Game doesn't support save detection — continue without it
+		if !errors.Is(err, ErrSaveNotSupported) {
 			// Save was previously working or unexpected error — game read failure
 			return DisplayUpdate{}, fmt.Errorf("detect save: %w", memreader.ErrGameRead)
 		}
