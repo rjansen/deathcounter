@@ -19,7 +19,7 @@ func requireDS3(t *testing.T, reader *GameReader) {
 // --- Event Flag E2E Tests ---
 
 func TestE2E_ReadEventFlag(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -37,7 +37,7 @@ func TestE2E_ReadEventFlag(t *testing.T) {
 }
 
 func TestE2E_ReadEventFlag_GlobalFlag(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -53,7 +53,7 @@ func TestE2E_ReadEventFlag_GlobalFlag(t *testing.T) {
 }
 
 func TestE2E_ReadEventFlag_Stable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -78,96 +78,40 @@ func TestE2E_ReadEventFlag_Stable(t *testing.T) {
 }
 
 func TestE2E_ReadEventFlag_MultipleBosses(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
 	// Read all 25 boss kill flags to exercise different flag decompositions.
 	// The exact set/unset state depends on the player's save, but all reads should succeed.
-	bosses := []struct {
-		flagID uint32
-		name   string
-	}{
-		// Base game
-		{DS3FlagIudexGundyr, "Iudex Gundyr"},
-		{DS3FlagVordt, "Vordt of the Boreal Valley"},
-		{DS3FlagGreatwood, "Curse-Rotted Greatwood"},
-		{DS3FlagCrystalSage, "Crystal Sage"},
-		{DS3FlagAbyssWatcher, "Abyss Watchers"},
-		{DS3FlagDeacons, "Deacons of the Deep"},
-		{DS3FlagWolnir, "High Lord Wolnir"},
-		{DS3FlagOldDemonKing, "Old Demon King"},
-		{DS3FlagPontiff, "Pontiff Sulyvahn"},
-		{DS3FlagAldrich, "Aldrich, Devourer of Gods"},
-		{DS3FlagYhorm, "Yhorm the Giant"},
-		{DS3FlagDancer, "Dancer of the Boreal Valley"},
-		{DS3FlagOceiros, "Oceiros, the Consumed King"},
-		{DS3FlagChampionGundyr, "Champion Gundyr"},
-		{DS3FlagAncientWyvern, "Ancient Wyvern"},
-		{DS3FlagNamelessKing, "Nameless King"},
-		{DS3FlagDragonslayer, "Dragonslayer Armour"},
-		{DS3FlagTwinPrinces, "Twin Princes"},
-		{DS3FlagSoulOfCinder, "Soul of Cinder"},
-		// DLC
-		{DS3FlagChampionGravetender, "Champion's Gravetender"},
-		{DS3FlagFriede, "Sister Friede"},
-		{DS3FlagDemonPrince, "Demon Prince"},
-		{DS3FlagHalflight, "Halflight, Spear of the Church"},
-		{DS3FlagMidir, "Darkeater Midir"},
-		{DS3FlagGael, "Slave Knight Gael"},
-	}
-
-	for _, boss := range bosses {
-		set, err := reader.ReadEventFlag(boss.flagID)
+	for flagID, name := range DS3BossNames {
+		set, err := reader.ReadEventFlag(flagID)
 		if err != nil {
-			t.Errorf("ReadEventFlag(%d) %s failed: %v", boss.flagID, boss.name, err)
+			t.Errorf("ReadEventFlag(%d) %s failed: %v", flagID, name, err)
 			continue
 		}
-		t.Logf("[DS3] %s (%d): defeated=%v", boss.name, boss.flagID, set)
+		t.Logf("[DS3] %s (%d): defeated=%v", name, flagID, set)
 	}
 }
 
 func TestE2E_ReadEventFlag_AllEncountered(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
 	// Read all 17 encountered flags. All reads should succeed regardless of state.
-	encountered := []struct {
-		flagID uint32
-		name   string
-	}{
-		{DS3FlagIudexGundyrEnc, "Iudex Gundyr Enc"},
-		{DS3FlagVordtEnc, "Vordt Enc"},
-		{DS3FlagGreatwoodEnc, "Greatwood Enc"},
-		{DS3FlagCrystalSageEnc, "Crystal Sage Enc"},
-		{DS3FlagAbyssWatcherEnc, "Abyss Watchers Enc"},
-		{DS3FlagDeaconsEnc, "Deacons Enc"},
-		{DS3FlagWolnirEnc, "Wolnir Enc"},
-		{DS3FlagYhormEnc, "Yhorm Enc"},
-		{DS3FlagOceirosEnc, "Oceiros Enc"},
-		{DS3FlagChampionGundyrEnc, "Champion Gundyr Enc"},
-		{DS3FlagTwinPrincesEnc, "Twin Princes Enc"},
-		{DS3FlagSoulOfCinderEnc, "Soul of Cinder Enc"},
-		{DS3FlagChampionGravetenderEnc, "Champion Gravetender Enc"},
-		{DS3FlagFriedeEnc, "Friede Enc"},
-		{DS3FlagHalflightEnc, "Halflight Enc"},
-		{DS3FlagMidirEnc, "Midir Enc"},
-		{DS3FlagGaelEnc, "Gael Enc"},
-	}
-
-	for _, enc := range encountered {
-		set, err := reader.ReadEventFlag(enc.flagID)
+	for flagID, name := range DS3BossEncounteredNames {
+		set, err := reader.ReadEventFlag(flagID)
 		if err != nil {
-			t.Errorf("ReadEventFlag(%d) %s failed: %v", enc.flagID, enc.name, err)
+			t.Errorf("ReadEventFlag(%d) %s failed: %v", flagID, name, err)
 			continue
 		}
-		t.Logf("[DS3] %s (%d): %v", enc.name, enc.flagID, set)
+		t.Logf("[DS3] %s Enc (%d): %v", name, flagID, set)
 	}
 }
 
 func TestE2E_ReadEventFlag_DefeatedImpliesEncountered(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -215,7 +159,7 @@ func TestE2E_ReadEventFlag_DefeatedImpliesEncountered(t *testing.T) {
 // --- IGT E2E Tests ---
 
 func TestE2E_ReadIGT(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -233,7 +177,7 @@ func TestE2E_ReadIGT(t *testing.T) {
 }
 
 func TestE2E_ReadIGT_Increments(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -265,7 +209,7 @@ func TestE2E_ReadIGT_Increments(t *testing.T) {
 // --- Memory Value E2E Tests ---
 
 func TestE2E_ReadMemoryValue_SoulLevel(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -284,45 +228,31 @@ func TestE2E_ReadMemoryValue_SoulLevel(t *testing.T) {
 }
 
 func TestE2E_ReadMemoryValue_Stats(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	// Read several stat fields to verify pointer chain works for different offsets.
+	// Read all stat fields to verify pointer chain works for different offsets.
 	// Stats are inline on PlayerGameData (verified via Assassin class memory probe).
-	stats := []struct {
-		offset int64
-		name   string
-		min    uint32
-		max    uint32
-	}{
-		{DS3OffsetSoulLevel, "SoulLevel", 1, 900},
-		{DS3OffsetVigor, "Vigor", 1, 99},
-		{DS3OffsetAttunement, "Attunement", 1, 99},
-		{DS3OffsetEndurance, "Endurance", 1, 99},
-		{DS3OffsetVitality, "Vitality", 1, 99},
-		{DS3OffsetStrength, "Strength", 1, 99},
-		{DS3OffsetDexterity, "Dexterity", 1, 99},
-		{DS3OffsetIntelligence, "Intelligence", 1, 99},
-		{DS3OffsetFaith, "Faith", 1, 99},
-		{DS3OffsetLuck, "Luck", 1, 99},
-	}
-
-	for _, s := range stats {
-		val, err := reader.ReadMemoryValue("player_stats", s.offset, 4)
+	for offset, name := range DS3StatNames {
+		maxVal := uint32(99)
+		if offset == DS3OffsetSoulLevel {
+			maxVal = 900
+		}
+		val, err := reader.ReadMemoryValue("player_stats", offset, 4)
 		if err != nil {
-			t.Errorf("ReadMemoryValue(player_stats, 0x%X) %s failed: %v", s.offset, s.name, err)
+			t.Errorf("ReadMemoryValue(player_stats, 0x%X) %s failed: %v", offset, name, err)
 			continue
 		}
-		t.Logf("[DS3] %s: %d", s.name, val)
-		if val < s.min || val > s.max {
-			t.Errorf("%s=%d outside expected range [%d, %d]", s.name, val, s.min, s.max)
+		t.Logf("[DS3] %s: %d", name, val)
+		if val < 1 || val > maxVal {
+			t.Errorf("%s=%d outside expected range [1, %d]", name, val, maxVal)
 		}
 	}
 }
 
 func TestE2E_ReadHollowing(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -340,7 +270,7 @@ func TestE2E_ReadHollowing(t *testing.T) {
 }
 
 func TestE2E_ReadHollowing_Stable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -364,7 +294,7 @@ func TestE2E_ReadHollowing_Stable(t *testing.T) {
 }
 
 func TestE2E_ReadMemoryValue_UnknownPath(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -377,7 +307,7 @@ func TestE2E_ReadMemoryValue_UnknownPath(t *testing.T) {
 // --- AOB Scanning E2E Tests ---
 
 func TestE2E_AOBScan_SprjEventFlagMan(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -411,7 +341,7 @@ func TestE2E_AOBScan_SprjEventFlagMan(t *testing.T) {
 }
 
 func TestE2E_AOBScan_FieldArea(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -433,7 +363,7 @@ func TestE2E_AOBScan_FieldArea(t *testing.T) {
 }
 
 func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -470,7 +400,7 @@ func TestE2E_AOBScan_CachingBehavior(t *testing.T) {
 }
 
 func TestE2E_AOBScan_GameDataMan(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -504,7 +434,7 @@ func TestE2E_AOBScan_GameDataMan(t *testing.T) {
 }
 
 func TestE2E_AOBScan_GameMan(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -537,7 +467,7 @@ func TestE2E_AOBScan_GameMan(t *testing.T) {
 }
 
 func TestE2E_DetachClearsAOBCache(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, ops := skipIfNoGameRunning(t)
 	requireDS3(t, reader)
 
 	// Trigger AOB init
@@ -555,10 +485,12 @@ func TestE2E_DetachClearsAOBCache(t *testing.T) {
 		t.Log("Note: eventFlagInitDone not reset on Detach (AOB cache persists)")
 	}
 
-	err = reader.Attach()
+	// Reattach by finding the game again
+	cfg, proc, err := FindGame(ops, "ds3")
 	if err != nil {
-		t.Fatalf("reattach failed: %v", err)
+		t.Fatalf("reattach FindGame failed: %v", err)
 	}
+	reader = NewGameReader(ops, cfg, proc)
 	defer reader.Detach()
 
 	// Reading should still work after reattach regardless of cache state
@@ -572,7 +504,7 @@ func TestE2E_DetachClearsAOBCache(t *testing.T) {
 // --- Save Identity E2E Tests ---
 
 func TestE2E_ReadCharacterName(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -594,7 +526,7 @@ func TestE2E_ReadCharacterName(t *testing.T) {
 }
 
 func TestE2E_ReadCharacterName_Stable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -618,7 +550,7 @@ func TestE2E_ReadCharacterName_Stable(t *testing.T) {
 }
 
 func TestE2E_ReadSaveSlotIndex(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -636,7 +568,7 @@ func TestE2E_ReadSaveSlotIndex(t *testing.T) {
 }
 
 func TestE2E_ReadSaveSlotIndex_Stable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -660,7 +592,7 @@ func TestE2E_ReadSaveSlotIndex_Stable(t *testing.T) {
 }
 
 func TestE2E_SaveIdentity_Combined(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -688,7 +620,7 @@ func TestE2E_SaveIdentity_Combined(t *testing.T) {
 // --- Integration E2E Tests ---
 
 func TestE2E_FullRouteTick(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -731,7 +663,7 @@ func TestE2E_FullRouteTick(t *testing.T) {
 }
 
 func TestE2E_FullRouteTick_Repeated(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -767,7 +699,7 @@ func TestE2E_FullRouteTick_Repeated(t *testing.T) {
 }
 
 func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -812,7 +744,7 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 // --- Comprehensive Read Test ---
 
 func TestE2E_ReadAllImportantData(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -837,29 +769,20 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	t.Logf("Character Name: %q", name)
 
 	// 3. Player stats via player_game_data path
-	// Stats are inline on PlayerGameData (see ds3_offsets.go for all offsets).
-	stats := []struct {
-		offset int64
-		name   string
-		min    uint32
-		max    uint32
-	}{
-		{DS3OffsetSoulLevel, "SoulLevel", 1, 900},
-		{DS3OffsetVigor, "Vigor", 1, 99},
-		{DS3OffsetEndurance, "Endurance", 1, 99},
-		{DS3OffsetDexterity, "Dexterity", 1, 99},
-	}
-
 	t.Log("Player Stats:")
-	for _, s := range stats {
-		val, err := reader.ReadMemoryValue("player_game_data", s.offset, 4)
+	for offset, statName := range DS3StatNames {
+		maxVal := uint32(99)
+		if offset == DS3OffsetSoulLevel {
+			maxVal = 900
+		}
+		val, err := reader.ReadMemoryValue("player_game_data", offset, 4)
 		if err != nil {
-			t.Errorf("ReadMemoryValue(player_game_data, 0x%X) %s failed: %v", s.offset, s.name, err)
+			t.Errorf("ReadMemoryValue(player_game_data, 0x%X) %s failed: %v", offset, statName, err)
 			continue
 		}
-		t.Logf("  %s: %d", s.name, val)
-		if val < s.min || val > s.max {
-			t.Errorf("%s=%d outside expected range [%d, %d]", s.name, val, s.min, s.max)
+		t.Logf("  %s: %d", statName, val)
+		if val < 1 || val > maxVal {
+			t.Errorf("%s=%d outside expected range [1, %d]", statName, val, maxVal)
 		}
 	}
 
@@ -902,45 +825,12 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	t.Logf("Titanite Shards: %d", titaniteQty)
 
 	// 8. Completed checkpoints (all 25 boss event flags)
-	checkpoints := []struct {
-		flagID uint32
-		name   string
-	}{
-		// Base game
-		{DS3FlagIudexGundyr, "Iudex Gundyr"},
-		{DS3FlagVordt, "Vordt of the Boreal Valley"},
-		{DS3FlagGreatwood, "Curse-Rotted Greatwood"},
-		{DS3FlagCrystalSage, "Crystal Sage"},
-		{DS3FlagAbyssWatcher, "Abyss Watchers"},
-		{DS3FlagDeacons, "Deacons of the Deep"},
-		{DS3FlagWolnir, "High Lord Wolnir"},
-		{DS3FlagOldDemonKing, "Old Demon King"},
-		{DS3FlagPontiff, "Pontiff Sulyvahn"},
-		{DS3FlagAldrich, "Aldrich, Devourer of Gods"},
-		{DS3FlagYhorm, "Yhorm the Giant"},
-		{DS3FlagDancer, "Dancer of the Boreal Valley"},
-		{DS3FlagOceiros, "Oceiros, the Consumed King"},
-		{DS3FlagChampionGundyr, "Champion Gundyr"},
-		{DS3FlagAncientWyvern, "Ancient Wyvern"},
-		{DS3FlagNamelessKing, "Nameless King"},
-		{DS3FlagDragonslayer, "Dragonslayer Armour"},
-		{DS3FlagTwinPrinces, "Twin Princes"},
-		{DS3FlagSoulOfCinder, "Soul of Cinder"},
-		// DLC
-		{DS3FlagChampionGravetender, "Champion's Gravetender"},
-		{DS3FlagFriede, "Sister Friede"},
-		{DS3FlagDemonPrince, "Demon Prince"},
-		{DS3FlagHalflight, "Halflight, Spear of the Church"},
-		{DS3FlagMidir, "Darkeater Midir"},
-		{DS3FlagGael, "Slave Knight Gael"},
-	}
-
 	t.Log("Completed Checkpoints:")
 	completed := 0
-	for _, cp := range checkpoints {
-		set, err := reader.ReadEventFlag(cp.flagID)
+	for flagID, bossName := range DS3BossNames {
+		set, err := reader.ReadEventFlag(flagID)
 		if err != nil {
-			t.Errorf("ReadEventFlag(%d) %s failed: %v", cp.flagID, cp.name, err)
+			t.Errorf("ReadEventFlag(%d) %s failed: %v", flagID, bossName, err)
 			continue
 		}
 		status := "[ ]"
@@ -948,15 +838,15 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 			status = "[x]"
 			completed++
 		}
-		t.Logf("  %s %s", status, cp.name)
+		t.Logf("  %s %s", status, bossName)
 	}
-	t.Logf("Progress: %d/%d bosses defeated", completed, len(checkpoints))
+	t.Logf("Progress: %d/%d bosses defeated", completed, len(DS3BossNames))
 }
 
 // --- Inventory Item Quantity E2E Tests ---
 
 func TestE2E_ReadInventoryItemQuantity(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -976,7 +866,7 @@ func TestE2E_ReadInventoryItemQuantity(t *testing.T) {
 }
 
 func TestE2E_ReadInventoryItemQuantity_NotInInventory(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -993,7 +883,7 @@ func TestE2E_ReadInventoryItemQuantity_NotInInventory(t *testing.T) {
 }
 
 func TestE2E_ReadInventoryItemQuantity_Stable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -1017,56 +907,36 @@ func TestE2E_ReadInventoryItemQuantity_Stable(t *testing.T) {
 }
 
 func TestE2E_ReadInventoryItemQuantity_AllTrackedItems(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
 	// Read all tracked item constants against live game memory.
 	// A successful read (no error) validates the TypeId is correct.
 	// Items not in the current save return (0, nil) which is fine.
-	items := []struct {
-		itemID uint32
-		name   string
-	}{
-		// Goods
-		{DS3ItemEmber, "Ember"},
-		{DS3ItemGoldPineResin, "Gold Pine Resin"},
-		{DS3ItemCarthusRouge, "Carthus Rouge"},
-		{DS3ItemHomewardBone, "Homeward Bone"},
-		{DS3ItemTitaniteShard, "Titanite Shard"},
-		{DS3ItemLargeTitaniteShard, "Large Titanite Shard"},
-		{DS3ItemTitaniteChunk, "Titanite Chunk"},
-		{DS3ItemTitaniteSlab, "Titanite Slab"},
-		{DS3ItemEstusShard, "Estus Shard"},
-		{DS3ItemGraveWardenAshes, "Grave Warden Ashes"},
-		{DS3ItemMorticiansAshes, "Mortician's Ashes"},
-		{DS3ItemSharpGem, "Sharp Gem"},
-		{DS3ItemFirebomb, "Firebomb"},
-		{DS3ItemAshenEstusFlask, "Ashen Estus Flask"},
-		{DS3ItemFarronCoal, "Farron Coal"},
-		// Rings
-		{DS3ItemCovetousSilverSerpentRing, "Covetous Silver Serpent Ring"},
-		{DS3ItemChloranthyRing, "Chloranthy Ring"},
-		{DS3ItemLloydsSwordRing, "Lloyd's Sword Ring"},
-		{DS3ItemPontiffsRightEye, "Pontiff's Right Eye"},
-		// Weapons
-		{DS3ItemSellswordTwinblades, "Sellsword Twinblades"},
-		{DS3ItemDagger, "Dagger"},
-		{DS3ItemShortsword, "Shortsword"},
+	allItems := map[uint32]string{}
+	for id, name := range DS3GoodsNames {
+		allItems[id] = name
+	}
+	for id, name := range DS3RingNames {
+		allItems[id] = name
+	}
+	for id, name := range DS3WeaponNames {
+		allItems[id] = name
 	}
 
-	for _, item := range items {
-		qty, err := reader.ReadInventoryItemQuantity(item.itemID)
+	for itemID, name := range allItems {
+		qty, err := reader.ReadInventoryItemQuantity(itemID)
 		if err != nil {
-			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", item.itemID, item.name, err)
+			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", itemID, name, err)
 			continue
 		}
-		t.Logf("[DS3] %s (0x%X): quantity=%d", item.name, item.itemID, qty)
+		t.Logf("[DS3] %s (0x%X): quantity=%d", name, itemID, qty)
 	}
 }
 
 func TestE2E_ReadInventoryItemQuantity_CountSanity(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
@@ -1109,35 +979,65 @@ func TestE2E_ReadInventoryItemQuantity_CountSanity(t *testing.T) {
 	}
 }
 
-func TestE2E_ReadInventoryItemQuantity_NewItems(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+// --- Bonfire E2E Tests ---
+
+func TestE2E_ReadLastBonfire(t *testing.T) {
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 
-	newItems := []struct {
-		itemID uint32
-		name   string
-	}{
-		{DS3ItemAshenEstusFlask, "Ashen Estus Flask"},
-		{DS3ItemFarronCoal, "Farron Coal"},
-		{DS3ItemDagger, "Dagger"},
-		{DS3ItemShortsword, "Shortsword"},
+	lastBonfire, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
+	if err != nil {
+		t.Fatalf("ReadMemoryValue(game_man, LastBonfire) failed: %v", err)
 	}
 
-	for _, item := range newItems {
-		qty, err := reader.ReadInventoryItemQuantity(item.itemID)
-		if err != nil {
-			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", item.itemID, item.name, err)
-			continue
-		}
-		t.Logf("[DS3] %s (0x%X): quantity=%d", item.name, item.itemID, qty)
+	name, known := DS3BonfireNames[lastBonfire]
+	if !known {
+		t.Logf("[DS3] Last bonfire ID %d is not in DS3BonfireNames (may be DLC or unknown)", lastBonfire)
+	} else {
+		t.Logf("[DS3] Last bonfire: %s (%d)", name, lastBonfire)
 	}
+
+	// Bonfire IDs follow pattern: area (2-4 digits) + index (3 digits), typically > 3000000.
+	if lastBonfire < 3000000 || lastBonfire > 5000000 {
+		t.Errorf("Last bonfire ID %d outside expected range [3000000, 5000000]", lastBonfire)
+	}
+}
+
+func TestE2E_ReadLastBonfire_Stable(t *testing.T) {
+	reader, _ := skipIfNoGameRunning(t)
+	defer reader.Detach()
+	requireDS3(t, reader)
+
+	first, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
+	if err != nil {
+		t.Fatalf("initial ReadMemoryValue(LastBonfire) failed: %v", err)
+	}
+
+	// Read 5 times over 2.5 seconds — should be stable while player is idle.
+	for i := 0; i < 5; i++ {
+		time.Sleep(500 * time.Millisecond)
+		val, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
+		if err != nil {
+			t.Fatalf("ReadMemoryValue(LastBonfire) iteration %d failed: %v", i, err)
+		}
+		if val != first {
+			firstName := DS3BonfireNames[first]
+			newName := DS3BonfireNames[val]
+			t.Logf("bonfire changed from %s (%d) to %s (%d) at iteration %d",
+				firstName, first, newName, val, i)
+			first = val
+		}
+	}
+
+	name := DS3BonfireNames[first]
+	t.Logf("[DS3] Stable last bonfire: %s (%d)", name, first)
 }
 
 // --- Stat Offset Probe ---
 
 func TestE2E_ProbePlayerStatOffsets(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 	requireDS3(t, reader)
 

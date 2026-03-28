@@ -7,18 +7,22 @@ import (
 	"time"
 )
 
-// skipIfNoGameRunning creates a real GameReader and skips the test if no game is running.
-func skipIfNoGameRunning(t *testing.T) *GameReader {
+// skipIfNoGameRunning scans all supported games and returns a reader for the first one found.
+func skipIfNoGameRunning(t *testing.T) (*GameReader, ProcessOps) {
 	t.Helper()
-	reader, err := NewGameReader()
-	if err != nil || !reader.IsAttached() {
-		t.Skipf("No supported game running: %v", err)
+	ops := NewProcessOps()
+	for _, id := range GetSupportedGames() {
+		cfg, proc, err := FindGame(ops, id)
+		if err == nil {
+			return NewGameReader(ops, cfg, proc), ops
+		}
 	}
-	return reader
+	t.Skip("No supported game running")
+	return nil, nil
 }
 
 func TestE2E_AttachToRunningGame(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 
 	if !reader.IsAttached() {
@@ -32,7 +36,7 @@ func TestE2E_AttachToRunningGame(t *testing.T) {
 }
 
 func TestE2E_ReadDeathCount(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 
 	count, err := reader.ReadDeathCount()
@@ -44,7 +48,7 @@ func TestE2E_ReadDeathCount(t *testing.T) {
 }
 
 func TestE2E_ReadDeathCountStable(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 
 	first, err := reader.ReadDeathCount()
@@ -69,9 +73,9 @@ func TestE2E_ReadDeathCountStable(t *testing.T) {
 }
 
 func TestE2E_DetachAndReattach(t *testing.T) {
-	reader := skipIfNoGameRunning(t)
+	reader, ops := skipIfNoGameRunning(t)
 
-	game := reader.GetCurrentGame()
+	gameID := reader.GetCurrentGame()
 	count, err := reader.ReadDeathCount()
 	if err != nil {
 		t.Fatalf("initial ReadDeathCount failed: %v", err)
@@ -82,14 +86,15 @@ func TestE2E_DetachAndReattach(t *testing.T) {
 		t.Error("should not be attached after detach")
 	}
 
-	// Reattach
-	err = reader.Attach()
+	// Reattach by finding the game again
+	cfg, proc, err := FindGame(ops, gameID)
 	if err != nil {
-		t.Fatalf("reattach failed: %v", err)
+		t.Fatalf("reattach FindGame failed: %v", err)
 	}
+	reader = NewGameReader(ops, cfg, proc)
 
-	if reader.GetCurrentGame() != game {
-		t.Errorf("expected same game %q, got %q", game, reader.GetCurrentGame())
+	if reader.GetCurrentGame() != gameID {
+		t.Errorf("expected same game %q, got %q", gameID, reader.GetCurrentGame())
 	}
 
 	newCount, err := reader.ReadDeathCount()
@@ -108,7 +113,7 @@ func TestE2E_MonitorDeathCountChange(t *testing.T) {
 		t.Skip("skipping interactive test in short mode")
 	}
 
-	reader := skipIfNoGameRunning(t)
+	reader, _ := skipIfNoGameRunning(t)
 	defer reader.Detach()
 
 	initial, err := reader.ReadDeathCount()

@@ -7,7 +7,6 @@ import (
 
 	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
-	"github.com/rjansen/deathcounter/internal/route"
 )
 
 // newRealOpsAndAttach creates real ProcessOps, finds DS3, and returns ops + reader.
@@ -33,6 +32,12 @@ func newE2ERepo(t *testing.T) *data.Repository {
 	return repo
 }
 
+// initE2EMonitor initializes the display channel for manual tick-based testing
+// (bypasses Start() which creates a goroutine with a ticker).
+func initE2EMonitor(mon *GameMonitor) {
+	mon.displayCh = make(chan DisplayUpdate, 1)
+}
+
 // tickE2E is a test helper for e2e tests: simulates one Start() loop cycle.
 func tickE2E(t *testing.T, mon *GameMonitor) {
 	t.Helper()
@@ -53,6 +58,7 @@ func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 	reader.Detach()
 
 	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
+	initE2EMonitor(mon)
 
 	// Phase 1: Detached — no game attached yet... but since the process
 	// IS running, Attach will succeed on first tick.
@@ -60,11 +66,15 @@ func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 		t.Errorf("initial phase: got %s, want %s", mon.state.Phase(), PhaseDetached)
 	}
 
-	// Phase 2: First tick → Attach succeeds → PhaseAttached → OnAttach → PhaseLoaded
-	tickE2E(t, mon)
-
+	// Phase 2: Tick through Detached → Attached → Loaded (each tick advances one state)
+	for i := 0; i < 5; i++ {
+		tickE2E(t, mon)
+		if mon.state.Phase() >= PhaseLoaded {
+			break
+		}
+	}
 	if mon.state.Phase() < PhaseLoaded {
-		t.Fatalf("after first tick: got phase %s, want >= Loaded", mon.state.Phase())
+		t.Fatalf("after ticks: got phase %s, want >= Loaded", mon.state.Phase())
 	}
 
 	// Phase 3: Loaded — death count should now be readable on next tick
@@ -99,28 +109,26 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 	// Detach so the monitor starts fresh
 	reader.Detach()
 
-	rt := NewRouteTracker("ds3", "", "", tracker)
+	// Use the actual routes directory (relative to this test's package dir)
+	rt := NewRouteTracker("ds3", "ds3-glitchless-any-percent-e2e", "../../routes", tracker)
 	mon := NewGameMonitor("ds3", ops, rt)
-	// Inject route directly for the e2e test
-	rt.route = &route.Route{
-		ID:   "ds3-e2e-test",
-		Name: "E2E Test Route",
-		Game: "ds3",
-		Checkpoints: []route.Checkpoint{
-			{ID: "iudex", Name: "Iudex Gundyr", EventType: "boss_kill", EventFlagCheck: &route.EventFlagCheck{FlagID: memreader.DS3FlagIudexGundyr}},
-		},
-	}
+	initE2EMonitor(mon)
 
 	// Initial state
 	if mon.state.Phase() != PhaseDetached {
 		t.Errorf("initial phase: got %s, want %s", mon.state.Phase(), PhaseDetached)
 	}
 
-	// Tick until the route is running (max 5 ticks to account for slow save detection)
+	// Tick until the route is running (max 10 ticks to account for state transitions + save detection)
 	var update DisplayUpdate
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		tickE2E(t, mon)
-		update = drainUpdate(t, mon)
+		// Drain update if available (early ticks may not produce one)
+		select {
+		case u := <-mon.displayCh:
+			update = u
+		default:
+		}
 		t.Logf("Tick %d: phase=%s, running=%v, status=%q, char=%q",
 			i+1, mon.state.Phase(), rt.state.IsRunning(), update.Status, update.CharacterName)
 
@@ -133,13 +141,13 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 		t.Fatalf("expected tracker to be running after ticks")
 	}
 
+	// Get a fresh update from a running tick
+	tickE2E(t, mon)
+	update = drainUpdate(t, mon)
+
 	// Verify route is active
 	if update.Route == nil {
 		t.Fatal("expected Route to be non-nil")
-	}
-	routeName := update.Route.RouteName
-	if routeName != "E2E Test Route" {
-		t.Errorf("expected route name 'E2E Test Route', got %q", routeName)
 	}
 
 	if update.Status != "Tracking route" {
@@ -154,8 +162,8 @@ func TestE2E_RouteTracker_PhaseTransitions(t *testing.T) {
 		t.Error("route started but character name is empty")
 	}
 
-	t.Logf("Route running: char=%q (Slot %d), saveID=%d",
-		update.CharacterName, update.SaveSlotIndex, rt.currentSaveID)
+	t.Logf("Route running: route=%q, char=%q (Slot %d), saveID=%d",
+		update.Route.RouteName, update.CharacterName, update.SaveSlotIndex, rt.currentSaveID)
 
 	// One more tick to verify death count is readable in Running phase
 	tickE2E(t, mon)
@@ -185,10 +193,15 @@ func TestE2E_DeathTracker_Slot255NotAccepted(t *testing.T) {
 	reader.Detach()
 	tracker := newE2ETracker(t)
 	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
+	initE2EMonitor(mon)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		tickE2E(t, mon)
-		drainUpdate(t, mon)
+		// Drain update if available (early ticks may not produce one)
+		select {
+		case <-mon.displayCh:
+		default:
+		}
 		dt := deathTracker(mon)
 		if dt.saveDetected {
 			break
@@ -203,6 +216,16 @@ func TestE2E_DeathTracker_Slot255NotAccepted(t *testing.T) {
 		t.Error("tracker accepted slot 255 — should have been rejected")
 	}
 	t.Logf("Tracker detected save with slot %d", dt.currentSlotIdx)
+}
+
+// newE2ETracker creates an in-memory repository for e2e tracker tests.
+func newE2ETracker(t *testing.T) *data.Repository {
+	return newE2ERepo(t)
+}
+
+// deathTracker extracts the DeathTracker from a GameMonitor.
+func deathTracker(mon *GameMonitor) *DeathTracker {
+	return mon.tracker.(*DeathTracker)
 }
 
 // drainUpdate reads one DisplayUpdate from the monitor, failing if none is available.
