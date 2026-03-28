@@ -113,8 +113,8 @@ go mod tidy
    - Checkpoints support three condition types: event flag checks (`event_flag_check`), memory value checks (`mem_check`), and inventory quantity checks (`inventory_check`)
    - `BackupFlagCheck` on checkpoints triggers save backup on boss encounter (before the fight)
    - `MemCheck` supports `gte`, `gt`, `eq` comparisons with configurable read size (1/2/4 bytes)
-   - `InventoryCheck` supports optional `StateVar` for cumulative pickup tracking (only net positive deltas accumulate)
-   - `stateVarData` in Runner tracks per-variable `LastQuantity`, `Accumulated`, and `Dirty` flag for DB persistence
+   - `InventoryCheck` supports optional `StateVar` for cumulative tracking with dot notation: `"name"` or `"name.acquired"` (default) tracks pickups, `"name.consumed"` tracks spending
+   - `stateVarData` in Runner tracks per-variable `LastQuantity`, `Acquired`, `Consumed`, and `Dirty` flag for DB persistence
    - `TickInput` struct carries flags, memory values, inventory values, IGT, and death count per cycle
    - `TickResult` contains separate `Checkpoints` and `Backups` event lists
    - `CatchUp()` detects and logs pre-existing checkpoint completions on route start
@@ -595,7 +595,21 @@ When a game updates and addresses change:
      }
    }
    ```
-   With `state_var`, only net positive inventory changes accumulate — spending items doesn't regress progress. Multiple checkpoints sharing the same `state_var` name track the same cumulative total (must use the same `item_id`). State vars are persisted to SQLite (`route_state_vars` table) each tick.
+   `state_var` uses dot notation: `"embers"` or `"embers.acquired"` tracks cumulative pickups (default), `"embers.consumed"` tracks cumulative spending. Example consumed checkpoint:
+   ```json
+   {
+     "id": "spent-3-embers",
+     "name": "Spent 3 Embers",
+     "event_type": "item_consume",
+     "inventory_check": {
+       "item_id": 1073742324,
+       "comparison": "gte",
+       "value": 3,
+       "state_var": "embers.consumed"
+     }
+   }
+   ```
+   Multiple checkpoints sharing the same `state_var` base name track the same item (must use the same `item_id`). State vars are persisted to SQLite (`route_state_vars` table) each tick.
 4. Add `backup_flag_check` to boss checkpoints for save backup on encounter (before the fight)
 5. Optional checkpoints (`"optional": true`) don't block run completion
 6. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
