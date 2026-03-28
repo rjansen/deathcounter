@@ -6,7 +6,7 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 
 ## Commands
 
-- `make tools` — install rsrc (Windows manifest embedding)
+- `make tools` — install build tools (rsrc, golangci-lint)
 - `make manifest` — embed manifest resource (required before build)
 - `make build` — production build (no console window)
 - `make build-console` — debug build (shows log output)
@@ -14,7 +14,7 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 - `make test` — unit tests (all packages)
 - `make test-e2e` — E2E tests (requires supported game on Windows)
 - `make test-e2e-ds3` — DS3 E2E tests (requires Dark Souls III running)
-- `make test-ui` — Walk tray UI tests (requires Windows desktop + manifest)
+- `make test-e2e-ui` — Walk tray UI tests (requires Windows desktop + manifest)
 - `make fmt` — format code
 - `make vet` — run go vet
 - `make lint` — run golangci-lint

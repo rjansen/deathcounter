@@ -1,4 +1,4 @@
-.PHONY: build run clean test test-ui test-e2e test-e2e-ds3 help manifest manifest-test tools
+.PHONY: build run clean test test-e2e test-e2e-ds3 test-e2e-ui help manifest manifest-test tools
 
 # Embed manifest resource (required by lxn/walk)
 manifest:
@@ -11,6 +11,7 @@ manifest-test:
 # Install build tools
 tools:
 	go install github.com/akavel/rsrc@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 # Build the application
 build: manifest
@@ -30,10 +31,6 @@ run: build-console
 test:
 	go test -count=1 ./internal/...
 
-# Run UI tests — walk-based tray tests (requires Windows desktop session + manifest)
-test-ui: manifest-test
-	go test -tags e2e,ui -v -count=1 ./internal/tray/
-
 # Run E2E tests — game-agnostic only (requires any supported game running on Windows)
 test-e2e:
 	go test -tags e2e -v -count=1 ./internal/memreader/
@@ -42,6 +39,10 @@ test-e2e:
 # Includes game-agnostic + DS3-specific memreader + monitor state machine tests
 test-e2e-ds3:
 	go test -tags e2e,ds3 -v -count=1 ./internal/memreader/ ./internal/monitor/
+
+# Run E2E UI tests — walk-based tray tests (requires Windows desktop session + manifest)
+test-e2e-ui: manifest-test
+	go test -tags e2e,ui -v -count=1 ./internal/tray/
 
 # Clean build artifacts
 clean:
@@ -71,16 +72,16 @@ help:
 	@echo "  make build-console  - Build with console window (for debugging)"
 	@echo "  make run            - Build and run the application"
 	@echo "  make test           - Run tests"
-	@echo "  make test-ui        - Run UI tests: walk tray (requires desktop session)"
 	@echo "  make test-e2e       - Run E2E tests: game-agnostic (any game)"
 	@echo "  make test-e2e-ds3   - Run E2E tests: DS3 (memreader + monitor)"
+	@echo "  make test-e2e-ui    - Run E2E UI tests: walk tray (requires desktop session)"
 	@echo "  make clean          - Remove build artifacts"
 	@echo "  make fmt            - Format code"
 	@echo "  make vet            - Run go vet"
 	@echo "  make lint           - Run linter"
 	@echo "  make deps           - Download and tidy dependencies"
 	@echo "  make manifest       - Embed Windows manifest resource"
-	@echo "  make tools          - Install build tools (rsrc)"
+	@echo "  make tools          - Install build tools (rsrc, golangci-lint)"
 	@echo ""
 	@echo "E2E tag combinations (go test -tags ...):"
 	@echo "  e2e       - Game-agnostic tests (attach, death count)"
