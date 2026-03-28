@@ -120,8 +120,8 @@ The app supports custom speedrun route definitions as JSON files in game-specifi
 ### Included Routes
 
 - **DS3 Glitchless Any% - E2E Route** (`routes/ds3/01-glitchless-any-percent-e2e.json`)
-  - End-to-end test route covering all 25 DS3 bosses
-- **DS3 Glitchless Any% - Hybrid Route v6** (`routes/ds3/02-glitchless-any-percent-hybrid.json`)
+  - End-to-end test route with 32 checkpoints: 13 boss kills, 12 inventory pickups, 5 level-ups, and 2 weapon upgrades
+- **DS3 Glitchless Any% - Hybrid Route v7** (`routes/ds3/02-glitchless-any-percent-hybrid.json`)
   - 18 checkpoints total: 13 required boss kills in hybrid route order
   - 5 optional milestones: DEX 33/38/47 and Sellsword Twinblades +3/+6
 
@@ -168,8 +168,7 @@ Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.
         "state_var": "embers"
       }
     }
-  ],
-  "reference_times": [225000, 500000, 600000]
+  ]
 }
 ```
 
@@ -203,106 +202,11 @@ Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.
 
 #### DS3 Player Stats Offsets
 
-When using `"path": "player_stats"` for Dark Souls III:
+See [Memory Reading](docs/MEMORY_READING.md#ds3-player-stats-offsets) for the full offset table.
 
-| Offset | Stat |
-|--------|------|
-| `0x44` (68) | Soul Level |
-| `0x48` (72) | Attunement |
-| `0x4C` (76) | Endurance |
-| `0x50` (80) | Vigor |
-| `0x54` (84) | Dexterity |
-| `0x58` (88) | Intelligence |
-| `0x5C` (92) | Faith |
-| `0x60` (96) | Luck |
-| `0x6C` (108) | Strength |
-| `0x70` (112) | Vitality |
-| `0xB3` (179) | Max Weapon Reinforcement Level (1 byte) |
+## Internal Architecture
 
-## Monitor State Machine
-
-The app uses the **GoF State pattern**: **GameMonitor** owns the 500ms tick loop and delegates each tick to a `MonitorState` interface. Three concrete states (`detachedState`, `attachedState`, `loadedState`) implement `Attach`, `Detach`, and `Tick` — states mutate the monitor internally via `setState()`. A **GameTracker** (either `DeathTracker` or `RouteTracker`) processes game data each tick once the loaded state is reached.
-
-```mermaid
-stateDiagram-v2
-    [*] --> detachedState
-
-    detachedState --> attachedState : FindGame() succeeds
-
-    attachedState --> loadedState : tracker.OnAttach() succeeds
-    attachedState --> detachedState : tracker.OnAttach() fails
-
-    loadedState --> detachedState : ErrGameRead or nil reader
-
-    state detachedState {
-        [*] --> Scanning
-        Scanning : Scanning for game processes<br/>every 500ms
-    }
-
-    state attachedState {
-        [*] --> InitTracker
-        InitTracker : Calls tracker.OnAttach()<br/>RouteTracker loads route definition<br/>DeathTracker is a no-op
-    }
-
-    state loadedState {
-        [*] --> Ticking
-        Ticking : Verifies reader is alive<br/>Calls tracker.Tick(reader) each 500ms<br/>Publishes DisplayUpdate to channel
-    }
-```
-
-#### MonitorState Implementations
-
-| State | Phase | Status Text | Description |
-|-------|-------|-------------|-------------|
-| `detachedState` | **Detached** | "Waiting for game..." | Scans for game process via `FindGame()` |
-| `attachedState` | **Attached** | "Attached" | Calls `tracker.OnAttach()` to load game resources |
-| `loadedState` | **Loaded** | "Loaded" | Verifies reader, delegates to `tracker.Tick()`, publishes updates |
-
-## RouteTracker State Machine
-
-The **RouteTracker** uses a second, independent State pattern nested within the monitor's loaded state. The `trackerState` interface defines two concrete states that manage the route run lifecycle.
-
-```mermaid
-stateDiagram-v2
-    [*] --> routeStoppedState
-
-    routeStoppedState --> routeRunningState : startRouteRun() +<br/>CatchUp() succeeds
-
-    routeRunningState --> routeStoppedState : Save identity changed<br/>(run paused, restart)
-    routeRunningState --> routeStoppedState : OnDetach<br/>(game disconnected,<br/>run paused)
-
-    state routeStoppedState {
-        [*] --> DetectSave
-        DetectSave --> StartRoute : Save detected
-        StartRoute : Attempts startRouteRun() each tick<br/>Creates or resumes run in SQLite<br/>Calls CatchUp to scan pre-existing progress
-    }
-
-    state routeRunningState {
-        [*] --> ActiveTracking
-        ActiveTracking : runner.Tick(reader) each 500ms<br/>Reads event flags, memory values,<br/>inventory items, IGT<br/>Records checkpoints, updates PBs<br/>Triggers save backups<br/>Generates CheckpointNotifications
-    }
-```
-
-#### trackerState Implementations
-
-| State | IsRunning | Status Text | Description |
-|-------|-----------|-------------|-------------|
-| `routeStoppedState` | `false` | "Loaded" | Loads route on attach, detects save, attempts `startRouteRun` each tick |
-| `routeRunningState` | `true` | "Tracking route" | Active checkpoint tracking via `runner.Tick()`, death recording |
-
-## DeathTracker
-
-The **DeathTracker** is the simpler of the two `GameTracker` implementations. It has **no internal state machine** — it performs a straightforward read-and-record cycle each tick:
-
-1. **Best-effort save detection**: Reads character name + save slot (non-blocking, ignores errors)
-2. **Read death count**: Follows pointer chain to the death count value
-   - On `ErrNullPointer` (game still loading): returns a "Loaded" update with no count
-   - On unrecoverable error: returns `ErrGameRead` which triggers Monitor detach
-3. **Record changes**: If the death count changed since last tick, records the new count to SQLite
-4. **Best-effort IGT read**: Reads in-game time if available
-5. **Return DisplayUpdate**: Carries game name, death count, character name, save slot, IGT
-
-The DeathTracker tracks deaths ephemerally — it only maintains the last-seen death count for change detection. All persistence is delegated to the `Repository`.
+See [Architecture](docs/ARCHITECTURE.md) for state machine diagrams, tracker descriptions, and memory address details.
 
 ## How It Works
 
@@ -319,19 +223,7 @@ This application uses memory addresses discovered and shared by the [DSDeaths pr
 9. **Statistics**: Records each death with timestamp in SQLite database
 10. **Display**: Updates system tray menu with current statistics
 
-### Memory Address Details
-
-Each game stores the death count at different memory locations:
-
-- **Dark Souls PTDE**: `base + 0xF78700 → [+0x5C]`
-- **Dark Souls II (32-bit)**: `base + 0x1150414 → [+0x74] → [+0xB8] → [+0x34] → [+0x4] → [+0x28C] → [+0x100]`
-- **Dark Souls II (64-bit)**: `base + 0x16148F0 → [+0xD0] → [+0x490] → [+0x104]`
-- **Dark Souls III**: `base + 0x47572B8 → [+0x98]`
-- **Dark Souls Remastered**: `base + 0x1C8A530 → [+0x98]`
-- **Sekiro**: `base + 0x3D5AAC0 → [+0x90]`
-- **Elden Ring**: `base + 0x3D5DF38 → [+0x94]`
-
-These addresses are for current game versions as of the DSDeaths project. If a game updates, addresses may need to be updated in `internal/memreader/config.go`.
+For per-game memory address details, see [Architecture — Memory Address Details](docs/ARCHITECTURE.md#memory-address-details).
 
 ## Development
 
@@ -365,63 +257,7 @@ make clean
 
 ## Project Structure
 
-```
-deathcounter/
-├── main.go                          # Application entry point (CLI flags, wiring)
-├── deathcounter.manifest            # Windows application manifest (required by lxn/walk)
-├── cmd/
-│   └── icongen/main.go             # System tray icon generator (ICO format)
-├── internal/
-│   ├── memreader/                   # Windows memory reading
-│   │   ├── config.go               # Game configurations, offsets, AOB patterns
-│   │   ├── reader.go               # Core reader logic (shared/testable)
-│   │   ├── reader_windows.go       # Windows-specific reader (syscall bindings)
-│   │   ├── aob.go                  # AOB pattern scanning + RIP-relative resolution
-│   │   ├── ds3_offsets.go           # DS3 stat offsets, boss flags, item IDs
-│   │   ├── process_ops.go          # ProcessOps interface (platform abstraction)
-│   │   └── process_ops_windows.go  # Windows API implementation
-│   ├── monitor/                     # Game monitoring lifecycle (State pattern)
-│   │   ├── monitor.go              # GameMonitor: tick loop, setState, publish
-│   │   ├── state.go                # MonitorState interface, MonitorPhase, DisplayUpdate
-│   │   ├── state_detached.go       # detachedState: scans for game process
-│   │   ├── state_attached.go       # attachedState: calls tracker.OnAttach
-│   │   ├── state_loaded.go         # loadedState: delegates to tracker.Tick
-│   │   ├── tracker.go              # baseTracker: shared save detection, death recording
-│   │   ├── tracker_state.go        # trackerState interface (RouteTracker states)
-│   │   ├── tracker_state_stopped.go # routeStoppedState: route start/resume
-│   │   ├── tracker_state_running.go # routeRunningState: active checkpoint tracking
-│   │   ├── deathtracker.go         # DeathTracker: stateless death counting
-│   │   └── routetracker.go         # RouteTracker: death counting + route tracking
-│   ├── data/                        # Data persistence layer
-│   │   ├── repository.go           # Repository: SQLite sessions, saves, route runs, PBs
-│   │   ├── dbm/                    # Generic database mapper (Query, QueryOne, Exec)
-│   │   │   └── dbm.go
-│   │   └── model/                  # Database domain models (Save, Session, RouteRun, etc.)
-│   │       └── model.go
-│   ├── route/                       # Speedrun route tracking
-│   │   ├── route.go                # Route/Checkpoint data model + JSON loader
-│   │   ├── state.go                # Run state machine (ProcessTick → TickResult)
-│   │   └── runner.go               # Runner orchestrator (reader + data + backup)
-│   ├── backup/                      # Save file backup
-│   │   └── backup.go               # Timestamped file copy manager
-│   └── tray/                        # System tray UI (Bridge pattern)
-│       ├── platform.go              # TrayPlatform interface (Bridge abstraction)
-│       ├── app.go                   # Platform-agnostic tray app logic
-│       ├── walk_platform.go         # lxn/walk implementation (Windows only)
-│       ├── walk_notification.go     # Checkpoint achievement popup (Windows only)
-│       ├── display.go               # Text formatting for menu items
-│       ├── icon.go                  # Icon loading (returns image.Image)
-│       └── icon_data.go             # Generated PNG icon byte data
-├── routes/                          # Route definition files (JSON)
-│   └── ds3/                        # Dark Souls III routes
-│       ├── 01-glitchless-any-percent-e2e.json
-│       └── 02-glitchless-any-percent-hybrid.json
-├── docs/                            # Documentation
-│   └── speedruns/                  # Speedrun route guides
-├── go.mod                           # Go module definition
-├── Makefile                         # Build commands
-└── README.md                        # This file
-```
+See [Architecture](docs/ARCHITECTURE.md) for detailed component descriptions and file layout.
 
 ## Troubleshooting
 

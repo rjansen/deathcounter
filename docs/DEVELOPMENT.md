@@ -112,8 +112,7 @@ When a game updates and addresses change:
    Multiple checkpoints sharing the same `state_var` base name track the same item (must use the same `item_id`). State vars are persisted to SQLite (`route_state_vars` table) each tick.
 4. Add `backup_flag_check` to boss checkpoints for save backup on encounter (before the fight)
 5. Optional checkpoints (`"optional": true`) don't block run completion
-6. Add `reference_times` array (IGT in ms) matching checkpoint count for comparison splits
-7. Validate by loading the app — invalid routes log errors on startup
+6. Validate by loading the app — invalid routes log errors on startup
 
 ## Adding a Named Memory Path
 

@@ -15,6 +15,24 @@ flagID → decompose: div10M, area, block, div1K, remainder
 
 DS3 boss flag patterns: Defeated flags use suffixes `800`, `830`, `850`, `860`, or `890` (e.g. `13000800`, `13300850`, `13000890`). Encountered flags are typically defeated+1 (e.g. `13000801`), except for `XXX50` variants which use defeated+2 (e.g. `13300852`). 8 of 25 bosses have no known encounter flag (Pontiff, Aldrich, Dancer, Ancient Wyvern, Nameless King, Dragonslayer Armour, Demon Prince, no pattern — omit `backup_flag_check` for these).
 
+## DS3 Player Stats Offsets
+
+When using `"path": "player_stats"` for Dark Souls III route `mem_check` checkpoints:
+
+| Offset | Stat |
+|--------|------|
+| `0x44` (68) | Soul Level |
+| `0x48` (72) | Attunement |
+| `0x4C` (76) | Endurance |
+| `0x50` (80) | Vigor |
+| `0x54` (84) | Dexterity |
+| `0x58` (88) | Intelligence |
+| `0x5C` (92) | Faith |
+| `0x60` (96) | Luck |
+| `0x6C` (108) | Strength |
+| `0x70` (112) | Vitality |
+| `0xB3` (179) | Max Weapon Reinforcement Level (1 byte) |
+
 ## AOB (Array of Bytes) Scanning
 
 AOB scanning dynamically finds game structures at runtime, making the tool more resilient to game updates:

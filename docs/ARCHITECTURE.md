@@ -128,6 +128,105 @@
    - `CheckpointNotification` struct: name, IGT, duration, deaths — drives achievement popup
    - Key files: `monitor.go`, `state.go`, `state_detached.go`, `state_attached.go`, `state_loaded.go`, `tracker.go`, `tracker_state.go`, `tracker_state_stopped.go`, `tracker_state_running.go`, `deathtracker.go`, `routetracker.go`
 
+### Monitor State Machine
+
+The app uses the **GoF State pattern**: **GameMonitor** owns the 500ms tick loop and delegates each tick to a `MonitorState` interface. Three concrete states (`detachedState`, `attachedState`, `loadedState`) implement `Attach`, `Detach`, and `Tick` — states mutate the monitor internally via `setState()`. A **GameTracker** (either `DeathTracker` or `RouteTracker`) processes game data each tick once the loaded state is reached.
+
+```mermaid
+stateDiagram-v2
+    [*] --> detachedState
+
+    detachedState --> attachedState : FindGame() succeeds
+
+    attachedState --> loadedState : tracker.OnAttach() succeeds
+    attachedState --> detachedState : tracker.OnAttach() fails
+
+    loadedState --> detachedState : ErrGameRead or nil reader
+
+    state detachedState {
+        [*] --> Scanning
+        Scanning : Scanning for game processes<br/>every 500ms
+    }
+
+    state attachedState {
+        [*] --> InitTracker
+        InitTracker : Calls tracker.OnAttach()<br/>RouteTracker loads route definition<br/>DeathTracker is a no-op
+    }
+
+    state loadedState {
+        [*] --> Ticking
+        Ticking : Verifies reader is alive<br/>Calls tracker.Tick(reader) each 500ms<br/>Publishes DisplayUpdate to channel
+    }
+```
+
+#### MonitorState Implementations
+
+| State | Phase | Status Text | Description |
+|-------|-------|-------------|-------------|
+| `detachedState` | **Detached** | "Waiting for game..." | Scans for game process via `FindGame()` |
+| `attachedState` | **Attached** | "Attached" | Calls `tracker.OnAttach()` to load game resources |
+| `loadedState` | **Loaded** | "Loaded" | Verifies reader, delegates to `tracker.Tick()`, publishes updates |
+
+### RouteTracker State Machine
+
+The **RouteTracker** uses a second, independent State pattern nested within the monitor's loaded state. The `trackerState` interface defines two concrete states that manage the route run lifecycle.
+
+```mermaid
+stateDiagram-v2
+    [*] --> routeStoppedState
+
+    routeStoppedState --> routeRunningState : startRouteRun() +<br/>CatchUp() succeeds
+
+    routeRunningState --> routeStoppedState : Save identity changed<br/>(run paused, restart)
+    routeRunningState --> routeStoppedState : OnDetach<br/>(game disconnected,<br/>run paused)
+
+    state routeStoppedState {
+        [*] --> DetectSave
+        DetectSave --> StartRoute : Save detected
+        StartRoute : Attempts startRouteRun() each tick<br/>Creates or resumes run in SQLite<br/>Calls CatchUp to scan pre-existing progress
+    }
+
+    state routeRunningState {
+        [*] --> ActiveTracking
+        ActiveTracking : runner.Tick(reader) each 500ms<br/>Reads event flags, memory values,<br/>inventory items, IGT<br/>Records checkpoints, updates PBs<br/>Triggers save backups<br/>Generates CheckpointNotifications
+    }
+```
+
+#### trackerState Implementations
+
+| State | IsRunning | Status Text | Description |
+|-------|-----------|-------------|-------------|
+| `routeStoppedState` | `false` | "Loaded" | Loads route on attach, detects save, attempts `startRouteRun` each tick |
+| `routeRunningState` | `true` | "Tracking route" | Active checkpoint tracking via `runner.Tick()`, death recording |
+
+### DeathTracker
+
+The **DeathTracker** is the simpler of the two `GameTracker` implementations. It has **no internal state machine** — it performs a straightforward read-and-record cycle each tick:
+
+1. **Best-effort save detection**: Reads character name + save slot (non-blocking, ignores errors)
+2. **Read death count**: Follows pointer chain to the death count value
+   - On `ErrNullPointer` (game still loading): returns a "Loaded" update with no count
+   - On unrecoverable error: returns `ErrGameRead` which triggers Monitor detach
+3. **Record changes**: If the death count changed since last tick, records the new count to SQLite
+4. **Best-effort IGT read**: Reads in-game time if available
+5. **Return DisplayUpdate**: Carries game name, death count, character name, save slot, IGT
+
+The DeathTracker tracks deaths ephemerally — it only maintains the last-seen death count for change detection. All persistence is delegated to the `Repository`.
+
+### Memory Address Details
+
+Each game stores the death count at different memory locations:
+
+- **Dark Souls PTDE**: `base + 0xF78700 → [+0x5C]`
+- **Dark Souls II (32-bit)**: `base + 0x1150414 → [+0x74] → [+0xB8] → [+0x34] → [+0x4] → [+0x28C] → [+0x100]`
+- **Dark Souls II (64-bit)**: `base + 0x16148F0 → [+0xD0] → [+0x490] → [+0x104]`
+- **Dark Souls III**: `base + 0x47572B8 → [+0x98]`
+- **Dark Souls Remastered**: `base + 0x1C8A530 → [+0x98]`
+- **Sekiro**: `base + 0x3D5AAC0 → [+0x90]`
+- **Elden Ring**: `base + 0x3D5DF38 → [+0x94]`
+
+These addresses are for current game versions as of the DSDeaths project. If a game updates, addresses may need to be updated in `internal/memreader/config.go`.
+
 7. **internal/tray**: System tray UI (Bridge pattern)
    - **platform.go**: Bridge abstraction — `TrayPlatform` interface composed of 4 ISP sub-interfaces:
      - `TrayIcon` — icon management (`SetIcon`, `SetTooltip`, `SetVisible`, `SetLeftClickShowsMenu`)

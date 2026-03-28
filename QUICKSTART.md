@@ -83,7 +83,7 @@ The app can track your progress through a speedrun route, recording split times 
 ### Using the Included Routes
 
 Two DS3 routes are included in the `routes/ds3/` directory:
-- **E2E route**: End-to-end test route covering all 25 DS3 bosses
+- **E2E route**: End-to-end test route with 32 checkpoints covering boss kills, inventory pickups, level-ups, and weapon upgrades
 - **Hybrid route**: 13 required boss kills + 5 optional milestones (DEX levels, weapon upgrades)
 
 The default route loads automatically when you start the app. Use `-route=<routeID>` to select a specific route, or `-dc` for death counter only mode.
@@ -104,8 +104,7 @@ Place a JSON file in `routes/<game>/` (e.g. `routes/ds3/my-route.json`). Each ch
      "event_flag_check": {"flag_id": 13000800}},
     {"id": "dex-30", "name": "DEX 30", "event_type": "level_up", "optional": true,
      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 30, "size": 4}}
-  ],
-  "reference_times": [225000, 500000]
+  ]
 }
 ```
 
