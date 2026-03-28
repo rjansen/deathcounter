@@ -20,11 +20,12 @@ type GameReader interface {
 	ReadDeathCount() (uint32, error)
 }
 
-// stateVarData tracks cumulative inventory pickup counts.
+// stateVarData tracks cumulative inventory acquired and consumed counts.
 type stateVarData struct {
 	ItemID       uint32
 	LastQuantity uint32
-	Accumulated  uint32
+	Acquired     uint32
+	Consumed     uint32
 	Initialized  bool
 	Dirty        bool
 }
@@ -100,7 +101,7 @@ func (r *Runner) initStateVars() {
 		if cp.InventoryCheck == nil || cp.InventoryCheck.StateVar == "" {
 			continue
 		}
-		name := cp.InventoryCheck.StateVar
+		name, _ := parseStateVar(cp.InventoryCheck.StateVar)
 		if _, exists := r.stateVars[name]; !exists {
 			r.stateVars[name] = &stateVarData{
 				ItemID: cp.InventoryCheck.ItemID,
@@ -118,7 +119,8 @@ func (r *Runner) initStateVars() {
 		for _, row := range rows {
 			if sv, ok := r.stateVars[row.VarName]; ok {
 				sv.LastQuantity = row.LastQuantity
-				sv.Accumulated = row.Accumulated
+				sv.Acquired = row.Acquired
+				sv.Consumed = row.Consumed
 				sv.Initialized = true
 			}
 		}
@@ -218,14 +220,19 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			checkQty := qty
 			// Initialize state_var with current quantity as seed
 			if cp.InventoryCheck.StateVar != "" {
-				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok && !sv.Initialized {
+				name, field := parseStateVar(cp.InventoryCheck.StateVar)
+				if sv, ok := r.stateVars[name]; ok && !sv.Initialized {
 					sv.LastQuantity = qty
-					sv.Accumulated = qty
+					sv.Acquired = qty
 					sv.Initialized = true
 					sv.Dirty = true
 				}
-				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok {
-					checkQty = sv.Accumulated
+				if sv, ok := r.stateVars[name]; ok {
+					if field == "consumed" {
+						checkQty = sv.Consumed // consumed starts at 0 — won't auto-complete
+					} else {
+						checkQty = sv.Acquired
+					}
 				}
 			}
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
@@ -314,11 +321,14 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 		}
 		if !sv.Initialized {
 			sv.LastQuantity = qty
-			sv.Accumulated = qty
+			sv.Acquired = qty
 			sv.Initialized = true
 			sv.Dirty = true
 		} else if qty > sv.LastQuantity {
-			sv.Accumulated += qty - sv.LastQuantity
+			sv.Acquired += qty - sv.LastQuantity
+			sv.Dirty = true
+		} else if qty < sv.LastQuantity {
+			sv.Consumed += sv.LastQuantity - qty
 			sv.Dirty = true
 		}
 		sv.LastQuantity = qty
@@ -375,8 +385,13 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 		// Inventory item quantity checkpoint
 		if cp.InventoryCheck != nil {
 			if cp.InventoryCheck.StateVar != "" {
-				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok {
-					input.InventoryValues[cp.ID] = sv.Accumulated
+				name, field := parseStateVar(cp.InventoryCheck.StateVar)
+				if sv, ok := r.stateVars[name]; ok {
+					if field == "consumed" {
+						input.InventoryValues[cp.ID] = sv.Consumed
+					} else {
+						input.InventoryValues[cp.ID] = sv.Acquired
+					}
 				}
 			} else {
 				qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
@@ -450,7 +465,7 @@ func (r *Runner) persistDirtyStateVars() {
 		if !sv.Dirty {
 			continue
 		}
-		if err := r.repo.SaveStateVar(r.runID, name, sv.ItemID, sv.LastQuantity, sv.Accumulated); err != nil {
+		if err := r.repo.SaveStateVar(r.runID, name, sv.ItemID, sv.LastQuantity, sv.Acquired, sv.Consumed); err != nil {
 			log.Printf("[Route] Failed to save state var %s: %v", name, err)
 		}
 		sv.Dirty = false

@@ -14,6 +14,17 @@ import (
 
 var validStateVarName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
+// parseStateVar splits a state_var string into its variable name and field.
+// "embers" → ("embers", "acquired")
+// "embers.acquired" → ("embers", "acquired")
+// "embers.consumed" → ("embers", "consumed")
+func parseStateVar(sv string) (name, field string) {
+	if i := strings.LastIndex(sv, "."); i >= 0 {
+		return sv[:i], sv[i+1:]
+	}
+	return sv, "acquired"
+}
+
 // Route defines a speedrun route with ordered checkpoints.
 type Route struct {
 	ID          string       `json:"id"`
@@ -200,17 +211,21 @@ func (r *Route) validate() error {
 	}
 
 	// Validate state_var: same name must map to same item_id
-	stateVarItems := make(map[string]uint32) // state_var name → item_id
+	stateVarItems := make(map[string]uint32) // state_var base name → item_id
 	for i, cp := range r.Checkpoints {
 		if cp.InventoryCheck == nil || cp.InventoryCheck.StateVar == "" {
 			continue
 		}
-		name := strings.TrimSpace(cp.InventoryCheck.StateVar)
-		if name == "" {
+		raw := strings.TrimSpace(cp.InventoryCheck.StateVar)
+		if raw == "" {
 			return fmt.Errorf("checkpoint %d (%s): state_var is empty after trim", i, cp.ID)
 		}
+		name, field := parseStateVar(raw)
 		if !validStateVarName.MatchString(name) {
-			return fmt.Errorf("checkpoint %d (%s): state_var %q must be alphanumeric/underscores", i, cp.ID, name)
+			return fmt.Errorf("checkpoint %d (%s): state_var name %q must be alphanumeric/underscores", i, cp.ID, name)
+		}
+		if field != "acquired" && field != "consumed" {
+			return fmt.Errorf("checkpoint %d (%s): state_var field %q must be \"acquired\" or \"consumed\"", i, cp.ID, field)
 		}
 		if existing, ok := stateVarItems[name]; ok {
 			if existing != cp.InventoryCheck.ItemID {

@@ -82,5 +82,6 @@ type RouteStateVar struct {
 	VarName      string `db:"var_name"`
 	ItemID       uint32 `db:"item_id"`
 	LastQuantity uint32 `db:"last_quantity"`
-	Accumulated  uint32 `db:"accumulated"`
+	Acquired     uint32 `db:"acquired"`
+	Consumed     uint32 `db:"consumed"`
 }
