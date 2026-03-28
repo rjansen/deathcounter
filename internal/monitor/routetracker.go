@@ -80,13 +80,13 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
 		return err
 	}
 	if isStatusIn(run.Status, route.RunNotStarted, route.RunInProgress, route.RunPaused) {
-		if err := t.runner.Resume(run.ID, 0); err != nil {
-			log.Printf("[Route] Failed to resume run %d: %v", run.ID, err)
-		} else {
+		if err := t.runner.Resume(run.ID, 0); err == nil {
 			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
 			t.setTrackerState(&routeRunningState{})
 			return nil
 		}
+
+		log.Printf("[Route] Failed to resume run %d: %v", run.ID, err)
 	}
 
 	// No resumable run found (or resume failed) → start fresh
