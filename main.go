@@ -30,24 +30,27 @@ func main() {
 		log.Fatalf("Unknown game %q", *gameID)
 	}
 
-	// Initialize data repository
-	repo, err := data.NewRepository("deathcounter.db")
-	if err != nil {
-		log.Fatalf("Failed to initialize data repository: %v", err)
-	}
-	defer repo.Close()
-
 	// Create platform-specific process operations
 	ops := memreader.NewProcessOps()
 
 	// Choose tracker based on flags
-	var tracker monitor.GameTracker
-	if !*dcOnly {
+	var (
+		tracker monitor.GameTracker
+		repo    *data.Repository
+	)
+	if *dcOnly {
+		tracker = monitor.NewDeathTracker(*gameID)
+		log.Printf("Death counter mode for game %q", *gameID)
+	} else {
+		var err error
+		repo, err = data.NewRepository("deathcounter.db")
+		if err != nil {
+			log.Fatalf("Failed to initialize data repository: %v", err)
+		}
+		defer repo.Close()
+
 		tracker = monitor.NewRouteTracker(*gameID, *routeID, "routes", repo)
 		log.Printf("Route mode: will load route %q for game %q after attach", *routeID, *gameID)
-	} else {
-		tracker = monitor.NewDeathTracker(*gameID, repo)
-		log.Printf("Death counter mode for game %q", *gameID)
 	}
 
 	// Create monitor with the chosen tracker
