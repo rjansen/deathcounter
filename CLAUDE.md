@@ -36,6 +36,7 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 
 ## Code Style
 
+- File naming: always use `snake_case` for Go source files and other filenames (e.g. `route_tracker.go`, not `routetracker.go`)
 - Error handling: always propagate, wrap, or assert errors — never discard with `_ =` (see [Development](docs/DEVELOPMENT.md#error-handling))
 - Logging: use `log` package for console output (visible with `build-console`)
 - Windows API: use `syscall.LazyDLL`; memory addresses stored as `int64`
