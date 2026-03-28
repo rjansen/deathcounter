@@ -254,24 +254,22 @@ func (r *Runner) RestoreFromDB() error {
 	if err != nil {
 		return fmt.Errorf("failed to restore from DB: %w", err)
 	}
-	// Build name lookup from route checkpoints
-	nameOf := make(map[string]string, len(r.route.Checkpoints))
-	for _, cp := range r.route.Checkpoints {
-		nameOf[cp.ID] = cp.Name
+	// Build checkpoint lookup from route
+	cpByID := make(map[string]*Checkpoint, len(r.route.Checkpoints))
+	for i := range r.route.Checkpoints {
+		cpByID[r.route.Checkpoints[i].ID] = &r.route.Checkpoints[i]
 	}
 	for _, id := range ids {
 		r.state.CompletedFlags[id] = true
-		name := nameOf[id]
-		if name == "" {
-			name = id
+		name := id
+		if cp, ok := cpByID[id]; ok {
+			name = cp.Name
+			// Mark backup as done for completed checkpoints that have a backup flag
+			if cp.BackupFlagCheck != nil {
+				r.state.BackupDone[cp.ID] = true
+			}
 		}
 		log.Printf("[Route] Restored from DB: %s", name)
-	}
-	// Mark backup as done for completed checkpoints that have a backup flag
-	for _, cp := range r.route.Checkpoints {
-		if cp.BackupFlagCheck != nil && r.state.CompletedFlags[cp.ID] {
-			r.state.BackupDone[cp.ID] = true
-		}
 	}
 	return nil
 }
