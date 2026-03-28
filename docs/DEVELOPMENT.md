@@ -146,6 +146,11 @@ Example for Dark Souls III: `[]int64{0x47572B8, 0x98}`
 
 Longer chains (like DS2) follow the same pattern with more steps.
 
+## Error Handling
+
+- **Production code**: always propagate errors with context (`fmt.Errorf("context: %w", err)`) or return directly; never discard with `_ =`
+- **Tests**: every error-returning call must be asserted — use `if err != nil { t.Fatalf(...) }` for unexpected errors, or `if !errors.Is(err, expected) { t.Errorf(...) }` for expected ones; never ignore returned errors
+
 ## Building on macOS/Linux
 
 While you can write code on any platform, the application can only be built and run on Windows. Cross-compilation from macOS/Linux is possible:

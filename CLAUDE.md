@@ -36,7 +36,7 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 
 ## Code Style
 
-- Error handling: always propagate with context (wrap with `fmt.Errorf` or return directly)
+- Error handling: always propagate, wrap, or assert errors — never discard with `_ =` (see [Development](docs/DEVELOPMENT.md#error-handling))
 - Logging: use `log` package for console output (visible with `build-console`)
 - Windows API: use `syscall.LazyDLL`; memory addresses stored as `int64`
 - Concurrency: monitor loop in goroutine, tray blocks main thread, `DisplayUpdate` via channel
