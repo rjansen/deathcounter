@@ -444,11 +444,11 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 		Name: "Mixed Route",
 		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}, BackupFlagCheck: &EventFlagCheck{FlagID: 101}},
 			{
 				ID: "level10", Name: "Level 10", EventType: "level_up", Optional: true,
 				MemCheck: &MemCheck{Path: "player_stats", Offset: 0x10, Comparison: "gte", Value: 10, Size: 4},
 			},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}, BackupFlagCheck: &EventFlagCheck{FlagID: 101}},
 			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 200}, BackupFlagCheck: &EventFlagCheck{FlagID: 201}},
 		},
 	}
@@ -462,6 +462,8 @@ func TestRunner_Tick_MemCheckNullPointerSkipsWithoutBlockingFlags(t *testing.T) 
 	reader.igt = 60000
 	reader.deathCount = 2
 
+	// Active window: [level10 (optional), boss1 (current required)]
+	// level10 mem read fails (ErrNullPointer), boss1 flag read succeeds
 	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -577,12 +579,12 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 		Name: "Inventory Null Route",
 		Game: "ds3",
 		Checkpoints: []Checkpoint{
-			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
 			{
 				ID: "shards-5", Name: "5 Titanite Shards", EventType: "item_pickup",
 				InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5},
 				Optional:       true,
 			},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
 		},
 	}
 	reader := newMockGameReader()
@@ -593,6 +595,8 @@ func TestRunner_Tick_InventoryCheckNullPointer(t *testing.T) {
 	reader.invErr = memreader.ErrNullPointer
 	reader.igt = 60000
 
+	// Active window: [shards-5 (optional), boss1 (current required)]
+	// Inventory read fails (ErrNullPointer), boss1 flag read succeeds
 	events, err := runner.Tick(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -748,20 +752,47 @@ func TestStateVar_MixedWithRawInventory(t *testing.T) {
 	runner := NewRunner(r, repo, nil)
 	_ = runner.Start(0, 0)
 
+	// Tick 1: embers-3 is current required, shards-5 is next (not in active window)
+	// embers accumulated=2 < 3, not triggered
 	reader.invQuantities[0x400001F4] = 2 // embers (state_var)
-	reader.invQuantities[0x400003E8] = 5 // shards (raw)
+	reader.invQuantities[0x400003E8] = 5 // shards (raw) — not read yet
 	reader.igt = 10000
 
 	events, err := runner.Tick(reader)
 	if err != nil {
-		t.Fatalf("tick: %v", err)
+		t.Fatalf("tick 1: %v", err)
 	}
-	// shards-5 should trigger (raw qty 5 >= 5), embers-3 should not (accumulated 2 < 3)
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events (embers < 3), got %d", len(events))
+	}
+
+	// Tick 2: pick up more embers, embers-3 triggers
+	reader.invQuantities[0x400001F4] = 3
+	reader.igt = 20000
+
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
 	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
+		t.Fatalf("tick 2: expected 1 event (embers-3), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "embers-3" {
+		t.Errorf("tick 2: expected embers-3, got %s", events[0].Checkpoint.ID)
+	}
+
+	// Tick 3: shards-5 is now current required and in active window
+	reader.igt = 30000
+
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 3: expected 1 event (shards-5), got %d", len(events))
 	}
 	if events[0].Checkpoint.ID != "shards-5" {
-		t.Errorf("expected shards-5, got %s", events[0].Checkpoint.ID)
+		t.Errorf("tick 3: expected shards-5, got %s", events[0].Checkpoint.ID)
 	}
 }
 
@@ -955,11 +986,11 @@ func TestRestoreFromDB(t *testing.T) {
 	}
 }
 
-func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
+func TestRunner_ResumeWithoutCatchUp(t *testing.T) {
 	repo := newTestRepo(t)
 	r := &Route{
-		ID:   "test-catchup-resume",
-		Name: "CatchUp Resume Route",
+		ID:   "test-resume-no-catchup",
+		Name: "Resume No CatchUp Route",
 		Game: "ds3",
 		Checkpoints: []Checkpoint{
 			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
@@ -974,7 +1005,7 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Resume the run (RestoreFromDB marks boss1 as completed)
+	// Resume the run (RestoreFromDB marks boss1 as completed, no CatchUp needed)
 	reader := newMockGameReader()
 	runner := NewRunner(r, repo, nil)
 	if err := runner.Resume(run.ID, 5); err != nil {
@@ -984,26 +1015,25 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 		t.Fatal("expected boss1 to be completed after Resume")
 	}
 
-	// Set boss1 flag in memory (still set) and boss2 flag (newly completed)
-	reader.flags[100] = true // boss1 — already restored from DB
-	reader.flags[200] = true // boss2 — newly completed in memory
+	// boss2 is now the current checkpoint — set its flag in memory
+	reader.flags[200] = true
+	reader.igt = 120000
+	reader.deathCount = 8
 
-	if err := runner.CatchUp(reader); err != nil {
-		t.Fatalf("CatchUp: %v", err)
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("Tick: %v", err)
 	}
-
-	// boss2 should be caught up
-	if !runner.state.CompletedFlags["boss2"] {
-		t.Error("expected boss2 to be completed after CatchUp")
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (boss2), got %d", len(events))
 	}
-	// boss3 should NOT be completed
-	if runner.state.CompletedFlags["boss3"] {
-		t.Error("expected boss3 to NOT be completed")
+	if events[0].Checkpoint.ID != "boss2" {
+		t.Errorf("expected boss2, got %s", events[0].Checkpoint.ID)
 	}
 
 	// Verify boss1 was NOT re-recorded in DB (should still have exactly 1 record)
 	var count int
-	err := repo.DB().QueryRow(
+	err = repo.DB().QueryRow(
 		"SELECT COUNT(*) FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
 		run.ID,
 	).Scan(&count)
@@ -1011,20 +1041,12 @@ func TestRunner_CatchUp_SkipsDBRestoredCheckpoints(t *testing.T) {
 		t.Fatalf("query: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("expected exactly 1 boss1 record, got %d (CatchUp duplicated a DB-restored checkpoint)", count)
+		t.Errorf("expected exactly 1 boss1 record, got %d", count)
 	}
 
-	// Verify boss2 was recorded by CatchUp (with IGT=0 since it's a catch-up)
-	var igtMs int64
-	err = repo.DB().QueryRow(
-		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss2'",
-		run.ID,
-	).Scan(&igtMs)
-	if err != nil {
-		t.Fatalf("query boss2: %v", err)
-	}
-	if igtMs != 0 {
-		t.Errorf("expected IGT=0 for caught-up boss2, got %d", igtMs)
+	// boss3 should NOT be completed
+	if runner.state.CompletedFlags["boss3"] {
+		t.Error("expected boss3 to NOT be completed")
 	}
 }
 
@@ -1121,5 +1143,74 @@ func TestRunner_Resume(t *testing.T) {
 	}
 	if events[0].Checkpoint.ID != "boss2" {
 		t.Errorf("expected boss2, got %s", events[0].Checkpoint.ID)
+	}
+}
+
+func TestRunner_Tick_OnlyReadsActiveWindow(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-active-window",
+		Name: "Active Window Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 200}},
+			{ID: "boss3", Name: "Boss 3", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 300}},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Set flags for boss1, boss2, and boss3 all at once
+	reader.flags[100] = true
+	reader.flags[200] = true
+	reader.flags[300] = true
+	reader.igt = 60000
+	reader.deathCount = 3
+
+	// Tick 1: only boss1 is in active window → only boss1 completes
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 1: expected 1 event (boss1 only), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss1" {
+		t.Errorf("tick 1: expected boss1, got %s", events[0].Checkpoint.ID)
+	}
+
+	// Tick 2: boss2 is now current → boss2 completes
+	reader.igt = 120000
+	reader.deathCount = 5
+
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 2: expected 1 event (boss2 only), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss2" {
+		t.Errorf("tick 2: expected boss2, got %s", events[0].Checkpoint.ID)
+	}
+
+	// Tick 3: boss3 is now current → boss3 completes, run done
+	reader.igt = 180000
+	reader.deathCount = 7
+
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 3: expected 1 event (boss3 only), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss3" {
+		t.Errorf("tick 3: expected boss3, got %s", events[0].Checkpoint.ID)
+	}
+	if runner.IsActive() {
+		t.Error("expected runner to be inactive after all checkpoints completed")
 	}
 }

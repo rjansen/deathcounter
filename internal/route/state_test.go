@@ -596,3 +596,78 @@ func TestProcessTick_BackupOnEncounter(t *testing.T) {
 		t.Errorf("got %d backup events on kill, want 0 (already triggered)", len(result.Backups))
 	}
 }
+
+func TestActiveCheckpoints(t *testing.T) {
+	rs := NewRunState(testRoute())
+	rs.Start()
+
+	active := rs.ActiveCheckpoints()
+	if len(active) != 1 {
+		t.Fatalf("got %d active, want 1", len(active))
+	}
+	if active[0].ID != "boss1" {
+		t.Errorf("got %q, want boss1", active[0].ID)
+	}
+}
+
+func TestActiveCheckpoints_WithOptionals(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "opt1", Name: "Optional 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 5000}, Optional: true},
+			{ID: "opt2", Name: "Optional 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 6000}, Optional: true},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+			{ID: "opt3", Name: "Optional 3", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 7000}, Optional: true},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	active := rs.ActiveCheckpoints()
+	// Should include opt1, opt2, boss1 but NOT opt3 or boss2
+	if len(active) != 3 {
+		t.Fatalf("got %d active, want 3", len(active))
+	}
+	if active[0].ID != "opt1" {
+		t.Errorf("active[0]: got %q, want opt1", active[0].ID)
+	}
+	if active[1].ID != "opt2" {
+		t.Errorf("active[1]: got %q, want opt2", active[1].ID)
+	}
+	if active[2].ID != "boss1" {
+		t.Errorf("active[2]: got %q, want boss1", active[2].ID)
+	}
+}
+
+func TestActiveCheckpoints_AllCompleted(t *testing.T) {
+	rs := NewRunState(testRoute())
+	rs.Start()
+	rs.CompletedFlags["boss1"] = true
+	rs.CompletedFlags["boss2"] = true
+	rs.CompletedFlags["boss3"] = true
+
+	active := rs.ActiveCheckpoints()
+	if len(active) != 0 {
+		t.Errorf("got %d active, want 0", len(active))
+	}
+}
+
+func TestActiveCheckpoints_AdvancesAfterCompletion(t *testing.T) {
+	rs := NewRunState(testRoute())
+	rs.Start()
+
+	// Complete boss1
+	rs.CompletedFlags["boss1"] = true
+
+	active := rs.ActiveCheckpoints()
+	if len(active) != 1 {
+		t.Fatalf("got %d active, want 1", len(active))
+	}
+	if active[0].ID != "boss2" {
+		t.Errorf("got %q, want boss2", active[0].ID)
+	}
+}
