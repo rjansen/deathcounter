@@ -175,15 +175,6 @@ func (r *Runner) TotalCount() int {
 	return len(r.route.Checkpoints)
 }
 
-// SegmentDeaths returns the deaths for the current segment toward the next checkpoint.
-func (r *Runner) SegmentDeaths() uint32 {
-	cp := r.CurrentCheckpoint()
-	if cp == nil {
-		return 0
-	}
-	return r.state.CheckpointDeaths[cp.ID]
-}
-
 // CatchUp scans all checkpoint flags and marks any that are already set as completed.
 // Returns nil when the scan completes, or an error if flag reading isn't ready yet (caller retries).
 // Only CatchUp and Tick may read game data via the reader parameter.
@@ -206,7 +197,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -238,7 +229,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -432,7 +423,7 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 	for _, evt := range result.Checkpoints {
 		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
 		if err := r.repo.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
-			evt.IGT, evt.CheckpointDuration, evt.Deaths); err != nil {
+			evt.IGT, evt.CheckpointDuration); err != nil {
 			log.Printf("Failed to record checkpoint: %v", err)
 		}
 
