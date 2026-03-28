@@ -15,12 +15,12 @@ const (
 
 // RunState tracks the progress of a single route run.
 type RunState struct {
-	Route           *Route
-	Status          RunStatus
-	StartTime       time.Time
-	CompletedFlags  map[string]bool  // checkpoint ID -> done
-	BackupDone      map[string]bool  // checkpoint ID -> backup already triggered
-	CheckpointTimes map[string]int64 // checkpoint ID -> IGT ms
+	Route                *Route
+	Status               RunStatus
+	StartTime            time.Time
+	CompletedFlags       map[string]bool  // checkpoint ID -> done
+	BackupDone           map[string]bool  // checkpoint ID -> backup already triggered
+	CheckpointTimes      map[string]int64 // checkpoint ID -> IGT ms
 	LastDeathCount       uint32
 	LastCheckpointDeaths uint32
 	LastIGT              int64
