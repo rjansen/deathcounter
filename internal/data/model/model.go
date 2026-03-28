@@ -62,7 +62,6 @@ type RouteCheckpoint struct {
 	CheckpointName       string    `db:"checkpoint_name"`
 	IGTMs                int64     `db:"igt_ms"`
 	CheckpointDurationMs int64     `db:"checkpoint_duration_ms"`
-	Deaths               uint32    `db:"deaths"`
 	CompletedAt          time.Time `db:"completed_at"`
 }
 
