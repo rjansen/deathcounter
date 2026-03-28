@@ -136,7 +136,6 @@ func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate
 			CompletedCount:    t.runner.CompletedCount(),
 			TotalCount:        t.runner.TotalCount(),
 			CurrentCheckpoint: cpName,
-			SegmentDeaths:     t.runner.SegmentDeaths(),
 		}
 		if len(events) > 0 {
 			notifs := make([]CheckpointNotification, len(events))
@@ -145,7 +144,6 @@ func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate
 					Name:     evt.Checkpoint.Name,
 					IGT:      evt.IGT,
 					Duration: evt.CheckpointDuration,
-					Deaths:   evt.Deaths,
 				}
 			}
 			update.Route.CompletedEvents = notifs
