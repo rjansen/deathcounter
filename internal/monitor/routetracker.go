@@ -80,7 +80,8 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
 		return err
 	}
 	if isStatusIn(run.Status, route.RunNotStarted, route.RunInProgress, route.RunPaused) {
-		if err := t.runner.Resume(run.ID, 0); err == nil {
+		err := t.runner.Resume(run.ID, 0)
+		if err == nil {
 			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
 			t.setTrackerState(&routeRunningState{})
 			return nil
@@ -96,11 +97,11 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
 		return err
 	}
 	log.Printf("[Route] Started route: %s", t.route.Name)
-	if err := t.runner.CatchUp(reader); err == nil {
-		t.setTrackerState(&routeRunningState{})
-	} else {
+	if err := t.runner.CatchUp(reader); err != nil {
 		t.runner = nil
+		return nil
 	}
+	t.setTrackerState(&routeRunningState{})
 	return nil
 }
 
