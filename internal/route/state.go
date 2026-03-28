@@ -222,6 +222,23 @@ func compareValue(actual uint32, comparison string, target uint32) bool {
 	return false
 }
 
+// ActiveCheckpoints returns the checkpoints that should be read this tick:
+// all uncompleted optional checkpoints before the current required checkpoint,
+// plus the current required checkpoint itself.
+func (rs *RunState) ActiveCheckpoints() []Checkpoint {
+	var active []Checkpoint
+	for _, cp := range rs.Route.Checkpoints {
+		if rs.CompletedFlags[cp.ID] {
+			continue
+		}
+		active = append(active, cp)
+		if !cp.Optional {
+			break
+		}
+	}
+	return active
+}
+
 // IsComplete returns true when all required checkpoints are done.
 func (rs *RunState) IsComplete() bool {
 	for _, cp := range rs.Route.Checkpoints {

@@ -295,17 +295,38 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 		deathCount = r.state.LastDeathCount
 	}
 
-	// Build tick input by reading all unfinished checkpoint conditions
+	// Build tick input by reading only the active checkpoint window
 	input := TickInput{
 		Flags:           make(map[uint32]bool),
 		MemValues:       make(map[string]uint32),
 		InventoryValues: make(map[string]uint32),
 		DeathCount:      deathCount,
 	}
-	stateVarUpdated := make(map[string]bool) // track which state vars already processed this tick
 
-	for _, cp := range r.route.Checkpoints {
-		// Read backup flag even if checkpoint is already completed
+	// Update ALL state vars regardless of active window (cumulative tracking)
+	for name, sv := range r.stateVars {
+		qty, err := reader.ReadInventoryItemQuantity(sv.ItemID)
+		if err != nil {
+			if !errors.Is(err, memreader.ErrNullPointer) {
+				return nil, fmt.Errorf("read inventory for state var %s: %w", name, memreader.ErrGameRead)
+			}
+			continue
+		}
+		if !sv.Initialized {
+			sv.LastQuantity = qty
+			sv.Accumulated = qty
+			sv.Initialized = true
+			sv.Dirty = true
+		} else if qty > sv.LastQuantity {
+			sv.Accumulated += qty - sv.LastQuantity
+			sv.Dirty = true
+		}
+		sv.LastQuantity = qty
+	}
+
+	// Read conditions only for the active checkpoint window
+	for _, cp := range r.state.ActiveCheckpoints() {
+		// Read backup flag for active checkpoints
 		if cp.BackupFlagCheck != nil && !r.state.BackupDone[cp.ID] {
 			bfID := cp.BackupFlagCheck.FlagID
 			if _, exists := input.Flags[bfID]; !exists {
@@ -314,15 +335,10 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 					if !errors.Is(err, memreader.ErrNullPointer) {
 						return nil, fmt.Errorf("read backup flag %d: %w", bfID, memreader.ErrGameRead)
 					}
-					// ErrNullPointer: skip this backup flag for now
 				} else {
 					input.Flags[bfID] = flagSet
 				}
 			}
-		}
-
-		if r.state.CompletedFlags[cp.ID] {
-			continue
 		}
 
 		// Flag-based checkpoint
@@ -334,7 +350,6 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 					if !errors.Is(err, memreader.ErrNullPointer) {
 						return nil, fmt.Errorf("read event flag %d: %w", efID, memreader.ErrGameRead)
 					}
-					// ErrNullPointer: skip this checkpoint for now
 					continue
 				}
 				input.Flags[efID] = flagSet
@@ -352,7 +367,6 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 				if !errors.Is(err, memreader.ErrNullPointer) {
 					return nil, fmt.Errorf("read memory value for %s: %w", cp.ID, memreader.ErrGameRead)
 				}
-				// ErrNullPointer: skip this checkpoint for now
 				continue
 			}
 			input.MemValues[cp.ID] = val
@@ -361,30 +375,9 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 		// Inventory item quantity checkpoint
 		if cp.InventoryCheck != nil {
 			if cp.InventoryCheck.StateVar != "" {
-				svName := cp.InventoryCheck.StateVar
-				sv := r.stateVars[svName]
-				// Only read and accumulate once per state_var per tick
-				if !stateVarUpdated[svName] {
-					qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
-					if err != nil {
-						if !errors.Is(err, memreader.ErrNullPointer) {
-							return nil, fmt.Errorf("read inventory for %s: %w", cp.ID, memreader.ErrGameRead)
-						}
-						continue
-					}
-					if !sv.Initialized {
-						sv.LastQuantity = qty
-						sv.Accumulated = qty
-						sv.Initialized = true
-						sv.Dirty = true
-					} else if qty > sv.LastQuantity {
-						sv.Accumulated += qty - sv.LastQuantity
-						sv.Dirty = true
-					}
-					sv.LastQuantity = qty
-					stateVarUpdated[svName] = true
+				if sv, ok := r.stateVars[cp.InventoryCheck.StateVar]; ok {
+					input.InventoryValues[cp.ID] = sv.Accumulated
 				}
-				input.InventoryValues[cp.ID] = sv.Accumulated
 			} else {
 				qty, err := reader.ReadInventoryItemQuantity(cp.InventoryCheck.ItemID)
 				if err != nil {

@@ -87,11 +87,7 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 			log.Printf("[Route] Failed to resume run %d: %v", run.ID, err)
 		} else {
 			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
-			if err := t.runner.CatchUp(reader); err == nil {
-				t.setTrackerState(&routeRunningState{})
-			} else {
-				t.runner = nil
-			}
+			t.setTrackerState(&routeRunningState{})
 			return
 		}
 	}
