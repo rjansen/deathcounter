@@ -59,7 +59,7 @@ func (w *WalkPlatform) Synchronize(fn func()) {
 
 func (w *WalkPlatform) Shutdown() {
 	if w.ni != nil {
-		w.ni.Dispose()
+		_ = w.ni.Dispose()
 	}
 	if w.mainWindow != nil {
 		w.mainWindow.Close()
@@ -100,25 +100,34 @@ func (w *WalkPlatform) SetLeftClickShowsMenu(enabled bool) {
 
 func (w *WalkPlatform) AddMenuItem(id MenuItemID, text string, enabled bool) error {
 	action := walk.NewAction()
-	action.SetText(text)
-	action.SetEnabled(enabled)
-	w.ni.ContextMenu().Actions().Add(action)
+	if err := action.SetText(text); err != nil {
+		return err
+	}
+	if err := action.SetEnabled(enabled); err != nil {
+		return err
+	}
+	if err := w.ni.ContextMenu().Actions().Add(action); err != nil {
+		return err
+	}
 	w.actions[id] = action
 	return nil
 }
 
 func (w *WalkPlatform) AddClickableMenuItem(id MenuItemID, text string, onClick func()) error {
 	action := walk.NewAction()
-	action.SetText(text)
+	if err := action.SetText(text); err != nil {
+		return err
+	}
 	action.Triggered().Attach(onClick)
-	w.ni.ContextMenu().Actions().Add(action)
+	if err := w.ni.ContextMenu().Actions().Add(action); err != nil {
+		return err
+	}
 	w.actions[id] = action
 	return nil
 }
 
 func (w *WalkPlatform) AddSeparator() error {
-	w.ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
-	return nil
+	return w.ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
 }
 
 func (w *WalkPlatform) AddSubmenu(text string) (SubMenu, error) {
@@ -130,7 +139,9 @@ func (w *WalkPlatform) AddSubmenu(text string) (SubMenu, error) {
 	if err != nil {
 		return nil, err
 	}
-	action.SetText(text)
+	if err := action.SetText(text); err != nil {
+		return nil, err
+	}
 	return &walkSubMenu{menu: menu, actions: w.actions}, nil
 }
 
@@ -143,7 +154,7 @@ func (w *WalkPlatform) SetMenuItemText(id MenuItemID, text string) error {
 
 func (w *WalkPlatform) SetMenuItemEnabled(id MenuItemID, enabled bool) error {
 	if action, ok := w.actions[id]; ok {
-		action.SetEnabled(enabled)
+		return action.SetEnabled(enabled)
 	}
 	return nil
 }
@@ -167,9 +178,13 @@ type walkSubMenu struct {
 
 func (s *walkSubMenu) AddMenuItem(id MenuItemID, text string, onClick func()) error {
 	action := walk.NewAction()
-	action.SetText(text)
+	if err := action.SetText(text); err != nil {
+		return err
+	}
 	action.Triggered().Attach(onClick)
-	s.menu.Actions().Add(action)
+	if err := s.menu.Actions().Add(action); err != nil {
+		return err
+	}
 	s.actions[id] = action
 	return nil
 }

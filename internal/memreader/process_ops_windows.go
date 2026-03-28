@@ -63,7 +63,7 @@ func (w *windowsProcessOps) FindProcessByName(name string) (uint32, error) {
 	if snapshot == 0 {
 		return 0, fmt.Errorf("CreateToolhelp32Snapshot failed: %v", err)
 	}
-	defer procCloseHandle.Call(snapshot)
+	defer func() { _, _, _ = procCloseHandle.Call(snapshot) }()
 
 	var pe processEntry32
 	pe.Size = uint32(unsafe.Sizeof(pe))
@@ -96,7 +96,7 @@ func (w *windowsProcessOps) GetModuleBaseAddress(pid uint32, moduleName string) 
 	if snapshot == 0 {
 		return 0, fmt.Errorf("CreateToolhelp32Snapshot failed: %v", err)
 	}
-	defer procCloseHandle.Call(snapshot)
+	defer func() { _, _, _ = procCloseHandle.Call(snapshot) }()
 
 	var me moduleEntry32
 	me.Size = uint32(unsafe.Sizeof(me))

@@ -65,8 +65,12 @@ func NewNotificationPopup() (*NotificationPopup, error) {
 
 	// Layout
 	layout := walk.NewVBoxLayout()
-	layout.SetMargins(walk.Margins{HNear: 12, VNear: 8, HFar: 12, VFar: 8})
-	layout.SetSpacing(2)
+	if err := layout.SetMargins(walk.Margins{HNear: 12, VNear: 8, HFar: 12, VFar: 8}); err != nil {
+		return nil, err
+	}
+	if err := layout.SetSpacing(2); err != nil {
+		return nil, err
+	}
 	if err := p.SetLayout(layout); err != nil {
 		return nil, err
 	}
@@ -111,9 +115,9 @@ func NewNotificationPopup() (*NotificationPopup, error) {
 // Show displays the notification popup with the given pre-formatted text.
 // The popup auto-dismisses after dismissDelayMs milliseconds.
 func (p *NotificationPopup) Show(title, checkpoint, stats string) {
-	p.lblTitle.SetText(title)
-	p.lblCheckpoint.SetText(checkpoint)
-	p.lblStats.SetText(stats)
+	_ = p.lblTitle.SetText(title)
+	_ = p.lblCheckpoint.SetText(checkpoint)
+	_ = p.lblStats.SetText(stats)
 
 	// Position at top-center of the primary monitor's work area
 	x, y := p.centerTop()
