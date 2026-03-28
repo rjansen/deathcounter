@@ -639,11 +639,11 @@ func TestStateVar_Accumulation(t *testing.T) {
 	if len(events) != 0 {
 		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
 	}
-	if runner.stateVars["embers"].Accumulated != 2 {
-		t.Errorf("tick 1: expected accumulated=2, got %d", runner.stateVars["embers"].Accumulated)
+	if runner.stateVars["embers"].Acquired != 2 {
+		t.Errorf("tick 1: expected acquired=2, got %d", runner.stateVars["embers"].Acquired)
 	}
 
-	// Tick 2: spend 1 ember (qty drops to 1, accumulated stays 2)
+	// Tick 2: spend 1 ember (qty drops to 1, acquired stays 2, consumed=1)
 	reader.invQuantities[0x400001F4] = 1
 	reader.igt = 20000
 	events, err = runner.Tick(reader)
@@ -653,11 +653,14 @@ func TestStateVar_Accumulation(t *testing.T) {
 	if len(events) != 0 {
 		t.Fatalf("tick 2: expected 0 events, got %d", len(events))
 	}
-	if runner.stateVars["embers"].Accumulated != 2 {
-		t.Errorf("tick 2: expected accumulated=2, got %d", runner.stateVars["embers"].Accumulated)
+	if runner.stateVars["embers"].Acquired != 2 {
+		t.Errorf("tick 2: expected acquired=2, got %d", runner.stateVars["embers"].Acquired)
+	}
+	if runner.stateVars["embers"].Consumed != 1 {
+		t.Errorf("tick 2: expected consumed=1, got %d", runner.stateVars["embers"].Consumed)
 	}
 
-	// Tick 3: pick up 3 more (qty goes 1→4, delta=+3, accumulated=2+3=5)
+	// Tick 3: pick up 3 more (qty goes 1→4, delta=+3, acquired=2+3=5)
 	reader.invQuantities[0x400001F4] = 4
 	reader.igt = 30000
 	events, err = runner.Tick(reader)
@@ -665,10 +668,10 @@ func TestStateVar_Accumulation(t *testing.T) {
 		t.Fatalf("tick 3: %v", err)
 	}
 	if len(events) != 1 {
-		t.Fatalf("tick 3: expected 1 event (gte 4 met with accumulated=5), got %d", len(events))
+		t.Fatalf("tick 3: expected 1 event (gte 4 met with acquired=5), got %d", len(events))
 	}
-	if runner.stateVars["embers"].Accumulated != 5 {
-		t.Errorf("tick 3: expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	if runner.stateVars["embers"].Acquired != 5 {
+		t.Errorf("tick 3: expected acquired=5, got %d", runner.stateVars["embers"].Acquired)
 	}
 }
 
@@ -726,8 +729,8 @@ func TestStateVar_SharedAcrossCheckpoints(t *testing.T) {
 	if events[0].Checkpoint.ID != "embers-4" {
 		t.Errorf("tick 3: expected embers-4, got %s", events[0].Checkpoint.ID)
 	}
-	if runner.stateVars["embers"].Accumulated != 5 {
-		t.Errorf("expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	if runner.stateVars["embers"].Acquired != 5 {
+		t.Errorf("expected acquired=5, got %d", runner.stateVars["embers"].Acquired)
 	}
 }
 
@@ -828,8 +831,8 @@ func TestStateVar_CatchUp(t *testing.T) {
 	if runner.state.CompletedFlags["embers-10"] {
 		t.Error("expected embers-10 to NOT be completed in catchup")
 	}
-	if runner.stateVars["embers"].Accumulated != 5 {
-		t.Errorf("expected accumulated=5, got %d", runner.stateVars["embers"].Accumulated)
+	if runner.stateVars["embers"].Acquired != 5 {
+		t.Errorf("expected acquired=5, got %d", runner.stateVars["embers"].Acquired)
 	}
 }
 
@@ -868,8 +871,8 @@ func TestStateVar_Persistence(t *testing.T) {
 	if rows[0].VarName != "embers" {
 		t.Errorf("expected var_name 'embers', got %q", rows[0].VarName)
 	}
-	if rows[0].Accumulated != 3 {
-		t.Errorf("expected accumulated 3, got %d", rows[0].Accumulated)
+	if rows[0].Acquired != 3 {
+		t.Errorf("expected acquired 3, got %d", rows[0].Acquired)
 	}
 	if rows[0].LastQuantity != 3 {
 		t.Errorf("expected last_quantity 3, got %d", rows[0].LastQuantity)
@@ -1212,5 +1215,121 @@ func TestRunner_Tick_OnlyReadsActiveWindow(t *testing.T) {
 	}
 	if runner.IsActive() {
 		t.Error("expected runner to be inactive after all checkpoints completed")
+	}
+}
+
+func TestStateVar_ConsumedTracking(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-sv-consumed",
+		Name: "Consumed Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "spent-3-embers", Name: "Spent 3 Embers", EventType: "item_consume",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 3, StateVar: "embers.consumed"},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Tick 1: pick up 5 embers (initialize)
+	reader.invQuantities[0x400001F4] = 5
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
+	}
+	if runner.stateVars["embers"].Acquired != 5 {
+		t.Errorf("tick 1: expected acquired=5, got %d", runner.stateVars["embers"].Acquired)
+	}
+	if runner.stateVars["embers"].Consumed != 0 {
+		t.Errorf("tick 1: expected consumed=0, got %d", runner.stateVars["embers"].Consumed)
+	}
+
+	// Tick 2: spend 2 embers (qty 5→3)
+	reader.invQuantities[0x400001F4] = 3
+	reader.igt = 20000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 2: expected 0 events (consumed=2 < 3), got %d", len(events))
+	}
+	if runner.stateVars["embers"].Consumed != 2 {
+		t.Errorf("tick 2: expected consumed=2, got %d", runner.stateVars["embers"].Consumed)
+	}
+
+	// Tick 3: spend 1 more ember (qty 3→2, consumed=3 → triggers checkpoint)
+	reader.invQuantities[0x400001F4] = 2
+	reader.igt = 30000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 3: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 3: expected 1 event, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "spent-3-embers" {
+		t.Errorf("tick 3: expected spent-3-embers, got %s", events[0].Checkpoint.ID)
+	}
+	if runner.stateVars["embers"].Consumed != 3 {
+		t.Errorf("tick 3: expected consumed=3, got %d", runner.stateVars["embers"].Consumed)
+	}
+}
+
+func TestStateVar_AcquiredAndConsumedCheckpoints(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-sv-both",
+		Name: "Both Fields Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-4", Name: "4 Embers Acquired", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 4, StateVar: "embers.acquired"},
+			},
+			{
+				ID: "spent-2-embers", Name: "Spent 2 Embers", EventType: "item_consume",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers.consumed"},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Tick 1: pick up 4 embers → acquired=4 triggers first checkpoint
+	reader.invQuantities[0x400001F4] = 4
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 1: expected 1 event, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "embers-4" {
+		t.Errorf("tick 1: expected embers-4, got %s", events[0].Checkpoint.ID)
+	}
+
+	// Tick 2: spend 2 embers → consumed=2 triggers second checkpoint
+	reader.invQuantities[0x400001F4] = 2
+	reader.igt = 20000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 2: expected 1 event, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "spent-2-embers" {
+		t.Errorf("tick 2: expected spent-2-embers, got %s", events[0].Checkpoint.ID)
 	}
 }

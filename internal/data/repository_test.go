@@ -629,10 +629,10 @@ func TestSaveAndLoadStateVars(t *testing.T) {
 
 	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5, 1); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 2, 2); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 2, 2, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
@@ -660,8 +660,11 @@ func TestSaveAndLoadStateVars(t *testing.T) {
 	if embers.LastQuantity != 3 {
 		t.Errorf("expected last_quantity 3, got %d", embers.LastQuantity)
 	}
-	if embers.Accumulated != 5 {
-		t.Errorf("expected accumulated 5, got %d", embers.Accumulated)
+	if embers.Acquired != 5 {
+		t.Errorf("expected acquired 5, got %d", embers.Acquired)
+	}
+	if embers.Consumed != 1 {
+		t.Errorf("expected consumed 1, got %d", embers.Consumed)
 	}
 }
 
@@ -670,10 +673,10 @@ func TestSaveStateVar_Upsert(t *testing.T) {
 
 	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 2); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 2, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 5, 7); err != nil { // update
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 5, 7, 1); err != nil { // update
 		t.Fatal(err)
 	}
 
@@ -687,8 +690,11 @@ func TestSaveStateVar_Upsert(t *testing.T) {
 	if rows[0].LastQuantity != 5 {
 		t.Errorf("expected last_quantity 5, got %d", rows[0].LastQuantity)
 	}
-	if rows[0].Accumulated != 7 {
-		t.Errorf("expected accumulated 7, got %d", rows[0].Accumulated)
+	if rows[0].Acquired != 7 {
+		t.Errorf("expected acquired 7, got %d", rows[0].Acquired)
+	}
+	if rows[0].Consumed != 1 {
+		t.Errorf("expected consumed 1, got %d", rows[0].Consumed)
 	}
 }
 

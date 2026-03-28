@@ -404,7 +404,7 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	if err := repo1.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 2); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
-	if err := repo1.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5); err != nil {
+	if err := repo1.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
@@ -455,15 +455,15 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	if len(vars) != 1 {
 		t.Fatalf("state vars: got %d, want 1", len(vars))
 	}
-	if vars[0].VarName != "embers" || vars[0].Accumulated != 5 {
-		t.Errorf("state var: got %+v, want embers/accumulated=5", vars[0])
+	if vars[0].VarName != "embers" || vars[0].Acquired != 5 {
+		t.Errorf("state var: got %+v, want embers/acquired=5", vars[0])
 	}
 
 	// Continue the run
 	if err = repo2.RecordCheckpoint(found.ID, "boss2", "Vordt", 225000, 130000, 1); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
-	if err = repo2.SaveStateVar(found.ID, "embers", 0x400001F4, 5, 8); err != nil {
+	if err = repo2.SaveStateVar(found.ID, "embers", 0x400001F4, 5, 8, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 	if err = repo2.EndRouteRun(found.ID, "completed", 3, 225000); err != nil {
@@ -476,8 +476,8 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 		t.Errorf("final completed checkpoints: got %d, want 2", len(completed))
 	}
 	vars, _ = repo2.LoadStateVars(found.ID)
-	if len(vars) != 1 || vars[0].Accumulated != 8 {
-		t.Errorf("final state var: got %+v, want accumulated=8", vars)
+	if len(vars) != 1 || vars[0].Acquired != 8 {
+		t.Errorf("final state var: got %+v, want acquired=8", vars)
 	}
 }
 
@@ -559,26 +559,26 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 	run, _ := repo.StartRouteRun("ds3-statevar-integ", "Dark Souls III", save.ID)
 
 	// Initial tick: picked up 3 embers and 5 firebombs
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 3); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 3, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 5, 5); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 5, 5, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
 	// Tick 2: used 1 ember (qty drops to 2), picked up 2 more firebombs
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 3); err != nil { // accumulated stays at 3
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 2, 3, 1); err != nil { // acquired stays at 3, consumed 1
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
 	// Tick 3: picked up 2 embers (qty now 4, net +2 since last positive)
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 5); err != nil { // accumulated 3+2=5
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 5, 1); err != nil { // acquired 3+2=5, consumed stays 1
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7); err != nil { // unchanged
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 7, 7, 0); err != nil { // unchanged
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
@@ -600,16 +600,19 @@ func TestIntegration_StateVarCumulativeTracking(t *testing.T) {
 	if embers.LastQuantity != 4 {
 		t.Errorf("embers last_quantity: got %d, want 4", embers.LastQuantity)
 	}
-	if embers.Accumulated != 5 {
-		t.Errorf("embers accumulated: got %d, want 5", embers.Accumulated)
+	if embers.Acquired != 5 {
+		t.Errorf("embers acquired: got %d, want 5", embers.Acquired)
+	}
+	if embers.Consumed != 1 {
+		t.Errorf("embers consumed: got %d, want 1", embers.Consumed)
 	}
 
 	firebombs := varMap["firebombs"]
 	if firebombs.LastQuantity != 7 {
 		t.Errorf("firebombs last_quantity: got %d, want 7", firebombs.LastQuantity)
 	}
-	if firebombs.Accumulated != 7 {
-		t.Errorf("firebombs accumulated: got %d, want 7", firebombs.Accumulated)
+	if firebombs.Acquired != 7 {
+		t.Errorf("firebombs acquired: got %d, want 7", firebombs.Acquired)
 	}
 
 	// Verify via raw SQL that no duplicates exist

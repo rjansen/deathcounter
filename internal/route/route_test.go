@@ -609,3 +609,77 @@ func TestLoadRoutesDir_InvalidDir(t *testing.T) {
 		t.Fatal("expected error for nonexistent directory")
 	}
 }
+
+func TestParseStateVar(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantName  string
+		wantField string
+	}{
+		{"embers", "embers", "acquired"},
+		{"embers.acquired", "embers", "acquired"},
+		{"embers.consumed", "embers", "consumed"},
+		{"my_var.acquired", "my_var", "acquired"},
+	}
+	for _, tt := range tests {
+		name, field := parseStateVar(tt.input)
+		if name != tt.wantName || field != tt.wantField {
+			t.Errorf("parseStateVar(%q) = (%q, %q), want (%q, %q)",
+				tt.input, name, field, tt.wantName, tt.wantField)
+		}
+	}
+}
+
+func TestValidate_StateVar_DotNotation(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers.acquired"},
+			},
+			{
+				ID: "spent-2-embers", Name: "Spent 2 Embers", EventType: "item_consume",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers.consumed"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("expected valid route with dot notation, got error: %v", err)
+	}
+}
+
+func TestValidate_StateVar_InvalidField(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "embers-2", Name: "2 Embers", EventType: "item_pickup",
+				InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2, StateVar: "embers.invalid"},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid state_var field")
+	}
+}
