@@ -247,65 +247,152 @@ var DS3StatNames = map[int64]string{
 	DS3OffsetVitality:     "Vitality",
 }
 
+// DS3 bonfire IDs (from TGA CT v3.4.0).
+// Key pattern: area (2-3 digits) + block (1 digit) + bonfire index (3 digits).
+const (
+	// Firelink Shrine / Cemetery of Ash / Untended Graves
+	DS3BonfireFirelinkShrine uint32 = 4002950
+	DS3BonfireAshenGrave     uint32 = 4002959
+	DS3BonfireCemeteryOfAsh  uint32 = 4002951
+	DS3BonfireIudexGundyr    uint32 = 4002952
+	DS3BonfireUntendedGraves uint32 = 4002953
+	DS3BonfireChampionGundyr uint32 = 4002954
+
+	// High Wall of Lothric
+	DS3BonfireHighWallOfLothric uint32 = 3002950
+	DS3BonfireTowerOnTheWall    uint32 = 3002955
+	DS3BonfireVordt             uint32 = 3002952
+	DS3BonfireDancer            uint32 = 3002954
+	DS3BonfireOceiros           uint32 = 3002951
+
+	// Undead Settlement
+	DS3BonfireFootOfTheHighWall uint32 = 3102954
+	DS3BonfireUndeadSettlement  uint32 = 3102950
+	DS3BonfireCliffUnderside    uint32 = 3102952
+	DS3BonfireDilapidatedBridge uint32 = 3102953
+	DS3BonfirePitOfHollows      uint32 = 3102951
+
+	// Road of Sacrifices / Farron Keep
+	DS3BonfireRoadOfSacrifices    uint32 = 3302956
+	DS3BonfireHalfwayFortress     uint32 = 3302950
+	DS3BonfireCrucifixionWoods    uint32 = 3302957
+	DS3BonfireCrystalSage         uint32 = 3302952
+	DS3BonfireFarronKeep          uint32 = 3302953
+	DS3BonfireKeepRuins           uint32 = 3302954
+	DS3BonfireFarronKeepPerimeter uint32 = 3302958
+	DS3BonfireOldWolfOfFarron     uint32 = 3302955
+	DS3BonfireAbyssWatchers       uint32 = 3302951
+
+	// Cathedral of the Deep
+	DS3BonfireCathedralOfTheDeep uint32 = 3502953
+	DS3BonfireCleansingChapel    uint32 = 3502950
+	DS3BonfireDeacons            uint32 = 3502951
+	DS3BonfireRosariasBedChamber uint32 = 3502952
+
+	// Catacombs of Carthus / Smouldering Lake
+	DS3BonfireCatacombsOfCarthus  uint32 = 3802956
+	DS3BonfireHighLordWolnir      uint32 = 3802950
+	DS3BonfireAbandonedTomb       uint32 = 3802951
+	DS3BonfireOldKingsAntechamber uint32 = 3802952
+	DS3BonfireDemonRuins          uint32 = 3802953
+	DS3BonfireOldDemonKing        uint32 = 3802954
+
+	// Irithyll of the Boreal Valley
+	DS3BonfireIrithyll        uint32 = 3702957
+	DS3BonfireCentralIrithyll uint32 = 3702954
+	DS3BonfireChurchOfYorshka uint32 = 3702950
+	DS3BonfireDistantManor    uint32 = 3702955
+	DS3BonfirePontiff         uint32 = 3702951
+	DS3BonfireWaterReserve    uint32 = 3702956
+	DS3BonfireAnorLondo       uint32 = 3702953
+	DS3BonfirePrisonTower     uint32 = 3702958
+	DS3BonfireAldrich         uint32 = 3702952
+
+	// Irithyll Dungeon / Profaned Capital
+	DS3BonfireIrithyllDungeon uint32 = 3902950
+	DS3BonfireProfanedCapital uint32 = 3902952
+	DS3BonfireYhorm           uint32 = 3902951
+
+	// Lothric Castle
+	DS3BonfireLothricCastle  uint32 = 3012950
+	DS3BonfireDragonBarracks uint32 = 3012952
+	DS3BonfireDragonslayer   uint32 = 3012951
+
+	// Grand Archives
+	DS3BonfireGrandArchives uint32 = 3412951
+	DS3BonfireTwinPrinces   uint32 = 3412950
+
+	// Archdragon Peak
+	DS3BonfireArchdragonPeak     uint32 = 3202950
+	DS3BonfireDragonKinMausoleum uint32 = 3202953
+	DS3BonfireGreatBelfry        uint32 = 3202952
+	DS3BonfireNamelessKing       uint32 = 3202951
+
+	// Kiln of the First Flame
+	DS3BonfireFlamelessShrine     uint32 = 4102950
+	DS3BonfireKilnOfTheFirstFlame uint32 = 4102951
+	DS3BonfireTheFirstFlame       uint32 = 4102952
+)
+
 // DS3BonfireNames maps bonfire IDs to display names (from TGA CT v3.4.0).
 var DS3BonfireNames = map[uint32]string{
-	4002950: "Firelink Shrine",
-	4002959: "Ashen Grave",
-	4002951: "Cemetery of Ash",
-	4002952: "Iudex Gundyr",
-	4002953: "Untended Graves",
-	4002954: "Champion Gundyr",
-	3002950: "High Wall of Lothric",
-	3002955: "Tower on the Wall",
-	3002952: "Vordt of the Boreal Valley",
-	3002954: "Dancer of the Boreal Valley",
-	3002951: "Oceiros, the Consumed King",
-	3102954: "Foot of the High Wall",
-	3102950: "Undead Settlement",
-	3102952: "Cliff Underside",
-	3102953: "Dilapidated Bridge",
-	3102951: "Pit of Hollows",
-	3302956: "Road of Sacrifices",
-	3302950: "Halfway Fortress",
-	3302957: "Crucifixion Woods",
-	3302952: "Crystal Sage",
-	3302953: "Farron Keep",
-	3302954: "Keep Ruins",
-	3302958: "Farron Keep Perimeter",
-	3302955: "Old Wolf of Farron",
-	3302951: "Abyss Watchers",
-	3502953: "Cathedral of the Deep",
-	3502950: "Cleansing Chapel",
-	3502951: "Deacons of the Deep",
-	3502952: "Rosaria's Bed Chamber",
-	3802956: "Catacombs of Carthus",
-	3802950: "High Lord Wolnir",
-	3802951: "Abandoned Tomb",
-	3802952: "Old King's Antechamber",
-	3802953: "Demon Ruins",
-	3802954: "Old Demon King",
-	3702957: "Irithyll of the Boreal Valley",
-	3702954: "Central Irithyll",
-	3702950: "Church of Yorshka",
-	3702955: "Distant Manor",
-	3702951: "Pontiff Sulyvahn",
-	3702956: "Water Reserve",
-	3702953: "Anor Londo",
-	3702958: "Prison Tower",
-	3702952: "Aldrich, Devourer of Gods",
-	3902950: "Irithyll Dungeon",
-	3902952: "Profaned Capital",
-	3902951: "Yhorm The Giant",
-	3012950: "Lothric Castle",
-	3012952: "Dragon Barracks",
-	3012951: "Dragonslayer Armour",
-	3412951: "Grand Archives",
-	3412950: "Twin Princes",
-	3202950: "Archdragon Peak",
-	3202953: "Dragon-Kin Mausoleum",
-	3202952: "Great Belfry",
-	3202951: "Nameless King",
-	4102950: "Flameless Shrine",
-	4102951: "Kiln of the First Flame",
-	4102952: "The First Flame",
+	DS3BonfireFirelinkShrine:      "Firelink Shrine",
+	DS3BonfireAshenGrave:          "Ashen Grave",
+	DS3BonfireCemeteryOfAsh:       "Cemetery of Ash",
+	DS3BonfireIudexGundyr:         "Iudex Gundyr",
+	DS3BonfireUntendedGraves:      "Untended Graves",
+	DS3BonfireChampionGundyr:      "Champion Gundyr",
+	DS3BonfireHighWallOfLothric:   "High Wall of Lothric",
+	DS3BonfireTowerOnTheWall:      "Tower on the Wall",
+	DS3BonfireVordt:               "Vordt of the Boreal Valley",
+	DS3BonfireDancer:              "Dancer of the Boreal Valley",
+	DS3BonfireOceiros:             "Oceiros, the Consumed King",
+	DS3BonfireFootOfTheHighWall:   "Foot of the High Wall",
+	DS3BonfireUndeadSettlement:    "Undead Settlement",
+	DS3BonfireCliffUnderside:      "Cliff Underside",
+	DS3BonfireDilapidatedBridge:   "Dilapidated Bridge",
+	DS3BonfirePitOfHollows:        "Pit of Hollows",
+	DS3BonfireRoadOfSacrifices:    "Road of Sacrifices",
+	DS3BonfireHalfwayFortress:     "Halfway Fortress",
+	DS3BonfireCrucifixionWoods:    "Crucifixion Woods",
+	DS3BonfireCrystalSage:         "Crystal Sage",
+	DS3BonfireFarronKeep:          "Farron Keep",
+	DS3BonfireKeepRuins:           "Keep Ruins",
+	DS3BonfireFarronKeepPerimeter: "Farron Keep Perimeter",
+	DS3BonfireOldWolfOfFarron:     "Old Wolf of Farron",
+	DS3BonfireAbyssWatchers:       "Abyss Watchers",
+	DS3BonfireCathedralOfTheDeep:  "Cathedral of the Deep",
+	DS3BonfireCleansingChapel:     "Cleansing Chapel",
+	DS3BonfireDeacons:             "Deacons of the Deep",
+	DS3BonfireRosariasBedChamber:  "Rosaria's Bed Chamber",
+	DS3BonfireCatacombsOfCarthus:  "Catacombs of Carthus",
+	DS3BonfireHighLordWolnir:      "High Lord Wolnir",
+	DS3BonfireAbandonedTomb:       "Abandoned Tomb",
+	DS3BonfireOldKingsAntechamber: "Old King's Antechamber",
+	DS3BonfireDemonRuins:          "Demon Ruins",
+	DS3BonfireOldDemonKing:        "Old Demon King",
+	DS3BonfireIrithyll:            "Irithyll of the Boreal Valley",
+	DS3BonfireCentralIrithyll:     "Central Irithyll",
+	DS3BonfireChurchOfYorshka:     "Church of Yorshka",
+	DS3BonfireDistantManor:        "Distant Manor",
+	DS3BonfirePontiff:             "Pontiff Sulyvahn",
+	DS3BonfireWaterReserve:        "Water Reserve",
+	DS3BonfireAnorLondo:           "Anor Londo",
+	DS3BonfirePrisonTower:         "Prison Tower",
+	DS3BonfireAldrich:             "Aldrich, Devourer of Gods",
+	DS3BonfireIrithyllDungeon:     "Irithyll Dungeon",
+	DS3BonfireProfanedCapital:     "Profaned Capital",
+	DS3BonfireYhorm:               "Yhorm The Giant",
+	DS3BonfireLothricCastle:       "Lothric Castle",
+	DS3BonfireDragonBarracks:      "Dragon Barracks",
+	DS3BonfireDragonslayer:        "Dragonslayer Armour",
+	DS3BonfireGrandArchives:       "Grand Archives",
+	DS3BonfireTwinPrinces:         "Twin Princes",
+	DS3BonfireArchdragonPeak:      "Archdragon Peak",
+	DS3BonfireDragonKinMausoleum:  "Dragon-Kin Mausoleum",
+	DS3BonfireGreatBelfry:         "Great Belfry",
+	DS3BonfireNamelessKing:        "Nameless King",
+	DS3BonfireFlamelessShrine:     "Flameless Shrine",
+	DS3BonfireKilnOfTheFirstFlame: "Kiln of the First Flame",
+	DS3BonfireTheFirstFlame:       "The First Flame",
 }
