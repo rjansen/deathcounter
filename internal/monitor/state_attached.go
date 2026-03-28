@@ -20,7 +20,7 @@ func (s *attachedState) Attach(m *GameMonitor) (*memreader.GameReader, error) {
 	if err := m.tracker.OnAttach(m.attachedGameID); err != nil {
 		log.Printf("[%s] OnAttach error: %v", m.gameID, err)
 		s.Detach(m)
-		m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
+		_ = m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
 		return nil, err
 	}
 	m.setState(&loadedState{})

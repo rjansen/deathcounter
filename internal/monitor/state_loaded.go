@@ -18,7 +18,7 @@ func (s *loadedState) Phase() MonitorPhase { return PhaseLoaded }
 func (s *loadedState) Attach(m *GameMonitor) (*memreader.GameReader, error) {
 	if m.reader == nil {
 		s.Detach(m)
-		m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
+		_ = m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
 		return nil, ErrGameDetached
 	}
 	return m.reader, nil
@@ -43,11 +43,10 @@ func (s *loadedState) Tick(m *GameMonitor) error {
 	if err != nil {
 		if errors.Is(err, memreader.ErrGameRead) {
 			s.Detach(m)
-			m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
+			_ = m.publish(DisplayUpdate{Status: m.state.Phase().StatusText()})
 		}
 		return fmt.Errorf("loaded_state.tick_error: %w", err)
 	}
 
-	m.publish(update)
-	return nil
+	return m.publish(update)
 }

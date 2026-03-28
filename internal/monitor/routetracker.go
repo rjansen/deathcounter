@@ -53,12 +53,12 @@ func (t *RouteTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 	return t.state.Tick(t, reader)
 }
 
-func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) {
+func (t *RouteTracker) handleSaveChanged(reader *memreader.GameReader) error {
 	if t.runner != nil && t.runner.IsActive() {
 		t.runner.Pause()
 	}
 	t.setTrackerState(&routeStoppedState{})
-	t.startRouteRun(reader)
+	return t.startRouteRun(reader)
 }
 
 func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, error) {
@@ -70,25 +70,22 @@ func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, err
 	return t.buildUpdate(events), nil
 }
 
-func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
-	if t.route == nil {
-		return
-	}
-
+func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
 	t.runner = route.NewRunner(t.route, t.repo, nil)
 
 	// Try to find the latest run for this route+save
 	run, err := t.repo.FindLatestRun(t.route.ID, t.currentSaveID)
 	if err != nil && !errors.Is(err, data.ErrNotFound) {
 		log.Printf("[Route] Failed to find latest run: %v", err)
+		return err
 	}
-	if err == nil && (run.Status == string(route.RunNotStarted) || run.Status == string(route.RunInProgress) || run.Status == string(route.RunPaused)) {
+	if isStatusIn(run.Status, route.RunNotStarted, route.RunInProgress, route.RunPaused) {
 		if err := t.runner.Resume(run.ID, 0); err != nil {
 			log.Printf("[Route] Failed to resume run %d: %v", run.ID, err)
 		} else {
 			log.Printf("[Route] Resumed route: %s (run %d)", t.route.Name, run.ID)
 			t.setTrackerState(&routeRunningState{})
-			return
+			return nil
 		}
 	}
 
@@ -96,7 +93,7 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	if err := t.runner.Start(0, t.currentSaveID); err != nil {
 		log.Printf("Failed to start route run: %v", err)
 		t.runner = nil
-		return
+		return err
 	}
 	log.Printf("[Route] Started route: %s", t.route.Name)
 	if err := t.runner.CatchUp(reader); err == nil {
@@ -104,6 +101,7 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) {
 	} else {
 		t.runner = nil
 	}
+	return nil
 }
 
 func (t *RouteTracker) statusText() string {
@@ -151,4 +149,13 @@ func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate
 	}
 
 	return update
+}
+
+func isStatusIn(status string, statuses ...route.RunStatus) bool {
+	for _, s := range statuses {
+		if status == string(s) {
+			return true
+		}
+	}
+	return false
 }

@@ -17,6 +17,7 @@ var (
 	ErrSavePending          = errors.New("save detection pending")
 	ErrSaveChanged          = errors.New("save identity changed")
 	ErrAttachedGameMismatch = errors.New("attached game mismatch")
+	ErrBlankDisplayChannel  = errors.New("blank display channel")
 )
 
 // Monitor is the interface tray.App uses to drive the monitoring lifecycle.
@@ -118,9 +119,9 @@ func (m *GameMonitor) Stop() {
 
 // publish sends a DisplayUpdate on the display channel.
 // Non-blocking: drops old data if not consumed. No-op if channel is nil.
-func (m *GameMonitor) publish(update DisplayUpdate) {
+func (m *GameMonitor) publish(update DisplayUpdate) error {
 	if m.displayCh == nil {
-		return
+		return ErrBlankDisplayChannel
 	}
 	select {
 	case m.displayCh <- update:
@@ -131,4 +132,5 @@ func (m *GameMonitor) publish(update DisplayUpdate) {
 		}
 		m.displayCh <- update
 	}
+	return nil
 }

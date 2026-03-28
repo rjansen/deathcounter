@@ -506,9 +506,11 @@ func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 
 	// Publish multiple states without consuming — should not block
 	for i := 0; i < 5; i++ {
-		mon.publish(DisplayUpdate{
+		if err := mon.publish(DisplayUpdate{
 			DeathCount: uint32(i),
-		})
+		}); err != nil {
+			t.Fatalf("publish %d: %v", i, err)
+		}
 	}
 
 	// Should get the latest state
@@ -644,7 +646,9 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	// Tick: save detection fails (null GameDataMan) → route CatchUp also fails
 	update, tickErr := mon.tracker.Tick(reader)
 	if tickErr == nil {
-		mon.publish(update)
+		if err := mon.publish(update); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
 	}
 
 	select {
@@ -733,7 +737,9 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 
 	update, tickErr := mon.tracker.Tick(reader)
 	if tickErr == nil {
-		mon.publish(update)
+		if err := mon.publish(update); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
 	}
 
 	// Slot 255 rejected → save pending, route CatchUp fails → no route active
@@ -830,7 +836,9 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	if tickErr != nil {
 		t.Fatalf("Tick failed: %v", tickErr)
 	}
-	mon.publish(update)
+	if err := mon.publish(update); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
 
 	select {
 	case got := <-displayCh:
