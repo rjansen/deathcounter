@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/rjansen/deathcounter/internal/data"
@@ -13,11 +14,13 @@ import (
 // It implements GameTracker.
 type RouteTracker struct {
 	baseTracker
-	runner    *route.Runner
-	route     *route.Route
-	routeID   string
-	routesDir string
-	state     trackerState
+	repo          *data.Repository
+	currentSaveID int64
+	runner        *route.Runner
+	route         *route.Route
+	routeID       string
+	routesDir     string
+	state         trackerState
 }
 
 // NewRouteTracker creates a new route tracker.
@@ -25,12 +28,53 @@ func NewRouteTracker(gameID, routeID, routesDir string, repo *data.Repository) *
 	return &RouteTracker{
 		baseTracker: baseTracker{
 			gameID: gameID,
-			repo:   repo,
 		},
+		repo:      repo,
 		routeID:   routeID,
 		routesDir: routesDir,
 		state:     &routeStoppedState{},
 	}
+}
+
+// detectSave decorates baseTracker.detectSave with DB persistence.
+// It reads save identity from memory and persists it via FindOrCreateSave.
+func (t *RouteTracker) detectSave(reader *memreader.GameReader) error {
+	err := t.baseTracker.detectSave(reader)
+	if err != nil && !errors.Is(err, ErrSaveChanged) {
+		return err
+	}
+
+	// Persist save identity on first detection or change
+	if t.currentCharName != "" {
+		save, dbErr := t.repo.FindOrCreateSave(t.gameID, t.currentSlotIdx, t.currentCharName)
+		if dbErr != nil {
+			log.Printf("[%s] Failed to create save record: %v", t.gameID, dbErr)
+			return fmt.Errorf("failed to create save record: %w", dbErr)
+		}
+		t.currentSaveID = save.ID
+	}
+
+	return err
+}
+
+// recordDeathIfChanged checks if the death count changed and records it.
+// Returns true if the count changed.
+func (t *RouteTracker) recordDeathIfChanged(count uint32) bool {
+	if count != t.lastCount {
+		log.Printf("[%s] Death count: %d (previous: %d)", t.gameID, count, t.lastCount)
+		if t.currentSaveID > 0 {
+			if err := t.repo.RecordDeathForSave(count, t.currentSaveID); err != nil {
+				log.Printf("[%s] Failed to record death for save: %v", t.gameID, err)
+			}
+		} else {
+			if err := t.repo.RecordDeath(count); err != nil {
+				log.Printf("[%s] Failed to record death: %v", t.gameID, err)
+			}
+		}
+		t.lastCount = count
+		return true
+	}
+	return false
 }
 
 // setTrackerState transitions the tracker to a new state.

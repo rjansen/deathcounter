@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 )
 
@@ -16,11 +15,10 @@ type DeathTracker struct {
 }
 
 // NewDeathTracker creates a new death tracker.
-func NewDeathTracker(gameID string, repo *data.Repository) *DeathTracker {
+func NewDeathTracker(gameID string) *DeathTracker {
 	return &DeathTracker{
 		baseTracker: baseTracker{
 			gameID: gameID,
-			repo:   repo,
 		},
 	}
 }
@@ -37,7 +35,22 @@ func (t *DeathTracker) OnDetach() {
 
 // Tick performs one monitoring cycle: detect save, read death count.
 func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error) {
-	_, _ = t.detectSave(reader) // best-effort
+	if err := t.detectSave(reader); err != nil {
+		if errors.Is(err, ErrSaveNotSupported) {
+			// Game doesn't support save detection — continue without it
+		} else if errors.Is(err, ErrSavePending) && !t.saveDetected {
+			// Game data not loaded yet — wait for next tick
+			return DisplayUpdate{
+				GameName:      t.gameLabel(),
+				Status:        PhaseLoaded.StatusText(),
+				CharacterName: t.currentCharName,
+				SaveSlotIndex: t.currentSlotIdx,
+			}, nil
+		} else {
+			// Save was previously working or unexpected error — game read failure
+			return DisplayUpdate{}, fmt.Errorf("detect save: %w", memreader.ErrGameRead)
+		}
+	}
 
 	count, err := reader.ReadDeathCount()
 	if err != nil {
@@ -56,7 +69,10 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 		return DisplayUpdate{}, fmt.Errorf("read death count: %w", memreader.ErrGameRead)
 	}
 
-	t.recordDeathIfChanged(count)
+	if count != t.lastCount {
+		log.Printf("[%s] Death count: %d (previous: %d)", t.gameID, count, t.lastCount)
+		t.lastCount = count
+	}
 
 	var igt int64
 	if v, err := reader.ReadIGT(); err == nil {

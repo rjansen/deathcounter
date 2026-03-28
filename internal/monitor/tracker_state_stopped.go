@@ -39,7 +39,7 @@ func (s *routeStoppedState) OnDetach(t *RouteTracker) {
 
 // Tick detects the save identity and attempts to start a route run.
 func (s *routeStoppedState) Tick(t *RouteTracker, reader *memreader.GameReader) (DisplayUpdate, error) {
-	_, err := t.detectSave(reader)
+	err := t.detectSave(reader)
 	if errors.Is(err, ErrSaveChanged) {
 		if err := t.handleSaveChanged(reader); err != nil {
 			return t.buildUpdate(nil), err
