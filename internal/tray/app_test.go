@@ -253,7 +253,6 @@ func TestBuildMenu(t *testing.T) {
 		MenuRouteName:     "Route: None",
 		MenuRouteProgress: "Progress: -",
 		MenuRouteCurrent:  "Current: -",
-		MenuRouteSegmentD: "Segment Deaths: 0",
 	}
 
 	for id, want := range wantItems {
@@ -271,7 +270,7 @@ func TestBuildMenu(t *testing.T) {
 	disabledItems := []MenuItemID{
 		MenuTitle, MenuStatus, MenuGame, MenuCharacter,
 		MenuCount, MenuSession, MenuTotal,
-		MenuRouteName, MenuRouteProgress, MenuRouteCurrent, MenuRouteSegmentD,
+		MenuRouteName, MenuRouteProgress, MenuRouteCurrent,
 	}
 	for _, id := range disabledItems {
 		if p.menuEnabled[id] {
@@ -361,7 +360,6 @@ func TestRefreshDisplay_WithRoute(t *testing.T) {
 			TotalCount:        20,
 			CompletionPercent: 25.0,
 			CurrentCheckpoint: "Pontiff Sulyvahn",
-			SegmentDeaths:     3,
 		},
 	})
 
@@ -369,7 +367,6 @@ func TestRefreshDisplay_WithRoute(t *testing.T) {
 		MenuRouteName:     "Route: Any%",
 		MenuRouteProgress: "Progress: 5/20 (25%)",
 		MenuRouteCurrent:  "Current: Pontiff Sulyvahn",
-		MenuRouteSegmentD: "Segment Deaths: 3",
 	}
 	for id, want := range checks {
 		if got := p.menuItems[id]; got != want {
@@ -391,7 +388,6 @@ func TestRefreshDisplay_NilRouteResetsDefaults(t *testing.T) {
 			TotalCount:        5,
 			CompletionPercent: 20.0,
 			CurrentCheckpoint: "Boss 2",
-			SegmentDeaths:     7,
 		},
 	})
 
@@ -405,7 +401,6 @@ func TestRefreshDisplay_NilRouteResetsDefaults(t *testing.T) {
 		MenuRouteName:     "Route: None",
 		MenuRouteProgress: "Progress: -",
 		MenuRouteCurrent:  "Current: -",
-		MenuRouteSegmentD: "Segment Deaths: 0",
 	}
 	for id, want := range checks {
 		if got := p.menuItems[id]; got != want {
@@ -423,7 +418,7 @@ func TestRefreshDisplay_ShowsNotification(t *testing.T) {
 		Route: &monitor.RouteDisplay{
 			RouteName: "Any%",
 			CompletedEvents: []monitor.CheckpointNotification{
-				{Name: "Iudex Gundyr", Duration: 65000, Deaths: 2},
+				{Name: "Iudex Gundyr", Duration: 65000},
 			},
 		},
 	})
@@ -772,9 +767,9 @@ func TestRefreshDisplay_MultipleNotifications(t *testing.T) {
 		Route: &monitor.RouteDisplay{
 			RouteName: "Any%",
 			CompletedEvents: []monitor.CheckpointNotification{
-				{Name: "Iudex Gundyr", Duration: 60000, Deaths: 1},
-				{Name: "Vordt", Duration: 120000, Deaths: 3},
-				{Name: "Curse-rotted Greatwood", Duration: 180000, Deaths: 0},
+				{Name: "Iudex Gundyr", Duration: 60000},
+				{Name: "Vordt", Duration: 120000},
+				{Name: "Curse-rotted Greatwood", Duration: 180000},
 			},
 		},
 	})

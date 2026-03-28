@@ -145,16 +145,15 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	checkpoints := []struct {
 		id, name          string
 		igtMs, durationMs int64
-		deaths            uint32
 	}{
-		{"iudex-gundyr", "Iudex Gundyr", 95000, 95000, 2},
-		{"vordt", "Vordt of the Boreal Valley", 225000, 130000, 1},
-		{"sage", "Crystal Sage", 410000, 185000, 3},
-		{"abyss-watchers", "Abyss Watchers", 680000, 270000, 5},
+		{"iudex-gundyr", "Iudex Gundyr", 95000, 95000},
+		{"vordt", "Vordt of the Boreal Valley", 225000, 130000},
+		{"sage", "Crystal Sage", 410000, 185000},
+		{"abyss-watchers", "Abyss Watchers", 680000, 270000},
 	}
 
 	for _, cp := range checkpoints {
-		if err := repo.RecordCheckpoint(run.ID, cp.id, cp.name, cp.igtMs, cp.durationMs, cp.deaths); err != nil {
+		if err := repo.RecordCheckpoint(run.ID, cp.id, cp.name, cp.igtMs, cp.durationMs); err != nil {
 			t.Fatalf("RecordCheckpoint(%s): %v", cp.id, err)
 		}
 		if err := repo.UpdatePersonalBest("ds3-all-bosses-integ", cp.id, cp.igtMs, cp.durationMs); err != nil {
@@ -252,10 +251,10 @@ func TestIntegration_MultipleRunsPBTracking(t *testing.T) {
 
 	// Run 1
 	run1, _ := repo.StartRouteRun(routeID, "Dark Souls III", save.ID)
-	if err := repo.RecordCheckpoint(run1.ID, "boss1", "Iudex Gundyr", 100000, 100000, 3); err != nil {
+	if err := repo.RecordCheckpoint(run1.ID, "boss1", "Iudex Gundyr", 100000, 100000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
-	if err := repo.RecordCheckpoint(run1.ID, "boss2", "Vordt", 250000, 150000, 2); err != nil {
+	if err := repo.RecordCheckpoint(run1.ID, "boss2", "Vordt", 250000, 150000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 	if err := repo.UpdatePersonalBest(routeID, "boss1", 100000, 100000); err != nil {
@@ -273,10 +272,10 @@ func TestIntegration_MultipleRunsPBTracking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
-	if err := repo.RecordCheckpoint(run2.ID, "boss1", "Iudex Gundyr", 85000, 85000, 1); err != nil {
+	if err := repo.RecordCheckpoint(run2.ID, "boss1", "Iudex Gundyr", 85000, 85000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
-	if err := repo.RecordCheckpoint(run2.ID, "boss2", "Vordt", 260000, 175000, 4); err != nil {
+	if err := repo.RecordCheckpoint(run2.ID, "boss2", "Vordt", 260000, 175000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 	if err := repo.UpdatePersonalBest(routeID, "boss1", 85000, 85000); err != nil {
@@ -335,7 +334,7 @@ func TestIntegration_SaveChangeMidRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartRouteRun(A): %v", err)
 	}
-	if err := repo.RecordCheckpoint(runA.ID, "boss1", "Iudex Gundyr", 95000, 95000, 2); err != nil {
+	if err := repo.RecordCheckpoint(runA.ID, "boss1", "Iudex Gundyr", 95000, 95000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 
@@ -401,7 +400,7 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 
 	save, _ := repo1.FindOrCreateSave("Dark Souls III", 0, "ResumeKnight")
 	run, _ := repo1.StartRouteRun(routeID, "Dark Souls III", save.ID)
-	if err := repo1.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 2); err != nil {
+	if err := repo1.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 	if err := repo1.SaveStateVar(run.ID, "embers", 0x400001F4, 3, 5, 0); err != nil {
@@ -460,7 +459,7 @@ func TestIntegration_RunResumeAfterRestart(t *testing.T) {
 	}
 
 	// Continue the run
-	if err = repo2.RecordCheckpoint(found.ID, "boss2", "Vordt", 225000, 130000, 1); err != nil {
+	if err = repo2.RecordCheckpoint(found.ID, "boss2", "Vordt", 225000, 130000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 	if err = repo2.SaveStateVar(found.ID, "embers", 0x400001F4, 5, 8, 0); err != nil {

@@ -169,9 +169,6 @@ func TestRunner_Accessors(t *testing.T) {
 	if cp == nil || cp.ID != "boss1" {
 		t.Errorf("expected CurrentCheckpoint=boss1, got %v", cp)
 	}
-	if runner.SegmentDeaths() != 0 {
-		t.Errorf("expected SegmentDeaths=0, got %d", runner.SegmentDeaths())
-	}
 }
 
 func TestRunner_CatchUp_AllNew(t *testing.T) {
@@ -278,9 +275,6 @@ func TestRunner_Tick_Checkpoint(t *testing.T) {
 	}
 	if events[0].Checkpoint.ID != "boss1" {
 		t.Errorf("expected boss1 event, got %s", events[0].Checkpoint.ID)
-	}
-	if events[0].Deaths != 3 {
-		t.Errorf("expected 3 deaths, got %d", events[0].Deaths)
 	}
 	if events[0].IGT != 60000 {
 		t.Errorf("expected IGT=60000, got %d", events[0].IGT)
@@ -953,10 +947,10 @@ func TestRestoreFromDB(t *testing.T) {
 
 	// Create a run and record some checkpoints
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000, 1); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1004,7 +998,7 @@ func TestRunner_ResumeWithoutCatchUp(t *testing.T) {
 
 	// Create a run and record boss1 as completed in DB
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1102,7 +1096,7 @@ func TestRunner_Resume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 2); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 

@@ -875,7 +875,6 @@ func TestRouteTracker_BuildUpdate_WithEvents(t *testing.T) {
 			Checkpoint:         route.Checkpoint{ID: "boss1", Name: "Iudex Gundyr"},
 			IGT:                180000,
 			CheckpointDuration: 180000,
-			Deaths:             3,
 		},
 	}
 
@@ -897,9 +896,6 @@ func TestRouteTracker_BuildUpdate_WithEvents(t *testing.T) {
 	}
 	if evt.Duration != 180000 {
 		t.Errorf("Duration = %d, want %d", evt.Duration, 180000)
-	}
-	if evt.Deaths != 3 {
-		t.Errorf("Deaths = %d, want %d", evt.Deaths, 3)
 	}
 }
 
@@ -949,13 +945,11 @@ func TestRouteTracker_BuildUpdate_MultipleEvents(t *testing.T) {
 			Checkpoint:         route.Checkpoint{ID: "boss1", Name: "Iudex Gundyr"},
 			IGT:                180000,
 			CheckpointDuration: 180000,
-			Deaths:             3,
 		},
 		{
 			Checkpoint:         route.Checkpoint{ID: "boss2", Name: "Vordt"},
 			IGT:                360000,
 			CheckpointDuration: 180000,
-			Deaths:             0,
 		},
 	}
 
@@ -969,9 +963,6 @@ func TestRouteTracker_BuildUpdate_MultipleEvents(t *testing.T) {
 	}
 	if update.Route.CompletedEvents[1].Name != "Vordt" {
 		t.Errorf("event[1].Name = %q, want %q", update.Route.CompletedEvents[1].Name, "Vordt")
-	}
-	if update.Route.CompletedEvents[1].Deaths != 0 {
-		t.Errorf("event[1].Deaths = %d, want %d", update.Route.CompletedEvents[1].Deaths, 0)
 	}
 }
 

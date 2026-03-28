@@ -121,9 +121,6 @@ func TestDefaultRouteTexts(t *testing.T) {
 	if d.current != "Current: -" {
 		t.Errorf("current = %q, want %q", d.current, "Current: -")
 	}
-	if d.segmentD != "Segment Deaths: 0" {
-		t.Errorf("splitD = %q, want %q", d.segmentD, "Segment Deaths: 0")
-	}
 }
 
 func TestResolveRouteTexts_NilRoute(t *testing.T) {
@@ -149,7 +146,6 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 		TotalCount:        10,
 		CompletionPercent: 30.0,
 		CurrentCheckpoint: "Abyss Watchers",
-		SegmentDeaths:     5,
 	})
 
 	if got.name != "Route: Any% Glitchless" {
@@ -161,9 +157,6 @@ func TestResolveRouteTexts_FullRoute(t *testing.T) {
 	if got.current != "Current: Abyss Watchers" {
 		t.Errorf("current = %q, want %q", got.current, "Current: Abyss Watchers")
 	}
-	if got.segmentD != "Segment Deaths: 5" {
-		t.Errorf("splitD = %q, want %q", got.segmentD, "Segment Deaths: 5")
-	}
 }
 
 func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
@@ -173,7 +166,6 @@ func TestResolveRouteTexts_CompletedRoute(t *testing.T) {
 		TotalCount:        19,
 		CompletionPercent: 100.0,
 		CurrentCheckpoint: "",
-		SegmentDeaths:     0,
 	})
 
 	if got.current != "Current: Complete!" {
@@ -198,9 +190,6 @@ func TestResolveRouteTexts_ZeroValueRoute(t *testing.T) {
 	if got.current != "Current: Complete!" {
 		t.Errorf("current = %q, want %q", got.current, "Current: Complete!")
 	}
-	if got.segmentD != "Segment Deaths: 0" {
-		t.Errorf("splitD = %q, want %q", got.segmentD, "Segment Deaths: 0")
-	}
 }
 
 func TestFormatCheckpointNotification(t *testing.T) {
@@ -217,11 +206,10 @@ func TestFormatCheckpointNotification(t *testing.T) {
 				Name:     "Iudex Gundyr",
 				IGT:      222000,
 				Duration: 180000,
-				Deaths:   3,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Iudex Gundyr",
-			wantStats:      "Segment: 3:00  |  Deaths: 3",
+			wantStats:      "Segment: 3:00",
 		},
 		{
 			name: "zero deaths and short segment",
@@ -229,11 +217,10 @@ func TestFormatCheckpointNotification(t *testing.T) {
 				Name:     "Vordt of the Boreal Valley",
 				IGT:      600000,
 				Duration: 45000,
-				Deaths:   0,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Vordt of the Boreal Valley",
-			wantStats:      "Segment: 0:45  |  Deaths: 0",
+			wantStats:      "Segment: 0:45",
 		},
 		{
 			name: "long segment with many deaths",
@@ -241,22 +228,20 @@ func TestFormatCheckpointNotification(t *testing.T) {
 				Name:     "Nameless King",
 				IGT:      3600000,
 				Duration: 1234000,
-				Deaths:   42,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Nameless King",
-			wantStats:      "Segment: 20:34  |  Deaths: 42",
+			wantStats:      "Segment: 20:34",
 		},
 		{
 			name: "zero duration",
 			notification: monitor.CheckpointNotification{
 				Name:     "Already Done",
 				Duration: 0,
-				Deaths:   0,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Already Done",
-			wantStats:      "Segment: 0:00  |  Deaths: 0",
+			wantStats:      "Segment: 0:00",
 		},
 	}
 	for _, tt := range tests {

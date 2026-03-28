@@ -167,7 +167,6 @@ func TestWalkPlatform_RouteDisplay(t *testing.T) {
 			TotalCount:        20,
 			CompletionPercent: 25.0,
 			CurrentCheckpoint: "Pontiff Sulyvahn",
-			SegmentDeaths:     3,
 		},
 	})
 
@@ -175,7 +174,6 @@ func TestWalkPlatform_RouteDisplay(t *testing.T) {
 		MenuRouteName:     "Route: Any%",
 		MenuRouteProgress: "Progress: 5/20 (25%)",
 		MenuRouteCurrent:  "Current: Pontiff Sulyvahn",
-		MenuRouteSegmentD: "Segment Deaths: 3",
 	}
 	for id, want := range checks {
 		action, ok := wp.actions[id]
