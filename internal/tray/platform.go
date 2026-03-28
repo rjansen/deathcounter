@@ -18,7 +18,6 @@ const (
 	MenuRouteName     MenuItemID = "route_name"
 	MenuRouteProgress MenuItemID = "route_progress"
 	MenuRouteCurrent  MenuItemID = "route_current"
-	MenuRouteSegmentD MenuItemID = "route_segment_d"
 	MenuQuit          MenuItemID = "quit"
 	MenuStatsSession  MenuItemID = "stats_session"
 	MenuStatsHistory  MenuItemID = "stats_history"

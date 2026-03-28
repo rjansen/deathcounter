@@ -142,7 +142,6 @@ func (a *App) buildMenu() error {
 		{MenuRouteName, "Route: None", false},
 		{MenuRouteProgress, "Progress: -", false},
 		{MenuRouteCurrent, "Current: -", false},
-		{MenuRouteSegmentD, "Segment Deaths: 0", false},
 	} {
 		if err := p.AddMenuItem(item.id, item.text, item.enabled); err != nil {
 			return err
@@ -215,7 +214,6 @@ func (a *App) refreshRouteDisplay(route *monitor.RouteDisplay) {
 	_ = a.platform.SetMenuItemText(MenuRouteName, texts.name)
 	_ = a.platform.SetMenuItemText(MenuRouteProgress, texts.progress)
 	_ = a.platform.SetMenuItemText(MenuRouteCurrent, texts.current)
-	_ = a.platform.SetMenuItemText(MenuRouteSegmentD, texts.segmentD)
 }
 
 // updateTotalDeaths updates the total deaths display.

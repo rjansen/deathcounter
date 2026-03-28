@@ -50,7 +50,6 @@ type routeDisplayTexts struct {
 	name     string
 	progress string
 	current  string
-	segmentD string
 }
 
 // defaultRouteTexts returns the default route display values.
@@ -59,7 +58,6 @@ func defaultRouteTexts() routeDisplayTexts {
 		name:     "Route: None",
 		progress: "Progress: -",
 		current:  "Current: -",
-		segmentD: "Segment Deaths: 0",
 	}
 }
 
@@ -79,7 +77,6 @@ func resolveRouteTexts(route *monitor.RouteDisplay) routeDisplayTexts {
 		name:     fmt.Sprintf("Route: %s", route.RouteName),
 		progress: fmt.Sprintf("Progress: %d/%d (%.0f%%)", route.CompletedCount, route.TotalCount, route.CompletionPercent),
 		current:  fmt.Sprintf("Current: %s", cp),
-		segmentD: fmt.Sprintf("Segment Deaths: %d", route.SegmentDeaths),
 	}
 }
 
@@ -91,7 +88,7 @@ func formatCheckpointNotification(n monitor.CheckpointNotification) (title, chec
 	secs := n.Duration / 1000
 	mins := secs / 60
 	secs = secs % 60
-	stats = fmt.Sprintf("Segment: %d:%02d  |  Deaths: %d", mins, secs, n.Deaths)
+	stats = fmt.Sprintf("Segment: %d:%02d", mins, secs)
 	return title, checkpoint, stats
 }
 
