@@ -143,6 +143,7 @@ func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate
 					Name:     evt.Checkpoint.Name,
 					IGT:      evt.IGT,
 					Duration: evt.CheckpointDuration,
+					Deaths:   evt.Deaths,
 				}
 			}
 			update.Route.CompletedEvents = notifs

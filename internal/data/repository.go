@@ -369,12 +369,12 @@ func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (model.Ro
 }
 
 // RecordCheckpoint records a completed checkpoint.
-func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64) error {
+func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
 	ctx := context.Background()
 	_, err := dbm.Exec[any](ctx, r.db,
 		`INSERT INTO route_checkpoints (run_id, checkpoint_id, checkpoint_name, igt_ms, checkpoint_duration_ms, deaths, completed_at)
-		 VALUES (?, ?, ?, ?, ?, 0, ?)`,
-		runID, checkpointID, name, igtMs, checkpointMs, time.Now(),
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		runID, checkpointID, name, igtMs, checkpointMs, deaths, time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to record checkpoint: %w", err)

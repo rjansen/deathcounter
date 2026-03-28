@@ -77,6 +77,7 @@ func (r *Runner) Start(initialDeathCount uint32, saveID int64) error {
 	r.runID = run.ID
 	r.state.Start()
 	r.state.LastDeathCount = initialDeathCount
+	r.state.LastCheckpointDeaths = initialDeathCount
 	r.initStateVars()
 	return nil
 }
@@ -87,6 +88,7 @@ func (r *Runner) Resume(runID int64, initialDeathCount uint32) error {
 	r.runID = runID
 	r.state.Start()
 	r.state.LastDeathCount = initialDeathCount
+	r.state.LastCheckpointDeaths = initialDeathCount
 	r.initStateVars()
 	if err := r.RestoreFromDB(); err != nil {
 		return fmt.Errorf("failed to resume route run: %w", err)
@@ -197,7 +199,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -229,7 +231,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0); err != nil {
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
 					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
 				}
 			}
@@ -422,7 +424,7 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 	for _, evt := range result.Checkpoints {
 		log.Printf("[Route] Checkpoint completed: %s", evt.Checkpoint.Name)
 		if err := r.repo.RecordCheckpoint(r.runID, evt.Checkpoint.ID, evt.Checkpoint.Name,
-			evt.IGT, evt.CheckpointDuration); err != nil {
+			evt.IGT, evt.CheckpointDuration, evt.Deaths); err != nil {
 			log.Printf("Failed to record checkpoint: %v", err)
 		}
 

@@ -21,15 +21,17 @@ type RunState struct {
 	CompletedFlags  map[string]bool  // checkpoint ID -> done
 	BackupDone      map[string]bool  // checkpoint ID -> backup already triggered
 	CheckpointTimes map[string]int64 // checkpoint ID -> IGT ms
-	LastDeathCount  uint32
-	LastIGT         int64
+	LastDeathCount       uint32
+	LastCheckpointDeaths uint32
+	LastIGT              int64
 }
 
 // CheckpointEvent is emitted when a checkpoint is completed.
 type CheckpointEvent struct {
 	Checkpoint         Checkpoint
-	IGT                int64 // IGT at completion (ms)
-	CheckpointDuration int64 // time for this segment (ms)
+	IGT                int64  // IGT at completion (ms)
+	CheckpointDuration int64  // time for this segment (ms)
+	Deaths             uint32 // deaths during this segment
 }
 
 // NewRunState creates a new run state for the given route.
@@ -114,10 +116,14 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 
 		rs.CheckpointTimes[cp.ID] = input.IGT
 
+		checkpointDeaths := input.DeathCount - rs.LastCheckpointDeaths
+		rs.LastCheckpointDeaths = input.DeathCount
+
 		result.Checkpoints = append(result.Checkpoints, CheckpointEvent{
 			Checkpoint:         cp,
 			IGT:                input.IGT,
 			CheckpointDuration: checkpointDuration,
+			Deaths:             checkpointDeaths,
 		})
 	}
 

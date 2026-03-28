@@ -68,8 +68,9 @@ type DisplayUpdate struct {
 // CheckpointNotification carries display data for a newly completed checkpoint.
 type CheckpointNotification struct {
 	Name     string
-	IGT      int64 // total IGT at completion (ms)
-	Duration int64 // segment duration (ms)
+	IGT      int64  // total IGT at completion (ms)
+	Duration int64  // segment duration (ms)
+	Deaths   uint32 // deaths during this segment
 }
 
 // RouteDisplay holds route-specific display data.
