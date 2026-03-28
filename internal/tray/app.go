@@ -218,6 +218,9 @@ func (a *App) refreshRouteDisplay(route *monitor.RouteDisplay) {
 
 // updateTotalDeaths updates the total deaths display.
 func (a *App) updateTotalDeaths() {
+	if a.repo == nil {
+		return
+	}
 	total, err := a.repo.GetTotalDeaths()
 	if err != nil {
 		log.Printf("Error getting total deaths: %v", err)
@@ -228,6 +231,9 @@ func (a *App) updateTotalDeaths() {
 
 // showCurrentSessionStats shows current session statistics.
 func (a *App) showCurrentSessionStats() {
+	if a.repo == nil {
+		return
+	}
 	deaths, err := a.repo.GetCurrentSessionDeaths()
 	if err != nil {
 		log.Printf("Error getting session stats: %v", err)
@@ -238,6 +244,9 @@ func (a *App) showCurrentSessionStats() {
 
 // showSessionHistory shows session history.
 func (a *App) showSessionHistory() {
+	if a.repo == nil {
+		return
+	}
 	sessions, err := a.repo.GetSessionHistory(10)
 	if err != nil {
 		log.Printf("Error getting session history: %v", err)
