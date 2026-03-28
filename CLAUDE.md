@@ -1,4 +1,4 @@
-# FromSoftware Death Counter
+#  Death Counter
 
 Windows system tray app (Go 1.25+) that reads game memory to track deaths and speedrun route progress
 across 6 FromSoftware games. Uses lxn/walk for tray UI, SQLite for persistence, and Windows kernel32
