@@ -1,4 +1,4 @@
-# FromSoftware Death Counter
+# Death Counter
 
 A system tray application that tracks your death count in FromSoftware games by reading game memory. Built with Go for Windows.
 
