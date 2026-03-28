@@ -102,7 +102,8 @@ func (r *Repository) initDB() error {
 		var_name TEXT NOT NULL,
 		item_id INTEGER NOT NULL,
 		last_quantity INTEGER NOT NULL DEFAULT 0,
-		accumulated INTEGER NOT NULL DEFAULT 0,
+		acquired INTEGER NOT NULL DEFAULT 0,
+		consumed INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (run_id) REFERENCES route_runs(id),
 		UNIQUE(run_id, var_name)
 	);
@@ -147,6 +148,17 @@ func (r *Repository) migrateDB() error {
 	if !r.columnExists("route_runs", "save_id") {
 		if _, err := r.db.Exec("ALTER TABLE route_runs ADD COLUMN save_id INTEGER REFERENCES saves(id)"); err != nil {
 			return fmt.Errorf("failed to add save_id to route_runs: %w", err)
+		}
+	}
+	// Rename accumulated → acquired and add consumed column to route_state_vars
+	if r.columnExists("route_state_vars", "accumulated") {
+		if _, err := r.db.Exec("ALTER TABLE route_state_vars RENAME COLUMN accumulated TO acquired"); err != nil {
+			return fmt.Errorf("failed to rename accumulated to acquired: %w", err)
+		}
+	}
+	if !r.columnExists("route_state_vars", "consumed") {
+		if _, err := r.db.Exec("ALTER TABLE route_state_vars ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add consumed to route_state_vars: %w", err)
 		}
 	}
 	return nil
@@ -403,16 +415,17 @@ func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, spl
 }
 
 // SaveStateVar upserts a state variable for the given run.
-func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, accumulated uint32) error {
+func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, acquired, consumed uint32) error {
 	ctx := context.Background()
-	sv := model.RouteStateVar{RunID: runID, VarName: varName, ItemID: itemID, LastQuantity: lastQty, Accumulated: accumulated}
+	sv := model.RouteStateVar{RunID: runID, VarName: varName, ItemID: itemID, LastQuantity: lastQty, Acquired: acquired, Consumed: consumed}
 	_, err := dbm.Exec[model.RouteStateVar](ctx, r.db, `
-		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, accumulated)
-		VALUES (:run_id, :var_name, :item_id, :last_quantity, :accumulated)
+		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, acquired, consumed)
+		VALUES (:run_id, :var_name, :item_id, :last_quantity, :acquired, :consumed)
 		ON CONFLICT(run_id, var_name) DO UPDATE SET
 			item_id = excluded.item_id,
 			last_quantity = excluded.last_quantity,
-			accumulated = excluded.accumulated`,
+			acquired = excluded.acquired,
+			consumed = excluded.consumed`,
 		sv,
 	)
 	if err != nil {
@@ -425,7 +438,7 @@ func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, 
 func (r *Repository) LoadStateVars(runID int64) ([]model.RouteStateVar, error) {
 	ctx := context.Background()
 	return dbm.Query[model.RouteStateVar](ctx, r.db,
-		"SELECT id, run_id, var_name, item_id, last_quantity, accumulated FROM route_state_vars WHERE run_id = ?",
+		"SELECT id, run_id, var_name, item_id, last_quantity, acquired, consumed FROM route_state_vars WHERE run_id = ?",
 		runID,
 	)
 }
