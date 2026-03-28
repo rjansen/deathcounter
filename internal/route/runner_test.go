@@ -947,10 +947,10 @@ func TestRestoreFromDB(t *testing.T) {
 
 	// Create a run and record some checkpoints
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss2", "Boss 2", 120000, 60000, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -998,7 +998,7 @@ func TestRunner_ResumeWithoutCatchUp(t *testing.T) {
 
 	// Create a run and record boss1 as completed in DB
 	run, _ := repo.StartRouteRun(r.ID, r.Game, 0)
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1096,7 +1096,7 @@ func TestRunner_Resume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 60000, 60000, 0); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 

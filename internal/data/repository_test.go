@@ -303,7 +303,7 @@ func TestRecordCheckpoint(t *testing.T) {
 		t.Fatalf("StartRouteRun: %v", err)
 	}
 
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
 		t.Fatalf("RecordCheckpoint: %v", err)
 	}
 
@@ -321,7 +321,7 @@ func TestEndRouteRun(t *testing.T) {
 	repo := newTestRepository(t)
 
 	run, _ := repo.StartRouteRun("ds3-any-percent", "Dark Souls III", 0)
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 95000, 95000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Boss 1", 95000, 95000, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -430,10 +430,10 @@ func TestRouteRunLifecycle(t *testing.T) {
 	}
 
 	// Record checkpoints
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -727,10 +727,10 @@ func TestLoadCompletedCheckpoints(t *testing.T) {
 	}
 
 	// Record some checkpoints
-	if err = repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000); err != nil {
+	if err = repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 95000, 95000, 3); err != nil {
 		t.Fatalf("RecordCheckpoint boss1: %v", err)
 	}
-	if err = repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000); err != nil {
+	if err = repo.RecordCheckpoint(run.ID, "boss2", "Vordt", 225000, 130000, 1); err != nil {
 		t.Fatalf("RecordCheckpoint boss2: %v", err)
 	}
 
@@ -757,7 +757,7 @@ func TestLoadCompletedCheckpoints_CaughtUp(t *testing.T) {
 	run, _ := repo.StartRouteRun("ds3-any", "Dark Souls III", 0)
 
 	// Caught-up checkpoints have IGT=0, duration=0
-	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 0, 0); err != nil {
+	if err := repo.RecordCheckpoint(run.ID, "boss1", "Iudex Gundyr", 0, 0, 0); err != nil {
 		t.Fatalf("RecordCheckpoint boss1: %v", err)
 	}
 

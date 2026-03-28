@@ -698,3 +698,48 @@ func TestActiveCheckpoints_AdvancesAfterCompletion(t *testing.T) {
 		t.Errorf("got %q, want boss2", active[0].ID)
 	}
 }
+
+func TestProcessTick_DeathsPerCheckpoint(t *testing.T) {
+	rs := NewRunState(testRoute())
+	rs.Start()
+	rs.LastCheckpointDeaths = 5 // simulate initial death count at run start
+
+	// Boss1 dies 3 times (death count goes from 5 → 8)
+	result := rs.ProcessTick(TickInput{
+		Flags:      map[uint32]bool{1000: true},
+		DeathCount: 8,
+		IGT:        60000,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d checkpoints, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Deaths != 3 {
+		t.Errorf("boss1 deaths: got %d, want 3", result.Checkpoints[0].Deaths)
+	}
+
+	// Boss2 no deaths (death count stays at 8)
+	result = rs.ProcessTick(TickInput{
+		Flags:      map[uint32]bool{2000: true},
+		DeathCount: 8,
+		IGT:        120000,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d checkpoints, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Deaths != 0 {
+		t.Errorf("boss2 deaths: got %d, want 0", result.Checkpoints[0].Deaths)
+	}
+
+	// Boss3 dies 7 times (death count goes from 8 → 15)
+	result = rs.ProcessTick(TickInput{
+		Flags:      map[uint32]bool{3000: true},
+		DeathCount: 15,
+		IGT:        200000,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d checkpoints, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Deaths != 7 {
+		t.Errorf("boss3 deaths: got %d, want 7", result.Checkpoints[0].Deaths)
+	}
+}
