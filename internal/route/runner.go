@@ -296,6 +296,7 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 	// Build tick input by reading only the active checkpoint window
 	input := TickInput{
 		Flags:           make(map[uint32]bool),
+		BackupFlags:     make(map[uint32]bool),
 		MemValues:       make(map[string]uint32),
 		InventoryValues: make(map[string]uint32),
 		DeathCount:      deathCount,
@@ -330,14 +331,14 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 		// Read backup flag for active checkpoints
 		if cp.BackupFlagCheck != nil && !r.state.BackupDone[cp.ID] {
 			bfID := cp.BackupFlagCheck.FlagID
-			if _, exists := input.Flags[bfID]; !exists {
+			if _, exists := input.BackupFlags[bfID]; !exists {
 				flagSet, err := reader.ReadEventFlag(bfID)
 				if err != nil {
 					if !errors.Is(err, memreader.ErrNullPointer) {
 						return nil, fmt.Errorf("read backup flag %d: %w", bfID, memreader.ErrGameRead)
 					}
 				} else {
-					input.Flags[bfID] = flagSet
+					input.BackupFlags[bfID] = flagSet
 				}
 			}
 		}

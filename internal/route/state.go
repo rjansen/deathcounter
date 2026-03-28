@@ -61,7 +61,8 @@ func (rs *RunState) Abandon() {
 
 // TickInput holds all memory readings for a single tick cycle.
 type TickInput struct {
-	Flags           map[uint32]bool   // event flag ID → set
+	Flags           map[uint32]bool   // event flag ID → set (checkpoint completion flags)
+	BackupFlags     map[uint32]bool   // backup flag ID → set (boss encounter flags)
 	MemValues       map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
 	InventoryValues map[string]uint32 // checkpoint ID → current inventory quantity (for inventory_check checkpoints)
 	IGT             int64
@@ -87,10 +88,10 @@ func (rs *RunState) ProcessTick(input TickInput) TickResult {
 
 	var result TickResult
 
-	for _, cp := range rs.Route.Checkpoints {
+	for _, cp := range rs.ActiveCheckpoints() {
 		// Check backup flag (boss encounter) independently from checkpoint completion
 		if cp.BackupFlagCheck != nil && !rs.BackupDone[cp.ID] {
-			if input.Flags[cp.BackupFlagCheck.FlagID] {
+			if input.BackupFlags[cp.BackupFlagCheck.FlagID] {
 				rs.BackupDone[cp.ID] = true
 				result.Backups = append(result.Backups, BackupEvent{Checkpoint: cp})
 			}

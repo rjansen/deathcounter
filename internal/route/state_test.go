@@ -166,6 +166,9 @@ func TestCurrentCheckpoint_AllDone(t *testing.T) {
 	rs := NewRunState(testRoute())
 	rs.Start()
 
+	// Active window processes one required checkpoint per tick
+	_ = rs.ProcessTick(TickInput{Flags: map[uint32]bool{1000: true, 2000: true, 3000: true}, IGT: 200000, DeathCount: 0})
+	_ = rs.ProcessTick(TickInput{Flags: map[uint32]bool{1000: true, 2000: true, 3000: true}, IGT: 300000, DeathCount: 0})
 	_ = rs.ProcessTick(TickInput{Flags: map[uint32]bool{1000: true, 2000: true, 3000: true}, IGT: 400000, DeathCount: 0})
 	cp := rs.CurrentCheckpoint()
 	if cp != nil {
@@ -220,16 +223,22 @@ func TestMultipleCheckpointsSameTick(t *testing.T) {
 	rs := NewRunState(testRoute())
 	rs.Start()
 
-	// Both boss1 and boss2 flagged in same tick
+	// Both flags set, but active window only includes boss1 (first required)
 	result := rs.ProcessTick(TickInput{Flags: map[uint32]bool{1000: true, 2000: true}, IGT: 200000, DeathCount: 5})
-	if len(result.Checkpoints) != 2 {
-		t.Fatalf("got %d events, want 2", len(result.Checkpoints))
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1", len(result.Checkpoints))
 	}
 	if result.Checkpoints[0].Checkpoint.ID != "boss1" {
-		t.Errorf("first event: got %q, want boss1", result.Checkpoints[0].Checkpoint.ID)
+		t.Errorf("got %q, want boss1", result.Checkpoints[0].Checkpoint.ID)
 	}
-	if result.Checkpoints[1].Checkpoint.ID != "boss2" {
-		t.Errorf("second event: got %q, want boss2", result.Checkpoints[1].Checkpoint.ID)
+
+	// Second tick: boss2 now active and completes
+	result = rs.ProcessTick(TickInput{Flags: map[uint32]bool{1000: true, 2000: true}, IGT: 200000, DeathCount: 5})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Checkpoint.ID != "boss2" {
+		t.Errorf("got %q, want boss2", result.Checkpoints[0].Checkpoint.ID)
 	}
 }
 
@@ -372,20 +381,29 @@ func TestMixedFlagAndMemCheckpoints(t *testing.T) {
 		t.Errorf("got %q, want boss1", result.Checkpoints[0].Checkpoint.ID)
 	}
 
-	// Level up to 30 + boss 2 killed
+	// Level up to 30 (active window: level-30 only, it's the next required)
 	result = rs.ProcessTick(TickInput{
 		Flags:     map[uint32]bool{1000: true, 2000: true},
 		MemValues: map[string]uint32{"level-30": 30},
 		IGT:       300000, DeathCount: 5,
 	})
-	if len(result.Checkpoints) != 2 {
-		t.Fatalf("got %d events, want 2 (level-30 + boss2)", len(result.Checkpoints))
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1 (level-30)", len(result.Checkpoints))
 	}
 	if result.Checkpoints[0].Checkpoint.ID != "level-30" {
-		t.Errorf("first: got %q, want level-30", result.Checkpoints[0].Checkpoint.ID)
+		t.Errorf("got %q, want level-30", result.Checkpoints[0].Checkpoint.ID)
 	}
-	if result.Checkpoints[1].Checkpoint.ID != "boss2" {
-		t.Errorf("second: got %q, want boss2", result.Checkpoints[1].Checkpoint.ID)
+
+	// Boss 2 now active and completes
+	result = rs.ProcessTick(TickInput{
+		Flags: map[uint32]bool{1000: true, 2000: true},
+		IGT:   300000, DeathCount: 5,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1 (boss2)", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Checkpoint.ID != "boss2" {
+		t.Errorf("got %q, want boss2", result.Checkpoints[0].Checkpoint.ID)
 	}
 	if rs.Status != RunCompleted {
 		t.Errorf("expected completed, got %q", rs.Status)
@@ -526,14 +544,26 @@ func TestMixedFlagAndInventoryCheckpoints(t *testing.T) {
 		t.Fatalf("got %d events, want 1 (boss1 only)", len(result.Checkpoints))
 	}
 
-	// Shards + boss 2
+	// Shards (active window: shards-5, the next required)
 	result = rs.ProcessTick(TickInput{
 		Flags:           map[uint32]bool{1000: true, 2000: true},
 		InventoryValues: map[string]uint32{"shards-5": 5},
 		IGT:             300000, DeathCount: 0,
 	})
-	if len(result.Checkpoints) != 2 {
-		t.Fatalf("got %d events, want 2 (shards-5 + boss2)", len(result.Checkpoints))
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1 (shards-5)", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Checkpoint.ID != "shards-5" {
+		t.Errorf("got %q, want shards-5", result.Checkpoints[0].Checkpoint.ID)
+	}
+
+	// Boss 2 now active and completes
+	result = rs.ProcessTick(TickInput{
+		Flags: map[uint32]bool{1000: true, 2000: true},
+		IGT:   300000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1 (boss2)", len(result.Checkpoints))
 	}
 	if rs.Status != RunCompleted {
 		t.Errorf("expected completed, got %q", rs.Status)
@@ -556,8 +586,9 @@ func TestProcessTick_BackupOnEncounter(t *testing.T) {
 
 	// Encounter boss 1 (backup flag set, kill flag not)
 	result := rs.ProcessTick(TickInput{
-		Flags: map[uint32]bool{1001: true, 1000: false},
-		IGT:   50000, DeathCount: 0,
+		Flags:       map[uint32]bool{1000: false},
+		BackupFlags: map[uint32]bool{1001: true},
+		IGT:         50000, DeathCount: 0,
 	})
 	if len(result.Backups) != 1 {
 		t.Fatalf("got %d backup events, want 1", len(result.Backups))
@@ -571,8 +602,9 @@ func TestProcessTick_BackupOnEncounter(t *testing.T) {
 
 	// Same tick again: backup should NOT fire again
 	result = rs.ProcessTick(TickInput{
-		Flags: map[uint32]bool{1001: true, 1000: false},
-		IGT:   51000, DeathCount: 0,
+		Flags:       map[uint32]bool{1000: false},
+		BackupFlags: map[uint32]bool{1001: true},
+		IGT:         51000, DeathCount: 0,
 	})
 	if len(result.Backups) != 0 {
 		t.Errorf("got %d backup events on repeat, want 0", len(result.Backups))
@@ -580,8 +612,9 @@ func TestProcessTick_BackupOnEncounter(t *testing.T) {
 
 	// Kill boss 1: checkpoint completes, no duplicate backup
 	result = rs.ProcessTick(TickInput{
-		Flags: map[uint32]bool{1001: true, 1000: true},
-		IGT:   95000, DeathCount: 2,
+		Flags:       map[uint32]bool{1000: true},
+		BackupFlags: map[uint32]bool{1001: true},
+		IGT:         95000, DeathCount: 2,
 	})
 	if len(result.Checkpoints) != 1 {
 		t.Fatalf("got %d checkpoint events, want 1", len(result.Checkpoints))
