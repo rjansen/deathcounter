@@ -162,10 +162,10 @@ func TestIntegration_RouteRunLifecycle(t *testing.T) {
 	}
 
 	// Save state vars for cumulative inventory
-	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 6); err != nil {
+	if err := repo.SaveStateVar(run.ID, "embers", 0x400001F4, 4, 6, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
-	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 10, 10); err != nil {
+	if err := repo.SaveStateVar(run.ID, "firebombs", 0x40000124, 10, 10, 0); err != nil {
 		t.Fatalf("SaveStateVar: %v", err)
 	}
 
