@@ -96,12 +96,12 @@ func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
 		t.runner = nil
 		return err
 	}
-	log.Printf("[Route] Started route: %s", t.route.Name)
 	if err := t.runner.CatchUp(reader); err != nil {
 		t.runner = nil
-		return nil
+		return err
 	}
 	t.setTrackerState(&routeRunningState{})
+	log.Printf("[Route] Started route: %s", t.route.Name)
 	return nil
 }
 

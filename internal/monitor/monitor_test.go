@@ -134,6 +134,40 @@ func setupDS3Mock(deathCount uint32) *mockProcessOps {
 	charName := encodeUTF16LE("Knight")
 	mock.memory[uintptr(playerGameDataPtr+0x88)] = charName
 
+	// SprjEventFlagMan static chain: [0x4768E78, 0x0]
+	// followPointerChain dereferences all offsets except the last:
+	//   base + 0x4768E78 → read ptr → sprjBase; sprjBase + 0x0 → return sprjBase
+	sprjBase := uint64(0x800000000)
+	sprjBaseBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(sprjBaseBytes, sprjBase)
+	mock.memory[uintptr(0x140000000+0x4768E78)] = sprjBaseBytes
+
+	// Flag array: sprjBase + 0x218 → flagArrayBase
+	flagArrayBase := uint64(0x810000000)
+	flagArrayBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(flagArrayBytes, flagArrayBase)
+	mock.memory[uintptr(sprjBase+0x218)] = flagArrayBytes
+
+	// Flag region: flagArrayBase[0] → flagRegion (div10000000=0 for FlagID=100)
+	flagRegion := uint64(0x820000000)
+	flagRegionBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(flagRegionBytes, flagRegion)
+	mock.memory[uintptr(flagArrayBase)] = flagRegionBytes
+
+	// Flag data pointer: flagRegion + 0 (div1000=0, category=0) → flagDataPtr
+	flagDataPtr := uint64(0x830000000)
+	flagDataPtrBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(flagDataPtrBytes, flagDataPtr)
+	mock.memory[uintptr(flagRegion)] = flagDataPtrBytes
+
+	// Flag value: flagDataPtr + 12 (dwordIndex for remainder=100) → 0 (flag not set)
+	flagValueBytes := make([]byte, 4)
+	mock.memory[uintptr(flagDataPtr+12)] = flagValueBytes
+
+	// IGT value: sprjBase + 0xA4 (static chain [0x4768E78, 0xA4] reads here)
+	igtBytes := make([]byte, 8)
+	mock.memory[uintptr(sprjBase+0xA4)] = igtBytes
+
 	return mock
 }
 
@@ -462,19 +496,21 @@ func TestRouteTracker_MatchingRoute(t *testing.T) {
 	// Attach and transition to PhaseLoaded (bypassing OnAttach since route is injected)
 	attachMonitor(t, mon)
 
-	// First tick: Tick → detectSave → startRouteRun → CatchUp fails → runner nil'd
+	// First tick: Tick → detectSave → startRouteRun → CatchUp succeeds → route running
 	if err := tick(t, mon); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
 
 	select {
 	case update := <-displayCh:
-		if update.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' status (CatchUp pending), got %q", update.Status)
+		if update.Status != "Tracking route" {
+			t.Errorf("expected 'Tracking route' status, got %q", update.Status)
 		}
-		// Runner is nil after CatchUp failure, so no route info in update
-		if update.Route != nil {
-			t.Errorf("expected nil Route after CatchUp failure, got %+v", update.Route)
+		if update.Route == nil {
+			t.Fatal("expected Route to be non-nil after successful CatchUp")
+		}
+		if update.Route.RouteName != "DS3 Any%" {
+			t.Errorf("expected route name 'DS3 Any%%', got %q", update.Route.RouteName)
 		}
 	default:
 		t.Fatal("expected a display update")
@@ -622,7 +658,7 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
-	displayCh := initDisplayCh(mon)
+	initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -643,29 +679,18 @@ func TestRouteTracker_SaveDetectionGatesRoute(t *testing.T) {
 	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
 	mon.setState(&loadedState{})
 
-	// Tick: save detection fails (null GameDataMan) → route CatchUp also fails
+	// Tick: save detection fails (null GameDataMan) → startRouteRun CatchUp also fails
 	update, tickErr := mon.tracker.Tick(reader)
 	if tickErr == nil {
-		if err := mon.publish(update); err != nil {
-			t.Fatalf("publish: %v", err)
-		}
+		t.Fatal("expected error from CatchUp with null GameDataMan")
 	}
 
-	select {
-	case got := <-displayCh:
-		if got.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' status while save pending, got %q", got.Status)
-		}
-		// No route should be active (CatchUp fails with null GameDataMan)
-		routeName := ""
-		if got.Route != nil {
-			routeName = got.Route.RouteName
-		}
-		if routeName != "" {
-			t.Errorf("expected no route name before save detection, got %q", routeName)
-		}
-	default:
-		t.Fatal("expected a display update")
+	// Update is still returned with the error — verify no route is active
+	if update.Status != "Loaded" {
+		t.Errorf("expected 'Loaded' status while save pending, got %q", update.Status)
+	}
+	if update.Route != nil {
+		t.Errorf("expected nil Route after CatchUp failure, got %+v", update.Route)
 	}
 }
 
@@ -714,7 +739,7 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	repo := newTestRepo(t)
 
 	mon := newRouteMonitor("ds3", "", "", mock, repo)
-	displayCh := initDisplayCh(mon)
+	initDisplayCh(mon)
 	rt := routeTracker(mon)
 	rt.route = &route.Route{
 		ID:   "ds3-any",
@@ -735,28 +760,18 @@ func TestRouteTracker_Slot255Rejected(t *testing.T) {
 	// Manually transition to PhaseLoaded (OnAttach would do this in Start)
 	mon.setState(&loadedState{})
 
+	// Slot 255 rejected → save pending, startRouteRun CatchUp fails → no route active
 	update, tickErr := mon.tracker.Tick(reader)
 	if tickErr == nil {
-		if err := mon.publish(update); err != nil {
-			t.Fatalf("publish: %v", err)
-		}
+		t.Fatal("expected error from CatchUp with slot 255")
 	}
 
-	// Slot 255 rejected → save pending, route CatchUp fails → no route active
-	select {
-	case got := <-displayCh:
-		if got.Status != "Loaded" {
-			t.Errorf("expected 'Loaded' with slot 255, got %q", got.Status)
-		}
-		routeName := ""
-		if got.Route != nil {
-			routeName = got.Route.RouteName
-		}
-		if routeName != "" {
-			t.Errorf("expected no route with slot 255, got %q", routeName)
-		}
-	default:
-		t.Fatal("expected a display update")
+	// Update is still returned with the error — verify no route is active
+	if update.Status != "Loaded" {
+		t.Errorf("expected 'Loaded' with slot 255, got %q", update.Status)
+	}
+	if update.Route != nil {
+		t.Errorf("expected nil Route after CatchUp failure, got %+v", update.Route)
 	}
 }
 
