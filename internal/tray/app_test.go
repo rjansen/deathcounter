@@ -234,6 +234,23 @@ func TestNewApp(t *testing.T) {
 	}
 }
 
+func TestNewApp_NilRepo(t *testing.T) {
+	p := newMockPlatform()
+	mon := newMockMonitor()
+
+	app := NewApp(p, mon, nil)
+
+	if app.platform != p {
+		t.Error("platform not set")
+	}
+	if app.monitor != mon {
+		t.Error("monitor not set")
+	}
+	if app.repo != nil {
+		t.Error("repo should be nil")
+	}
+}
+
 func TestBuildMenu(t *testing.T) {
 	app, p, _ := newTestApp(t)
 
@@ -699,6 +716,20 @@ func TestUpdateTotalDeaths_ReflectsDB(t *testing.T) {
 	}
 }
 
+func TestUpdateTotalDeaths_NilRepo(t *testing.T) {
+	p := newMockPlatform()
+	mon := newMockMonitor()
+	app := NewApp(p, mon, nil)
+	mustBuildMenu(t, app)
+
+	// Should not panic with nil repo
+	app.updateTotalDeaths()
+
+	if got := p.menuItems[MenuTotal]; got != "Total: 0" {
+		t.Errorf("total = %q, want %q", got, "Total: 0")
+	}
+}
+
 func TestUpdateTotalDeaths_EmptyDB(t *testing.T) {
 	app, p, _ := newTestApp(t)
 	mustBuildMenu(t, app)
@@ -711,6 +742,25 @@ func TestUpdateTotalDeaths_EmptyDB(t *testing.T) {
 }
 
 // --- Stats Menu Callback Tests ---
+
+func TestStatsHandlers_NilRepo_DoNotPanic(t *testing.T) {
+	p := newMockPlatform()
+	mon := newMockMonitor()
+	app := NewApp(p, mon, nil)
+	mustBuildMenu(t, app)
+
+	if handler, ok := p.clickHandlers[MenuStatsSession]; ok {
+		handler() // should not panic
+	} else {
+		t.Fatal("no stats session handler")
+	}
+
+	if handler, ok := p.clickHandlers[MenuStatsHistory]; ok {
+		handler() // should not panic
+	} else {
+		t.Fatal("no stats history handler")
+	}
+}
 
 func TestStatsSessionHandler_DoesNotPanic(t *testing.T) {
 	app, p, _ := newTestApp(t)

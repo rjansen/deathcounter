@@ -226,8 +226,8 @@ func attachMonitor(t *testing.T, mon *GameMonitor) {
 }
 
 // newDeathMonitor creates a GameMonitor with a DeathTracker for testing.
-func newDeathMonitor(gameID string, ops memreader.ProcessOps, repo *data.Repository) *GameMonitor {
-	return NewGameMonitor(gameID, ops, NewDeathTracker(gameID, repo))
+func newDeathMonitor(gameID string, ops memreader.ProcessOps) *GameMonitor {
+	return NewGameMonitor(gameID, ops, NewDeathTracker(gameID))
 }
 
 // newRouteMonitor creates a GameMonitor with a RouteTracker for testing.
@@ -249,9 +249,8 @@ func routeTracker(mon *GameMonitor) *RouteTracker {
 
 func TestDeathTracker_NotAttached(t *testing.T) {
 	mock := newMockProcessOps()
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 	err := tick(t, mon)
 
@@ -274,9 +273,8 @@ func TestDeathTracker_NotAttached(t *testing.T) {
 
 func TestDeathTracker_AttachAndRead(t *testing.T) {
 	mock := setupDS3Mock(42)
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Tick 1: detached → attach (find game) → attached
@@ -312,9 +310,8 @@ func TestDeathTracker_AttachAndRead(t *testing.T) {
 
 func TestDeathTracker_DeathCountChange(t *testing.T) {
 	mock := setupDS3Mock(10)
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Tick 1: detached → attached
@@ -356,9 +353,8 @@ func TestDeathTracker_DeathCountChange(t *testing.T) {
 
 func TestDeathTracker_Detach(t *testing.T) {
 	mock := setupDS3Mock(5)
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Tick 1: detached → attached
@@ -407,9 +403,8 @@ func TestDeathTracker_Detach(t *testing.T) {
 
 func TestLoadedState_NilReader_AttachError(t *testing.T) {
 	mock := setupDS3Mock(0)
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Tick 1: detached → attached
@@ -535,9 +530,8 @@ func TestRouteTracker_OnAttach_GameMismatch(t *testing.T) {
 
 func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 	mock := newMockProcessOps()
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Publish multiple states without consuming — should not block
@@ -564,9 +558,8 @@ func TestGameMonitor_Publish_NonBlocking(t *testing.T) {
 
 func TestDeathTracker_SaveDetection(t *testing.T) {
 	mock := setupDS3Mock(5)
-	repo := newTestRepo(t)
 
-	mon := newDeathMonitor("ds3", mock, repo)
+	mon := newDeathMonitor("ds3", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Tick 1: detached → attached
@@ -834,9 +827,7 @@ func TestDeathTracker_NonDS3_SkipsSaveDetection(t *testing.T) {
 	binary.LittleEndian.PutUint32(valueBytes, 7)
 	mock.memory[uintptr(0x200000094)] = valueBytes
 
-	repo := newTestRepo(t)
-
-	mon := newDeathMonitor("er", mock, repo)
+	mon := newDeathMonitor("er", mock)
 	displayCh := initDisplayCh(mon)
 
 	// Attach → PhaseAttached, manually transition to PhaseLoaded (OnAttach no-op)
