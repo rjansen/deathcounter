@@ -113,3 +113,23 @@ func TestResolveSavePath_NoMatch(t *testing.T) {
 		t.Fatal("expected error for no matching files")
 	}
 }
+
+func TestResolveSavePath_WindowsEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "DS30000.sl2")
+	if err := os.WriteFile(savePath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DEATHCOUNTER_TEST_DIR", dir)
+
+	mgr := NewManager(t.TempDir())
+	pattern := `%DEATHCOUNTER_TEST_DIR%` + string(filepath.Separator) + "*.sl2"
+	resolved, err := mgr.ResolveSavePath(pattern)
+	if err != nil {
+		t.Fatalf("ResolveSavePath: %v", err)
+	}
+	if resolved != savePath {
+		t.Errorf("got %q, want %q", resolved, savePath)
+	}
+}

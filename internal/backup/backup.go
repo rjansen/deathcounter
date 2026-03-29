@@ -52,12 +52,21 @@ func (m *Manager) Backup(savePath, label string) (string, error) {
 // ResolveSavePath expands environment variables and handles glob patterns
 // in a save file path pattern.
 func (m *Manager) ResolveSavePath(pattern string) (string, error) {
-	// Expand environment variables like %APPDATA%
-	expanded := os.Expand(pattern, func(key string) string {
-		// Handle Windows-style %VAR% by stripping surrounding %
-		key = strings.Trim(key, "%")
-		return os.Getenv(key)
-	})
+	// Convert Windows-style %VAR% to ${VAR} for os.ExpandEnv
+	converted := pattern
+	for {
+		start := strings.Index(converted, "%")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(converted[start+1:], "%")
+		if end == -1 {
+			break
+		}
+		varName := converted[start+1 : start+1+end]
+		converted = converted[:start] + "${" + varName + "}" + converted[start+1+end+1:]
+	}
+	expanded := os.ExpandEnv(converted)
 
 	// Try glob to find matching files
 	matches, err := filepath.Glob(expanded)
