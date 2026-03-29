@@ -1,13 +1,22 @@
 .PHONY: build run clean test test-e2e test-e2e-ds3 test-e2e-ui help manifest manifest-test tools
 
+# Cross-platform file removal
+ifeq ($(OS),Windows_NT)
+SHELL = powershell.exe
+.SHELLFLAGS = -NoProfile -Command
+RM = Remove-Item -Force -ErrorAction SilentlyContinue
+else
+RM = rm -f
+endif
+
 # Embed manifest resource (required by lxn/walk)
 manifest:
-	-rm -f internal/tray/rsrc_test.syso
+	-$(RM) internal/tray/rsrc_test.syso
 	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o cmd/deathcounter/rsrc.syso
 
 # Embed manifest resource for tray UI tests (separate to avoid "too many .rsrc sections" on build)
 manifest-test:
-	-rm -f cmd/deathcounter/rsrc.syso
+	-$(RM) cmd/deathcounter/rsrc.syso
 	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o internal/tray/rsrc_test.syso
 
 # Install build tools
@@ -48,7 +57,7 @@ test-e2e-ui: manifest-test
 
 # Clean build artifacts
 clean:
-	rm -f deathcounter.exe deathcounter.db cmd/deathcounter/rsrc.syso internal/tray/rsrc_test.syso
+	-$(RM) deathcounter.exe deathcounter.db cmd/deathcounter/rsrc.syso internal/tray/rsrc_test.syso
 
 # Format code
 fmt:
