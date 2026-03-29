@@ -399,8 +399,8 @@ func TestDS3BossEncounteredNames_KeysMatchConstants(t *testing.T) {
 }
 
 func TestDS3GoodsNames_Count(t *testing.T) {
-	if len(DS3GoodsNames) != 15 {
-		t.Errorf("expected 15 entries in DS3GoodsNames, got %d", len(DS3GoodsNames))
+	if len(DS3GoodsNames) != 16 {
+		t.Errorf("expected 16 entries in DS3GoodsNames, got %d", len(DS3GoodsNames))
 	}
 }
 

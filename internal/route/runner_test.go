@@ -1327,3 +1327,197 @@ func TestStateVar_AcquiredAndConsumedCheckpoints(t *testing.T) {
 		t.Errorf("tick 2: expected spent-2-embers, got %s", events[0].Checkpoint.ID)
 	}
 }
+
+func TestRunner_Tick_CompositeOR(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-composite",
+		Name: "Composite Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "flask", Name: "Ashen Estus Flask", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Neither item present
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
+	}
+
+	// Empty flask present (0x400000BE)
+	reader.invQuantities[0x400000BE] = 1
+	reader.igt = 20000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 2: expected 1 event, got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "flask" {
+		t.Errorf("got checkpoint %q, want flask", events[0].Checkpoint.ID)
+	}
+}
+
+func TestRunner_Tick_CompositeAND(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-composite-and",
+		Name: "Composite AND Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "both", Name: "Both Items", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorAND,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400003E8, Comparison: "gte", Value: 5}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400001F4, Comparison: "gte", Value: 2}},
+					},
+				},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Only first condition met
+	reader.invQuantities[0x400003E8] = 5
+	reader.invQuantities[0x400001F4] = 1
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
+	}
+
+	// Both conditions met
+	reader.invQuantities[0x400001F4] = 2
+	reader.igt = 20000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 2: expected 1 event, got %d", len(events))
+	}
+}
+
+func TestRunner_Tick_CompositeNested(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-composite-nested",
+		Name: "Nested Composite Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "nested", Name: "Boss AND (Flask A OR Flask B)", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorAND,
+					Conditions: []CompositeCondition{
+						{EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+						{CompositeCheck: &CompositeCheck{
+							Operator: OperatorOR,
+							Conditions: []CompositeCondition{
+								{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+								{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Flag set but no flask
+	reader.flags[1000] = true
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 1: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("tick 1: expected 0 events, got %d", len(events))
+	}
+
+	// Flag set and filled flask present
+	reader.invQuantities[0x400000BF] = 1
+	reader.igt = 20000
+	events, err = runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick 2: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tick 2: expected 1 event, got %d", len(events))
+	}
+}
+
+func TestRunner_CatchUp_Composite(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-catchup-composite",
+		Name: "CatchUp Composite Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "flask", Name: "Ashen Estus Flask", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	// Flask already in inventory when CatchUp runs
+	reader.invQuantities[0x400000BF] = 1
+
+	err := runner.CatchUp(reader)
+	if err != nil {
+		t.Fatalf("CatchUp: %v", err)
+	}
+
+	// Flask should be caught up; boss should now be active
+	reader.flags[1000] = true
+	reader.igt = 10000
+	events, err := runner.Tick(reader)
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (boss), got %d", len(events))
+	}
+	if events[0].Checkpoint.ID != "boss1" {
+		t.Errorf("expected boss1, got %s", events[0].Checkpoint.ID)
+	}
+}

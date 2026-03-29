@@ -683,3 +683,200 @@ func TestValidate_StateVar_InvalidField(t *testing.T) {
 		t.Fatal("expected error for invalid state_var field")
 	}
 }
+
+func TestLoadRoute_CompositeCheckValid(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "flask", Name: "Ashen Estus Flask", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("LoadRoute: %v", err)
+	}
+	if loaded.Checkpoints[0].CompositeCheck == nil {
+		t.Fatal("expected CompositeCheck to be loaded")
+	}
+	if loaded.Checkpoints[0].CompositeCheck.Operator != OperatorOR {
+		t.Errorf("got operator %q, want OR", loaded.Checkpoints[0].CompositeCheck.Operator)
+	}
+}
+
+func TestLoadRoute_CompositeCheckNested(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "nested", Name: "Nested", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorAND,
+					Conditions: []CompositeCondition{
+						{EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+						{CompositeCheck: &CompositeCheck{
+							Operator: OperatorOR,
+							Conditions: []CompositeCondition{
+								{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+								{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err != nil {
+		t.Fatalf("expected valid nested composite, got error: %v", err)
+	}
+}
+
+func TestLoadRoute_CompositeCheckInvalidOperator(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: "XOR",
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for invalid operator")
+	}
+}
+
+func TestLoadRoute_CompositeCheckTooFewConditions(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for too few conditions")
+	}
+}
+
+func TestLoadRoute_CompositeCheckNoFieldSet(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{}, // no field set
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for condition with no field set")
+	}
+}
+
+func TestLoadRoute_CompositeCheckStateVarRejected(t *testing.T) {
+	dir := t.TempDir()
+	route := Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "a", Name: "A", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1, StateVar: "flasks"}},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(route)
+	path := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRoute(path)
+	if err == nil {
+		t.Fatal("expected error for state_var in composite condition")
+	}
+}

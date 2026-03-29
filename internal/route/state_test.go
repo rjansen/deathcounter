@@ -743,3 +743,92 @@ func TestProcessTick_DeathsPerCheckpoint(t *testing.T) {
 		t.Errorf("boss3 deaths: got %d, want 7", result.Checkpoints[0].Deaths)
 	}
 }
+
+func TestCompositeCheck_OR_True(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "flask", Name: "Ashen Estus Flask", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	// Not matched
+	result := rs.ProcessTick(TickInput{
+		CompositeResults: map[string]bool{"flask": false},
+		IGT:              10000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 0 {
+		t.Fatalf("got %d events, want 0", len(result.Checkpoints))
+	}
+
+	// Matched
+	result = rs.ProcessTick(TickInput{
+		CompositeResults: map[string]bool{"flask": true},
+		IGT:              20000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 {
+		t.Fatalf("got %d events, want 1", len(result.Checkpoints))
+	}
+	if result.Checkpoints[0].Checkpoint.ID != "flask" {
+		t.Errorf("got checkpoint %q, want flask", result.Checkpoints[0].Checkpoint.ID)
+	}
+}
+
+func TestCompositeCheck_MixedWithFlags(t *testing.T) {
+	route := &Route{
+		ID:   "test",
+		Name: "Test",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 1000}},
+			{
+				ID: "flask", Name: "Flask", EventType: "composite_check",
+				CompositeCheck: &CompositeCheck{
+					Operator: OperatorOR,
+					Conditions: []CompositeCondition{
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BE, Comparison: "eq", Value: 1}},
+						{InventoryCheck: &InventoryCheck{ItemID: 0x400000BF, Comparison: "eq", Value: 1}},
+					},
+				},
+			},
+			{ID: "boss2", Name: "Boss 2", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 2000}},
+		},
+	}
+
+	rs := NewRunState(route)
+	rs.Start()
+
+	// Boss 1 completed
+	result := rs.ProcessTick(TickInput{
+		Flags:            map[uint32]bool{1000: true},
+		CompositeResults: map[string]bool{"flask": false},
+		IGT:              10000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 || result.Checkpoints[0].Checkpoint.ID != "boss1" {
+		t.Fatalf("expected boss1 completed")
+	}
+
+	// Flask now matched
+	result = rs.ProcessTick(TickInput{
+		Flags:            map[uint32]bool{1000: true},
+		CompositeResults: map[string]bool{"flask": true},
+		IGT:              20000, DeathCount: 0,
+	})
+	if len(result.Checkpoints) != 1 || result.Checkpoints[0].Checkpoint.ID != "flask" {
+		t.Fatalf("expected flask completed")
+	}
+}
