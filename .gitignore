@@ -35,6 +35,9 @@ go.work
 # Resource files
 *.syso
 
+# Backups
+/backups/
+
 # OS
 .DS_Store
 Thumbs.db
