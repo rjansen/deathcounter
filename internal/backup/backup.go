@@ -9,6 +9,20 @@ import (
 	"time"
 )
 
+// ExeDir returns the directory containing the running executable,
+// resolving symlinks. Falls back to "." on error.
+func ExeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	real, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return filepath.Dir(exe)
+	}
+	return filepath.Dir(real)
+}
+
 // Manager handles save file backups.
 type Manager struct {
 	backupDir string

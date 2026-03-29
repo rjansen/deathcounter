@@ -114,6 +114,20 @@ func TestResolveSavePath_NoMatch(t *testing.T) {
 	}
 }
 
+func TestExeDir_ReturnsExistingDir(t *testing.T) {
+	dir := ExeDir()
+	if dir == "" {
+		t.Fatal("ExeDir returned empty string")
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("ExeDir returned non-existent path %q: %v", dir, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("ExeDir returned non-directory path %q", dir)
+	}
+}
+
 func TestResolveSavePath_WindowsEnvVar(t *testing.T) {
 	dir := t.TempDir()
 	savePath := filepath.Join(dir, "DS30000.sl2")
