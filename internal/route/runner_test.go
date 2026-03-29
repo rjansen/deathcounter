@@ -230,6 +230,32 @@ func TestRunner_CatchUp_ReadError(t *testing.T) {
 	}
 }
 
+func TestRunner_CatchUp_IGTError(t *testing.T) {
+	repo := newTestRepo(t)
+	reader := newMockGameReader()
+	runner := NewRunner(testRunnerRoute(), repo, nil)
+	_ = runner.Start(0, 0)
+
+	reader.igtErr = errors.New("not ready")
+
+	if err := runner.CatchUp(reader); err == nil {
+		t.Error("expected CatchUp to return error when IGT unreadable")
+	}
+}
+
+func TestRunner_CatchUp_DeathCountError(t *testing.T) {
+	repo := newTestRepo(t)
+	reader := newMockGameReader()
+	runner := NewRunner(testRunnerRoute(), repo, nil)
+	_ = runner.Start(0, 0)
+
+	reader.deathCountErr = errors.New("not ready")
+
+	if err := runner.CatchUp(reader); err == nil {
+		t.Error("expected CatchUp to return error when death count unreadable")
+	}
+}
+
 func TestRunner_CatchUp_NotActive(t *testing.T) {
 	repo := newTestRepo(t)
 	reader := newMockGameReader()
@@ -894,12 +920,14 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 
 	reader.flags[100] = true             // boss1 already killed
 	reader.invQuantities[0x400003E8] = 7 // already have 7 shards
+	reader.igt = 45000                   // current IGT when catching up
+	reader.deathCount = 3                // deaths accumulated before route start
 
 	if err := runner.CatchUp(reader); err != nil {
 		t.Fatalf("expected CatchUp to succeed, got %v", err)
 	}
 
-	// Verify caught-up checkpoints are persisted to DB with IGT=0
+	// Verify caught-up checkpoints are persisted to DB
 	ids, err := repo.LoadCompletedCheckpoints(runner.runID)
 	if err != nil {
 		t.Fatalf("LoadCompletedCheckpoints: %v", err)
@@ -918,7 +946,7 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 		t.Error("boss2 should NOT be in DB")
 	}
 
-	// Verify caught-up records have zero IGT (not real splits)
+	// Verify caught-up records have the current IGT
 	var igtMs int64
 	err = repo.DB().QueryRow(
 		"SELECT igt_ms FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
@@ -927,8 +955,32 @@ func TestCatchUp_PersistsToDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if igtMs != 0 {
-		t.Errorf("expected IGT=0 for caught-up checkpoint, got %d", igtMs)
+	if igtMs != 45000 {
+		t.Errorf("expected IGT=45000 for caught-up checkpoint, got %d", igtMs)
+	}
+
+	// Verify deaths are attributed to the last caught-up checkpoint (shards-5)
+	var deaths uint32
+	err = repo.DB().QueryRow(
+		"SELECT deaths FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'boss1'",
+		runner.runID,
+	).Scan(&deaths)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if deaths != 0 {
+		t.Errorf("expected deaths=0 for non-last caught-up checkpoint, got %d", deaths)
+	}
+
+	err = repo.DB().QueryRow(
+		"SELECT deaths FROM route_checkpoints WHERE run_id = ? AND checkpoint_id = 'shards-5'",
+		runner.runID,
+	).Scan(&deaths)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if deaths != 3 {
+		t.Errorf("expected deaths=3 for last caught-up checkpoint, got %d", deaths)
 	}
 }
 

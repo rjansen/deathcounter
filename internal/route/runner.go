@@ -232,6 +232,23 @@ func (r *Runner) CatchUp(reader GameReader) error {
 		return nil
 	}
 
+	// Read IGT and death count upfront — no tracking without timing context
+	igtMs, err := reader.ReadIGT()
+	if err != nil {
+		return err
+	}
+	deathCount, err := reader.ReadDeathCount()
+	if err != nil {
+		return err
+	}
+
+	// Collect caught-up checkpoint IDs so we can attribute deaths to the last one
+	type caughtUp struct {
+		id   string
+		name string
+	}
+	var caughtUpList []caughtUp
+
 	for _, cp := range r.route.Checkpoints {
 		if r.state.CompletedFlags[cp.ID] {
 			continue
@@ -246,9 +263,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if flagSet {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
-					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
-				}
+				caughtUpList = append(caughtUpList, caughtUp{id: cp.ID, name: cp.Name})
 			}
 		}
 
@@ -278,9 +293,7 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if compareValue(checkQty, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value) {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
-					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
-				}
+				caughtUpList = append(caughtUpList, caughtUp{id: cp.ID, name: cp.Name})
 			}
 		}
 
@@ -292,15 +305,24 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			if result {
 				r.state.CompletedFlags[cp.ID] = true
 				log.Printf("[Route] Already completed: %s", cp.Name)
-				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
-					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
-				}
+				caughtUpList = append(caughtUpList, caughtUp{id: cp.ID, name: cp.Name})
 			}
 		}
 
 		// Also mark backup as done for already-completed checkpoints
 		if cp.BackupFlagCheck != nil && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
+		}
+	}
+
+	// Record caught-up checkpoints: attribute existing deaths to the last one
+	for i, cu := range caughtUpList {
+		deaths := uint32(0)
+		if i == len(caughtUpList)-1 {
+			deaths = deathCount
+		}
+		if err := r.repo.RecordCheckpoint(r.runID, cu.id, cu.name, igtMs, 0, deaths); err != nil {
+			log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cu.id, err)
 		}
 	}
 
