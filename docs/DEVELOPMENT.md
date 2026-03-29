@@ -67,7 +67,7 @@ When a game updates and addresses change:
 
 1. Create a JSON file in `routes/<game>/` directory (e.g. `routes/ds3/my-route.json`)
 2. Set `game` field to match a `GameConfig.ID` (e.g. `"ds3"`, not the display name)
-3. Define checkpoints with `event_flag_check` (for boss kills), `mem_check` (for levels/upgrades), or `inventory_check` (for item quantities):
+3. Define checkpoints with `event_flag_check` (for boss kills), `mem_check` (for levels/upgrades), `inventory_check` (for item quantities), or `composite_check` (for OR/AND combinations):
    ```json
    {
      "id": "get-3-firebombs",
@@ -110,6 +110,22 @@ When a game updates and addresses change:
    }
    ```
    Multiple checkpoints sharing the same `state_var` base name track the same item (must use the same `item_id`). State vars are persisted to SQLite (`route_state_vars` table) each tick.
+   For checkpoints that need to match **multiple conditions** (e.g., an item with two possible IDs), use `composite_check`:
+   ```json
+   {
+     "id": "ashen-estus",
+     "name": "Ashen Estus Flask",
+     "event_type": "composite_check",
+     "composite_check": {
+       "operator": "OR",
+       "conditions": [
+         {"inventory_check": {"item_id": 1073742014, "comparison": "eq", "value": 1}},
+         {"inventory_check": {"item_id": 1073742015, "comparison": "eq", "value": 1}}
+       ]
+     }
+   }
+   ```
+   Composite checks support `OR` (any condition passes) and `AND` (all conditions must pass). Conditions can be `event_flag_check`, `mem_check`, `inventory_check`, or nested `composite_check`. Note: `state_var` is not allowed inside composite conditions.
 4. Add `backup_flag_check` to boss checkpoints for save backup on encounter (before the fight)
 5. Optional checkpoints (`"optional": true`) don't block run completion
 6. Validate by loading the app — invalid routes log errors on startup

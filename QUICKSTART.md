@@ -90,7 +90,7 @@ The default route loads automatically when you start the app. Use `-route=<route
 
 ### Creating Your Own Route
 
-Place a JSON file in `routes/<game>/` (e.g. `routes/ds3/my-route.json`). Each checkpoint uses either an event flag check (boss kills) or a memory value check (levels, weapon upgrades):
+Place a JSON file in `routes/<game>/` (e.g. `routes/ds3/my-route.json`). Each checkpoint uses an event flag check (boss kills), memory value check (levels, weapon upgrades), inventory check (item quantities), or composite check (OR/AND combinations):
 
 ```json
 {
@@ -103,7 +103,9 @@ Place a JSON file in `routes/<game>/` (e.g. `routes/ds3/my-route.json`). Each ch
     {"id": "vordt", "name": "Vordt", "event_type": "boss_kill",
      "event_flag_check": {"flag_id": 13000800}},
     {"id": "dex-30", "name": "DEX 30", "event_type": "level_up", "optional": true,
-     "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 30, "size": 4}}
+     "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 30, "size": 4}},
+    {"id": "firebomb-3", "name": "3 Firebombs", "event_type": "item_pickup",
+     "inventory_check": {"item_id": 1073742116, "comparison": "gte", "value": 3}}
   ]
 }
 ```

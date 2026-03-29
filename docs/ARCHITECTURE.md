@@ -38,7 +38,9 @@
    - **route.go**: Route/Checkpoint data model with JSON loading and validation
    - **state.go**: RunState machine with `ProcessTick` returning `TickResult` (pure logic, no I/O)
    - **runner.go**: Runner orchestrator connecting state machine to memreader, stats, and backup
-   - Checkpoints support three condition types: event flag checks (`event_flag_check`), memory value checks (`mem_check`), and inventory quantity checks (`inventory_check`)
+   - Checkpoints support four condition types: event flag checks (`event_flag_check`), memory value checks (`mem_check`), inventory quantity checks (`inventory_check`), and composite checks (`composite_check`)
+   - `CompositeCheck` combines multiple conditions with `OR` or `AND` operator; supports recursive nesting of all condition types; evaluated with short-circuit logic in `runner.go`
+   - `CompositeCondition` must have exactly one check field set; `state_var` is prohibited inside composite conditions; minimum 2 conditions required per composite
    - `BackupFlagCheck` on checkpoints triggers save backup on boss encounter (before the fight)
    - `MemCheck` supports `gte`, `gt`, `eq` comparisons with configurable read size (1/2/4 bytes)
    - `InventoryCheck` supports optional `StateVar` for cumulative tracking with dot notation: `"name"` or `"name.acquired"` (default) tracks pickups, `"name.consumed"` tracks spending
@@ -211,7 +213,7 @@ The **DeathTracker** is the simpler of the two `GameTracker` implementations. It
 4. **Best-effort IGT read**: Reads in-game time if available
 5. **Return DisplayUpdate**: Carries game name, death count, character name, save slot, IGT
 
-The DeathTracker tracks deaths ephemerally — it only maintains the last-seen death count for change detection. All persistence is delegated to the `Repository`.
+The DeathTracker tracks deaths ephemerally — it only maintains the last-seen death count for change detection. All persistence is delegated to the `Repository`. When `-dc` mode is active, no SQLite database is created — the `Repository` is `nil` and death counts exist only in memory for the current session.
 
 ### Memory Address Details
 
@@ -292,7 +294,7 @@ GameTracker.Tick (RouteTracker):
     → startRouteRun() → CatchUp → transition to routeRunningState
   routeRunningState.Tick:
     detectSave() → save change? → handleSaveChanged → transition to routeStoppedState
-    → runner.Tick(reader) → Read Event Flags + Memory Values + Inventory Items
+    → runner.Tick(reader) → Read Event Flags + Memory Values + Inventory Items + Evaluate Composite Checks
       → ProcessTick (state machine) → Record Checkpoints → Update PBs
       → Trigger Save Backup → Generate CheckpointNotifications
     → recordDeathIfChanged() → return DisplayUpdate (with route + CompletedEvents)

@@ -84,7 +84,7 @@ For other games (Dark Souls series, Sekiro), anti-cheat is not an issue.
    |------|---------|-------------|
    | `-game` | `ds3` | Game ID (`ds1`, `ds2`, `ds3`, `dsr`, `sekiro`, `er`) |
    | `-route` | `ds3-glitchless-any-percent-e2e` | Route ID to load from `routes/<game>/` |
-   | `-dc` | `false` | Death counter only (disable route tracking) |
+   | `-dc` | `false` | Death counter only (no route tracking, no database created) |
 
 2. **Start any supported game**: The app will automatically detect and attach to it
 
@@ -127,7 +127,7 @@ The app supports custom speedrun route definitions as JSON files in game-specifi
 
 ### Creating Custom Routes
 
-Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.g. `routes/ds3/my-route.json`). The `game` field must match a `GameConfig.ID` (e.g. `"ds3"`). Each checkpoint can use an event flag check (for boss kills, bonfires), a memory value check (for levels, weapon upgrades), or an inventory check (for item quantities):
+Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.g. `routes/ds3/my-route.json`). The `game` field must match a `GameConfig.ID` (e.g. `"ds3"`). Each checkpoint can use an event flag check (for boss kills, bonfires), a memory value check (for levels, weapon upgrades), an inventory check (for item quantities), or a composite check (combining multiple conditions with OR/AND logic):
 
 ```json
 {
@@ -167,6 +167,18 @@ Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.
         "value": 4,
         "state_var": "embers"
       }
+    },
+    {
+      "id": "ashen-estus",
+      "name": "Ashen Estus Flask",
+      "event_type": "composite_check",
+      "composite_check": {
+        "operator": "OR",
+        "conditions": [
+          {"inventory_check": {"item_id": 1073742014, "comparison": "eq", "value": 1}},
+          {"inventory_check": {"item_id": 1073742015, "comparison": "eq", "value": 1}}
+        ]
+      }
     }
   ]
 }
@@ -180,6 +192,7 @@ Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.
 | Backup trigger | `backup_flag_check` | Object with `flag_id` — triggers a save backup (e.g. boss encounter) |
 | Memory value | `mem_check` | Read a value from a named memory path and compare it |
 | Inventory check | `inventory_check` | Check item quantity in player inventory |
+| Composite check | `composite_check` | Combine multiple conditions with OR/AND logic |
 
 #### Memory Check Fields
 
@@ -199,6 +212,31 @@ Routes are JSON files in game-specific subdirectories under `routes/<game>/` (e.
 | `comparison` | string | `"gte"` (>=), `"gt"` (>), or `"eq"` (==) |
 | `value` | int | Target quantity |
 | `state_var` | string | (Optional) Cumulative tracking variable name — only net positive inventory changes accumulate, so spending items doesn't regress progress |
+
+#### Composite Check Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `operator` | string | `"OR"` (any condition passes) or `"AND"` (all conditions must pass) |
+| `conditions` | array | List of condition objects (minimum 2 required) |
+
+Each condition object must have exactly **one** of: `event_flag_check`, `mem_check`, `inventory_check`, or `composite_check` (for recursive nesting). Conditions inside a composite check must **not** use `state_var`. Evaluation uses short-circuit logic.
+
+**Example** — Ashen Estus Flask (two possible item IDs):
+```json
+{
+  "id": "ashen-estus",
+  "name": "Ashen Estus Flask",
+  "event_type": "composite_check",
+  "composite_check": {
+    "operator": "OR",
+    "conditions": [
+      {"inventory_check": {"item_id": 1073742014, "comparison": "eq", "value": 1}},
+      {"inventory_check": {"item_id": 1073742015, "comparison": "eq", "value": 1}}
+    ]
+  }
+}
+```
 
 #### DS3 Player Stats Offsets
 
@@ -242,7 +280,7 @@ make test-e2e          # game-agnostic
 make test-e2e-ds3      # DS3-specific (memreader + monitor)
 
 # Run UI tests (requires Windows desktop session)
-make test-ui
+make test-e2e-ui
 
 # Format code
 make fmt

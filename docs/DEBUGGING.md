@@ -19,6 +19,7 @@
 - **Game not detected**: Process name may be wrong; check Task Manager for exact name
 - **Count doesn't update**: Pointer chain broken; game may have updated
 - **Route checkpoint not triggering**: Verify event flag ID is correct, check mem_check path/offset/comparison, or verify inventory_check item_id matches the TypeId constant
+- **Composite check not triggering**: Verify operator is `"OR"` or `"AND"` (uppercase), at least 2 conditions are present, each condition has exactly one check type, and no condition uses `state_var`
 - **Route not loading**: Check JSON syntax and that `game` field matches a supported game name exactly
 - **Character name shows as "-"**: Character name reading is currently DS3-only; requires successful AOB scan
 - **Wrong save slot**: Save slot requires GameMan AOB scan to succeed; check console for `[AOB] GameMan scan failed`

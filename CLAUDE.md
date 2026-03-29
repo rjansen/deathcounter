@@ -19,12 +19,13 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 - `make vet` — run go vet
 - `make lint` — run golangci-lint
 - `make clean` — remove build artifacts
+- `make deps` — download and tidy Go module dependencies
 
 ## Architecture
 
 - `main.go` — entry point: CLI flags (`-game`, `-dc`, `-route`), wires monitor + tray
 - `internal/memreader/` — Windows memory reading: process attach, pointer chains, AOB scanning, event flags, inventory
-- `internal/route/` — speedrun route model (JSON), state machine (`ProcessTick`), runner orchestrator
+- `internal/route/` — speedrun route model (JSON), state machine (`ProcessTick`), runner orchestrator; supports composite checks (`OR`/`AND` over multiple condition types)
 - `internal/data/` — SQLite persistence: sessions, deaths, route runs, checkpoints, PBs, state vars
 - `internal/data/dbm/` — generic DB mapper: `Query[T]`, `QueryOne[T]`, `Exec[T]` with struct scanning
 - `internal/data/model/` — domain models: Save, Session, DeathEvent, RouteRun, RouteCheckpoint, RoutePB, RouteStateVar
