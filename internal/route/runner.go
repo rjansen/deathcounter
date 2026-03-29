@@ -326,6 +326,13 @@ func (r *Runner) CatchUp(reader GameReader) error {
 	// Persist dirty state vars after catchup
 	r.persistDirtyStateVars()
 
+	// Backup at the last caught-up checkpoint as a restore point
+	if len(caughtUpList) > 0 {
+		last := caughtUpList[len(caughtUpList)-1]
+		log.Printf("[Route] Backup triggered: %s (catchup)", last.name)
+		r.triggerBackup(last.id)
+	}
+
 	return nil
 }
 
