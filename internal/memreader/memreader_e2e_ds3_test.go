@@ -817,12 +817,26 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Last Bonfire: %s (%d)", bonfireName, lastBonfire)
 
-	// 7. Inventory item quantity (Titanite Shard)
-	titaniteQty, err := reader.ReadInventoryItemQuantity(DS3ItemTitaniteShard)
-	if err != nil {
-		t.Fatalf("ReadInventoryItemQuantity(Titanite Shard) failed: %v", err)
+	// 7. Inventory items (all tracked goods, rings, and weapons)
+	t.Log("Inventory:")
+	allItems := map[uint32]string{}
+	for id, name := range DS3GoodsNames {
+		allItems[id] = name
 	}
-	t.Logf("Titanite Shards: %d", titaniteQty)
+	for id, name := range DS3RingNames {
+		allItems[id] = name
+	}
+	for id, name := range DS3WeaponNames {
+		allItems[id] = name
+	}
+	for itemID, itemName := range allItems {
+		qty, err := reader.ReadInventoryItemQuantity(itemID)
+		if err != nil {
+			t.Errorf("ReadInventoryItemQuantity(0x%X) %s failed: %v", itemID, itemName, err)
+			continue
+		}
+		t.Logf("  %s: %d", itemName, qty)
+	}
 
 	// 8. Completed checkpoints (all 25 boss event flags)
 	t.Log("Completed Checkpoints:")
@@ -1049,6 +1063,10 @@ func TestE2E_ProbePlayerStatOffsets(t *testing.T) {
 			t.Logf("  +0x%02X = ERROR: %v", offset, err)
 			continue
 		}
-		t.Logf("  +0x%02X = %d (0x%X)", offset, val, val)
+		label := DS3StatNames[offset]
+		if label == "" {
+			label = "?"
+		}
+		t.Logf("  +0x%02X %-12s = %d (0x%X)", offset, label, val, val)
 	}
 }

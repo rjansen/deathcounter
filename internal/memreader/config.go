@@ -81,9 +81,8 @@ var supportedGames = map[string]GameConfig{
 			"game_data_man": {},
 			// GameDataMan → PlayerGameData; stats are inline on PlayerGameData.
 			// Use offset in MemCheck for specific fields:
-			//   +0x44 = SoulLevel (uint32)
-			//   +0x48 = Attunement, +0x4C = Endurance, +0x50 = Vigor, +0x54 = Dexterity
-			//   +0x58 = Intelligence, +0x5C = Faith, +0x60 = Luck, +0x6C = Strength, +0x70 = Vitality
+			//   +0x44 = Vigor, +0x48 = Attunement, +0x4C = Endurance, +0x50 = Strength, +0x54 = Dexterity
+			//   +0x58 = Intelligence, +0x5C = Faith, +0x60 = Luck, +0x6C = Vitality, +0x70 = SoulLevel (uint32)
 			"player_stats": {0x10},
 			// GameDataMan → PlayerGameData (for character name)
 			// Character name is UTF-16LE at PlayerGameData + 0x88

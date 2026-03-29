@@ -1,17 +1,18 @@
 package memreader
 
 // DS3 PlayerGameData inline stat offsets (from GameDataMan → +0x10).
+// Verified against DS3_TGA_v3.4.0.CT (CheatEngine table).
 const (
-	DS3OffsetSoulLevel    int64 = 0x44
+	DS3OffsetVigor        int64 = 0x44
 	DS3OffsetAttunement   int64 = 0x48
 	DS3OffsetEndurance    int64 = 0x4C
-	DS3OffsetVigor        int64 = 0x50
+	DS3OffsetStrength     int64 = 0x50
 	DS3OffsetDexterity    int64 = 0x54
 	DS3OffsetIntelligence int64 = 0x58
 	DS3OffsetFaith        int64 = 0x5C
 	DS3OffsetLuck         int64 = 0x60
-	DS3OffsetStrength     int64 = 0x6C
-	DS3OffsetVitality     int64 = 0x70
+	DS3OffsetVitality     int64 = 0x6C
+	DS3OffsetSoulLevel    int64 = 0x70
 )
 
 // DS3 other PlayerGameData fields.
