@@ -3,7 +3,7 @@
 *.dll
 *.so
 *.dylib
-deathcounter
+/deathcounter
 
 # Test binary
 *.test

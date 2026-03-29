@@ -2,10 +2,12 @@
 
 # Embed manifest resource (required by lxn/walk)
 manifest:
-	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o rsrc.syso
+	-rm -f internal/tray/rsrc_test.syso
+	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o cmd/deathcounter/rsrc.syso
 
 # Embed manifest resource for tray UI tests (separate to avoid "too many .rsrc sections" on build)
 manifest-test:
+	-rm -f cmd/deathcounter/rsrc.syso
 	go run github.com/akavel/rsrc@latest -manifest deathcounter.manifest -o internal/tray/rsrc_test.syso
 
 # Install build tools
@@ -16,12 +18,12 @@ tools:
 # Build the application
 build: manifest
 	@echo "Building deathcounter..."
-	go build -o deathcounter.exe -ldflags="-H windowsgui" .
+	go build -o deathcounter.exe -ldflags="-H windowsgui" ./cmd/deathcounter/
 
 # Build without hiding console (useful for debugging)
 build-console: manifest
 	@echo "Building deathcounter with console..."
-	go build -o deathcounter.exe .
+	go build -o deathcounter.exe ./cmd/deathcounter/
 
 # Run the application (builds first)
 run: build-console
@@ -46,7 +48,7 @@ test-e2e-ui: manifest-test
 
 # Clean build artifacts
 clean:
-	rm -f deathcounter.exe deathcounter.db rsrc.syso internal/tray/rsrc_test.syso
+	rm -f deathcounter.exe deathcounter.db cmd/deathcounter/rsrc.syso internal/tray/rsrc_test.syso
 
 # Format code
 fmt:
