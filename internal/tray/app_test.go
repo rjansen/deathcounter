@@ -702,11 +702,15 @@ func TestUpdateTotalDeaths_ReflectsDB(t *testing.T) {
 	mustBuildMenu(t, app)
 
 	// Seed deaths in the DB
-	if err := app.repo.RecordDeath(5); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	save, err := app.repo.FindOrCreateSave("ds3", 0, "TestChar")
+	if err != nil {
+		t.Fatalf("FindOrCreateSave: %v", err)
 	}
-	if err := app.repo.RecordDeath(8); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := app.repo.RecordDeathForSave(5, save.ID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
+	}
+	if err := app.repo.RecordDeathForSave(8, save.ID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	app.updateTotalDeaths()
@@ -793,8 +797,12 @@ func TestStatsHistoryHandler_WithSessions(t *testing.T) {
 	mustBuildMenu(t, app)
 
 	// Seed some session data
-	if err := app.repo.RecordDeath(3); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	save, err := app.repo.FindOrCreateSave("ds3", 0, "TestChar")
+	if err != nil {
+		t.Fatalf("FindOrCreateSave: %v", err)
+	}
+	if err := app.repo.RecordDeathForSave(3, save.ID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	handler, ok := p.clickHandlers[MenuStatsHistory]

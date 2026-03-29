@@ -20,6 +20,15 @@ func newTestRepository(t *testing.T) *Repository {
 	return repo
 }
 
+func createTestSave(t *testing.T, repo *Repository) int64 {
+	t.Helper()
+	save, err := repo.FindOrCreateSave("ds3", 0, "TestChar")
+	if err != nil {
+		t.Fatalf("FindOrCreateSave: %v", err)
+	}
+	return save.ID
+}
+
 func TestNewRepository(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	repo, err := NewRepository(dbPath)
@@ -51,11 +60,12 @@ func TestNewRepository_InvalidPath(t *testing.T) {
 	}
 }
 
-func TestRecordDeath_CreatesSession(t *testing.T) {
+func TestRecordDeathForSave_CreatesSession(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
-	if err := repo.RecordDeath(1); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(1, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	deaths, err := repo.GetCurrentSessionDeaths()
@@ -67,14 +77,15 @@ func TestRecordDeath_CreatesSession(t *testing.T) {
 	}
 }
 
-func TestRecordDeath_ReusesOpenSession(t *testing.T) {
+func TestRecordDeathForSave_ReusesOpenSession(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
-	if err := repo.RecordDeath(1); err != nil {
-		t.Fatalf("first RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(1, saveID); err != nil {
+		t.Fatalf("first RecordDeathForSave: %v", err)
 	}
-	if err := repo.RecordDeath(2); err != nil {
-		t.Fatalf("second RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(2, saveID); err != nil {
+		t.Fatalf("second RecordDeathForSave: %v", err)
 	}
 
 	sessions, err := repo.GetSessionHistory(10)
@@ -89,14 +100,15 @@ func TestRecordDeath_ReusesOpenSession(t *testing.T) {
 	}
 }
 
-func TestRecordDeath_InsertsDeathEvents(t *testing.T) {
+func TestRecordDeathForSave_InsertsDeathEvents(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
-	if err := repo.RecordDeath(1); err != nil {
-		t.Fatalf("first RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(1, saveID); err != nil {
+		t.Fatalf("first RecordDeathForSave: %v", err)
 	}
-	if err := repo.RecordDeath(2); err != nil {
-		t.Fatalf("second RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(2, saveID); err != nil {
+		t.Fatalf("second RecordDeathForSave: %v", err)
 	}
 
 	var count int
@@ -111,9 +123,10 @@ func TestRecordDeath_InsertsDeathEvents(t *testing.T) {
 
 func TestEndCurrentSession(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
-	if err := repo.RecordDeath(3); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(3, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 	if err := repo.EndCurrentSession(); err != nil {
 		t.Fatalf("EndCurrentSession: %v", err)
@@ -151,18 +164,19 @@ func TestGetTotalDeaths_Empty(t *testing.T) {
 
 func TestGetTotalDeaths_AcrossSessions(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
 	// Session 1: 5 deaths
-	if err := repo.RecordDeath(5); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(5, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 	if err := repo.EndCurrentSession(); err != nil {
 		t.Fatalf("EndCurrentSession: %v", err)
 	}
 
 	// Session 2: 3 deaths
-	if err := repo.RecordDeath(3); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(3, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	total, err := repo.GetTotalDeaths()
@@ -188,11 +202,12 @@ func TestGetCurrentSessionDeaths_NoSession(t *testing.T) {
 
 func TestGetSessionHistory(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
 	// Create 3 sessions
 	for i := uint32(1); i <= 3; i++ {
-		if err := repo.RecordDeath(i * 10); err != nil {
-			t.Fatalf("RecordDeath: %v", err)
+		if err := repo.RecordDeathForSave(i*10, saveID); err != nil {
+			t.Fatalf("RecordDeathForSave: %v", err)
 		}
 		if err := repo.EndCurrentSession(); err != nil {
 			t.Fatalf("EndCurrentSession: %v", err)
@@ -225,10 +240,11 @@ func TestGetSessionHistory(t *testing.T) {
 
 func TestGetSessionHistory_Limit(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
 	for i := uint32(1); i <= 5; i++ {
-		if err := repo.RecordDeath(i); err != nil {
-			t.Fatalf("RecordDeath: %v", err)
+		if err := repo.RecordDeathForSave(i, saveID); err != nil {
+			t.Fatalf("RecordDeathForSave: %v", err)
 		}
 		if err := repo.EndCurrentSession(); err != nil {
 			t.Fatalf("EndCurrentSession: %v", err)
@@ -258,9 +274,10 @@ func TestGetSessionHistory_Empty(t *testing.T) {
 
 func TestGetSessionHistory_OpenSession(t *testing.T) {
 	repo := newTestRepository(t)
+	saveID := createTestSave(t, repo)
 
-	if err := repo.RecordDeath(7); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	if err := repo.RecordDeathForSave(7, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 
 	sessions, err := repo.GetSessionHistory(10)
@@ -467,8 +484,9 @@ func TestClose(t *testing.T) {
 		t.Fatalf("NewRepository: %v", err)
 	}
 
-	if err := repo.RecordDeath(5); err != nil {
-		t.Fatalf("RecordDeath: %v", err)
+	saveID := createTestSave(t, repo)
+	if err := repo.RecordDeathForSave(5, saveID); err != nil {
+		t.Fatalf("RecordDeathForSave: %v", err)
 	}
 	if err := repo.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
