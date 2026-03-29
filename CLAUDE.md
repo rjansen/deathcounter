@@ -23,7 +23,7 @@ syscall for process memory reading. Windows-only runtime; cross-platform testabl
 
 ## Architecture
 
-- `main.go` — entry point: CLI flags (`-game`, `-dc`, `-route`), wires monitor + tray
+- `cmd/deathcounter/main.go` — entry point: CLI flags (`-game`, `-dc`, `-route`), wires monitor + tray
 - `internal/memreader/` — Windows memory reading: process attach, pointer chains, AOB scanning, event flags, inventory
 - `internal/route/` — speedrun route model (JSON), state machine (`ProcessTick`), runner orchestrator; supports composite checks (`OR`/`AND` over multiple condition types)
 - `internal/data/` — SQLite persistence: sessions, deaths, route runs, checkpoints, PBs, state vars

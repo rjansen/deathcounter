@@ -171,7 +171,7 @@ Longer chains (like DS2) follow the same pattern with more steps.
 While you can write code on any platform, the application can only be built and run on Windows. Cross-compilation from macOS/Linux is possible:
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -o deathcounter.exe
+GOOS=windows GOARCH=amd64 go build -o deathcounter.exe ./cmd/deathcounter/
 ```
 
 However, you cannot test it without Windows.

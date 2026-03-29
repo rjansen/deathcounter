@@ -2,7 +2,7 @@
 
 ## Core Components
 
-1. **main.go**: Application entry point
+1. **cmd/deathcounter/main.go**: Application entry point
    - Parses CLI flags: `-game` (game ID), `-dc` (death counter only), `-route` (route ID)
    - Initializes data repository and process operations
    - Creates `GameTracker` (`DeathTracker` or `RouteTracker`) based on `-dc` flag
@@ -353,7 +353,7 @@ When the app detects a matching game, the route runner starts with this sequence
 - **Problem**: Two tracking modes (death-only vs route tracking) with shared base behavior (save detection, death recording)
 - **Implementation**: `GameTracker` interface with `DeathTracker` (stateless) and `RouteTracker` (stateful) strategies
 - **Files**: `deathtracker.go`, `routetracker.go`, `tracker.go` (shared `baseTracker`)
-- Selected at startup via `-dc` flag in `main.go`
+- Selected at startup via `-dc` flag in `cmd/deathcounter/main.go`
 
 ## Architecture Notes
 
