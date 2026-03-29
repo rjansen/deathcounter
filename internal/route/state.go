@@ -63,12 +63,13 @@ func (rs *RunState) Abandon() {
 
 // TickInput holds all memory readings for a single tick cycle.
 type TickInput struct {
-	Flags           map[uint32]bool   // event flag ID → set (checkpoint completion flags)
-	BackupFlags     map[uint32]bool   // backup flag ID → set (boss encounter flags)
-	MemValues       map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
-	InventoryValues map[string]uint32 // checkpoint ID → current inventory quantity (for inventory_check checkpoints)
-	IGT             int64
-	DeathCount      uint32
+	Flags            map[uint32]bool   // event flag ID → set (checkpoint completion flags)
+	BackupFlags      map[uint32]bool   // backup flag ID → set (boss encounter flags)
+	MemValues        map[string]uint32 // checkpoint ID → current memory value (for mem_check checkpoints)
+	InventoryValues  map[string]uint32 // checkpoint ID → current inventory quantity (for inventory_check checkpoints)
+	CompositeResults map[string]bool   // checkpoint ID → composite check result (evaluated by runner)
+	IGT              int64
+	DeathCount       uint32
 }
 
 // BackupEvent is emitted when a backup flag is newly set (e.g. boss encountered).
@@ -160,6 +161,11 @@ func (rs *RunState) checkCondition(cp Checkpoint, input TickInput) bool {
 			return false
 		}
 		return compareValue(val, cp.InventoryCheck.Comparison, cp.InventoryCheck.Value)
+	}
+
+	// Composite check (pre-evaluated by runner)
+	if cp.CompositeCheck != nil {
+		return input.CompositeResults[cp.ID]
 	}
 
 	return false

@@ -129,6 +129,53 @@ func (r *Runner) initStateVars() {
 	}
 }
 
+// evaluateCompositeCheck recursively evaluates a composite check tree.
+func evaluateCompositeCheck(reader GameReader, cc *CompositeCheck) (bool, error) {
+	for _, cond := range cc.Conditions {
+		result, err := evaluateCompositeCondition(reader, cond)
+		if err != nil {
+			return false, err
+		}
+		if cc.Operator == OperatorOR && result {
+			return true, nil // short-circuit: one true is enough
+		}
+		if cc.Operator == OperatorAND && !result {
+			return false, nil // short-circuit: one false is enough
+		}
+	}
+	// OR: all false → false; AND: all true → true
+	return cc.Operator == OperatorAND, nil
+}
+
+// evaluateCompositeCondition evaluates a single leaf or subtree condition.
+func evaluateCompositeCondition(reader GameReader, cond CompositeCondition) (bool, error) {
+	if cond.EventFlagCheck != nil {
+		return reader.ReadEventFlag(cond.EventFlagCheck.FlagID)
+	}
+	if cond.MemCheck != nil {
+		size := cond.MemCheck.Size
+		if size == 0 {
+			size = 4
+		}
+		val, err := reader.ReadMemoryValue(cond.MemCheck.Path, cond.MemCheck.Offset, size)
+		if err != nil {
+			return false, err
+		}
+		return compareValue(val, cond.MemCheck.Comparison, cond.MemCheck.Value), nil
+	}
+	if cond.InventoryCheck != nil {
+		qty, err := reader.ReadInventoryItemQuantity(cond.InventoryCheck.ItemID)
+		if err != nil {
+			return false, err
+		}
+		return compareValue(qty, cond.InventoryCheck.Comparison, cond.InventoryCheck.Value), nil
+	}
+	if cond.CompositeCheck != nil {
+		return evaluateCompositeCheck(reader, cond.CompositeCheck)
+	}
+	return false, nil
+}
+
 // Pause stops tracking the run without persisting any status change.
 // The run stays in_progress in the database and can be resumed later.
 func (r *Runner) Pause() {
@@ -237,6 +284,20 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			}
 		}
 
+		if cp.CompositeCheck != nil && !r.state.CompletedFlags[cp.ID] {
+			result, err := evaluateCompositeCheck(reader, cp.CompositeCheck)
+			if err != nil {
+				return err
+			}
+			if result {
+				r.state.CompletedFlags[cp.ID] = true
+				log.Printf("[Route] Already completed: %s", cp.Name)
+				if err := r.repo.RecordCheckpoint(r.runID, cp.ID, cp.Name, 0, 0, 0); err != nil {
+					log.Printf("[Route] Failed to record caught-up checkpoint %s: %v", cp.ID, err)
+				}
+			}
+		}
+
 		// Also mark backup as done for already-completed checkpoints
 		if cp.BackupFlagCheck != nil && r.state.CompletedFlags[cp.ID] {
 			r.state.BackupDone[cp.ID] = true
@@ -295,11 +356,12 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 
 	// Build tick input by reading only the active checkpoint window
 	input := TickInput{
-		Flags:           make(map[uint32]bool),
-		BackupFlags:     make(map[uint32]bool),
-		MemValues:       make(map[string]uint32),
-		InventoryValues: make(map[string]uint32),
-		DeathCount:      deathCount,
+		Flags:            make(map[uint32]bool),
+		BackupFlags:      make(map[uint32]bool),
+		MemValues:        make(map[string]uint32),
+		InventoryValues:  make(map[string]uint32),
+		CompositeResults: make(map[string]bool),
+		DeathCount:       deathCount,
 	}
 
 	// Update ALL state vars regardless of active window (cumulative tracking)
@@ -395,6 +457,18 @@ func (r *Runner) Tick(reader GameReader) ([]CheckpointEvent, error) {
 				}
 				input.InventoryValues[cp.ID] = qty
 			}
+		}
+
+		// Composite check: evaluate entire tree
+		if cp.CompositeCheck != nil {
+			result, err := evaluateCompositeCheck(reader, cp.CompositeCheck)
+			if err != nil {
+				if !errors.Is(err, memreader.ErrNullPointer) {
+					return nil, fmt.Errorf("evaluate composite for %s: %w", cp.ID, memreader.ErrGameRead)
+				}
+				continue
+			}
+			input.CompositeResults[cp.ID] = result
 		}
 	}
 
