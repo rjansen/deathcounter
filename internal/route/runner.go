@@ -42,11 +42,8 @@ type Runner struct {
 }
 
 // NewRunner creates a new route runner.
-// If backupMgr is nil, a default backup manager is created.
+// If backupMgr is nil, save-file backups are disabled.
 func NewRunner(route *Route, repo *data.Repository, backupMgr *backup.Manager) *Runner {
-	if backupMgr == nil {
-		backupMgr = backup.NewManager("backups")
-	}
 	return &Runner{
 		route:  route,
 		repo:   repo,
@@ -573,7 +570,7 @@ func (r *Runner) triggerBackup(checkpointID string) {
 		log.Printf("Failed to resolve save path: %v", err)
 		return
 	}
-	label := fmt.Sprintf("%s_%s", r.route.ID, checkpointID)
+	label := checkpointID
 	if _, err := r.backup.Backup(savePath, label); err != nil {
 		log.Printf("Failed to backup save: %v", err)
 	}

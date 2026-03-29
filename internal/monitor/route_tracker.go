@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 
+	"github.com/rjansen/deathcounter/internal/backup"
 	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/memreader"
 	"github.com/rjansen/deathcounter/internal/route"
@@ -111,7 +113,9 @@ func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, err
 }
 
 func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
-	t.runner = route.NewRunner(t.route, t.repo, nil)
+	backupDir := filepath.Join(backup.ExeDir(), "backups", t.route.ID, fmt.Sprint(t.currentSaveID))
+	backupMgr := backup.NewManager(backupDir)
+	t.runner = route.NewRunner(t.route, t.repo, backupMgr)
 
 	// Try to find the latest run for this route+save
 	run, err := t.repo.FindLatestRun(t.route.ID, t.currentSaveID)
