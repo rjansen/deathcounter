@@ -51,13 +51,12 @@ func tickE2E(t *testing.T, mon *GameMonitor) {
 func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 	ops, reader := newRealOpsAndAttach(t)
 	defer reader.Detach()
-	tracker := newE2ETracker(t)
 
 	// We got a reader to verify DS3 is running, but the monitor
 	// starts fresh from PhaseDetached — detach and let the monitor attach.
 	reader.Detach()
 
-	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
+	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3"))
 	initE2EMonitor(mon)
 
 	// Phase 1: Detached — no game attached yet... but since the process
@@ -92,11 +91,6 @@ func TestE2E_DeathTracker_PhaseTransitions(t *testing.T) {
 		t.Errorf("expected status 'Loaded', got %q", update.Status)
 	}
 
-	// Verify save ID was created in the DB
-	dt := deathTracker(mon)
-	if dt.currentSaveID <= 0 {
-		t.Errorf("expected currentSaveID > 0, got %d", dt.currentSaveID)
-	}
 }
 
 // TestE2E_RouteTracker_PhaseTransitions validates the full
@@ -191,8 +185,7 @@ func TestE2E_DeathTracker_Slot255NotAccepted(t *testing.T) {
 
 	// Verify the monitor properly loads with a valid slot
 	reader.Detach()
-	tracker := newE2ETracker(t)
-	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3", tracker))
+	mon := NewGameMonitor("ds3", ops, NewDeathTracker("ds3"))
 	initE2EMonitor(mon)
 
 	for i := 0; i < 10; i++ {

@@ -34,11 +34,14 @@ func (s *routeRunningState) OnDetach(t *RouteTracker) {
 
 // Tick processes one monitoring cycle with an active route runner.
 func (s *routeRunningState) Tick(t *RouteTracker, reader *memreader.GameReader) (DisplayUpdate, error) {
-	err := t.detectSave(reader)
-	if errors.Is(err, ErrSaveChanged) {
-		if err := t.handleSaveChanged(reader); err != nil {
-			return t.buildUpdate(nil), err
+	if err := t.detectSave(reader); err != nil {
+		if errors.Is(err, ErrSaveChanged) {
+			if err := t.handleSaveChanged(reader); err != nil {
+				return t.buildUpdate(nil), err
+			}
+			return t.buildUpdate(nil), nil
 		}
+		return t.buildUpdate(nil), err
 	}
 
 	if t.state.IsRunning() {
