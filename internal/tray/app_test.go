@@ -283,15 +283,15 @@ func TestBuildMenu(t *testing.T) {
 		}
 	}
 
-	// Info items should be disabled
-	disabledItems := []MenuItemID{
+	// Info items should be enabled (render as normal labels)
+	enabledItems := []MenuItemID{
 		MenuTitle, MenuStatus, MenuGame, MenuCharacter,
 		MenuCount, MenuSession, MenuTotal,
 		MenuRouteName, MenuRouteProgress, MenuRouteCurrent,
 	}
-	for _, id := range disabledItems {
-		if p.menuEnabled[id] {
-			t.Errorf("menu item %q should be disabled", id)
+	for _, id := range enabledItems {
+		if !p.menuEnabled[id] {
+			t.Errorf("menu item %q should be enabled", id)
 		}
 	}
 

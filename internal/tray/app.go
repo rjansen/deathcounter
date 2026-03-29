@@ -90,7 +90,7 @@ func (a *App) buildMenu() error {
 	}
 
 	items := []menuItem{
-		{MenuTitle, "Death Counter", false},
+		{MenuTitle, "Death Counter", true},
 	}
 
 	// Add all display items
@@ -106,9 +106,9 @@ func (a *App) buildMenu() error {
 
 	// Status, Game, Character
 	for _, item := range []menuItem{
-		{MenuStatus, "Status: Starting...", false},
-		{MenuGame, "Game: None", false},
-		{MenuCharacter, "Character: -", false},
+		{MenuStatus, "Status: Starting...", true},
+		{MenuGame, "Game: None", true},
+		{MenuCharacter, "Character: -", true},
 	} {
 		if err := p.AddMenuItem(item.id, item.text, item.enabled); err != nil {
 			return err
@@ -121,9 +121,9 @@ func (a *App) buildMenu() error {
 
 	// Death counts
 	for _, item := range []menuItem{
-		{MenuCount, "Current: 0", false},
-		{MenuSession, "Session: 0", false},
-		{MenuTotal, "Total: 0", false},
+		{MenuCount, "Current: 0", true},
+		{MenuSession, "Session: 0", true},
+		{MenuTotal, "Total: 0", true},
 	} {
 		if err := p.AddMenuItem(item.id, item.text, item.enabled); err != nil {
 			return err
@@ -139,9 +139,9 @@ func (a *App) buildMenu() error {
 
 	// Route section
 	for _, item := range []menuItem{
-		{MenuRouteName, "Route: None", false},
-		{MenuRouteProgress, "Progress: -", false},
-		{MenuRouteCurrent, "Current: -", false},
+		{MenuRouteName, "Route: None", true},
+		{MenuRouteProgress, "Progress: -", true},
+		{MenuRouteCurrent, "Current: -", true},
 	} {
 		if err := p.AddMenuItem(item.id, item.text, item.enabled); err != nil {
 			return err
