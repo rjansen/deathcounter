@@ -44,11 +44,12 @@ type EventFlagCheck struct {
 type Checkpoint struct {
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
-	EventType       string          `json:"event_type"`                  // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade"
+	EventType       string          `json:"event_type"`                  // "boss_kill", "bonfire_lit", "item_pickup", "level_up", "weapon_upgrade", "composite_check"
 	EventFlagCheck  *EventFlagCheck `json:"event_flag_check,omitempty"`  // game memory flag check (for flag-based checks)
 	BackupFlagCheck *EventFlagCheck `json:"backup_flag_check,omitempty"` // event flag that triggers a save backup (e.g. boss encounter)
 	MemCheck        *MemCheck       `json:"mem_check,omitempty"`         // memory value check (for value-based checks)
 	InventoryCheck  *InventoryCheck `json:"inventory_check,omitempty"`   // inventory item quantity check
+	CompositeCheck  *CompositeCheck `json:"composite_check,omitempty"`   // composite condition (OR/AND over multiple checks)
 	Optional        bool            `json:"optional"`
 }
 
@@ -67,6 +68,27 @@ type InventoryCheck struct {
 	Comparison string `json:"comparison"`          // "gte", "gt", "eq"
 	Value      uint32 `json:"value"`               // target quantity
 	StateVar   string `json:"state_var,omitempty"` // cumulative tracking variable name
+}
+
+// Logical operators for CompositeCheck.
+const (
+	OperatorOR  = "OR"
+	OperatorAND = "AND"
+)
+
+// CompositeCondition is a leaf or subtree in a composite expression.
+// Exactly one field must be set.
+type CompositeCondition struct {
+	EventFlagCheck *EventFlagCheck `json:"event_flag_check,omitempty"`
+	MemCheck       *MemCheck       `json:"mem_check,omitempty"`
+	InventoryCheck *InventoryCheck `json:"inventory_check,omitempty"`
+	CompositeCheck *CompositeCheck `json:"composite_check,omitempty"` // recursive nesting
+}
+
+// CompositeCheck combines multiple conditions with a logical operator.
+type CompositeCheck struct {
+	Operator   string               `json:"operator"` // OperatorOR or OperatorAND
+	Conditions []CompositeCondition `json:"conditions"`
 }
 
 // LoadRoute parses and validates a route JSON file.
@@ -180,8 +202,8 @@ func (r *Route) validate() error {
 		if cp.EventType == "" {
 			return fmt.Errorf("checkpoint %d: missing event_type", i)
 		}
-		if cp.EventFlagCheck == nil && cp.MemCheck == nil && cp.InventoryCheck == nil {
-			return fmt.Errorf("checkpoint %d (%s): must have event_flag_check, mem_check, or inventory_check", i, cp.ID)
+		if cp.EventFlagCheck == nil && cp.MemCheck == nil && cp.InventoryCheck == nil && cp.CompositeCheck == nil {
+			return fmt.Errorf("checkpoint %d (%s): must have event_flag_check, mem_check, inventory_check, or composite_check", i, cp.ID)
 		}
 		if cp.InventoryCheck != nil {
 			if cp.InventoryCheck.ItemID == 0 {
@@ -206,6 +228,11 @@ func (r *Route) validate() error {
 			}
 			if cp.MemCheck.Size != 0 && cp.MemCheck.Size != 1 && cp.MemCheck.Size != 2 && cp.MemCheck.Size != 4 {
 				return fmt.Errorf("checkpoint %d (%s): mem_check invalid size %d (must be 1, 2, or 4)", i, cp.ID, cp.MemCheck.Size)
+			}
+		}
+		if cp.CompositeCheck != nil {
+			if err := validateCompositeCheck(cp.CompositeCheck, i, cp.ID); err != nil {
+				return err
 			}
 		}
 	}
@@ -237,5 +264,68 @@ func (r *Route) validate() error {
 		}
 	}
 
+	return nil
+}
+
+// validateCompositeCheck recursively validates a composite check tree.
+func validateCompositeCheck(cc *CompositeCheck, cpIdx int, cpID string) error {
+	switch cc.Operator {
+	case OperatorOR, OperatorAND:
+		// valid
+	default:
+		return fmt.Errorf("checkpoint %d (%s): composite_check invalid operator %q (must be OR or AND)", cpIdx, cpID, cc.Operator)
+	}
+	if len(cc.Conditions) < 2 {
+		return fmt.Errorf("checkpoint %d (%s): composite_check must have at least 2 conditions", cpIdx, cpID)
+	}
+	for j, cond := range cc.Conditions {
+		count := 0
+		if cond.EventFlagCheck != nil {
+			count++
+		}
+		if cond.MemCheck != nil {
+			count++
+		}
+		if cond.InventoryCheck != nil {
+			count++
+		}
+		if cond.CompositeCheck != nil {
+			count++
+		}
+		if count != 1 {
+			return fmt.Errorf("checkpoint %d (%s): composite_check condition %d must have exactly one check type", cpIdx, cpID, j)
+		}
+		if cond.InventoryCheck != nil {
+			if cond.InventoryCheck.ItemID == 0 {
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d inventory_check missing item_id", cpIdx, cpID, j)
+			}
+			switch cond.InventoryCheck.Comparison {
+			case "gte", "eq", "gt":
+			default:
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d inventory_check invalid comparison %q", cpIdx, cpID, j, cond.InventoryCheck.Comparison)
+			}
+			if cond.InventoryCheck.StateVar != "" {
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d inventory_check must not use state_var", cpIdx, cpID, j)
+			}
+		}
+		if cond.MemCheck != nil {
+			if cond.MemCheck.Path == "" {
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d mem_check missing path", cpIdx, cpID, j)
+			}
+			switch cond.MemCheck.Comparison {
+			case "gte", "eq", "gt":
+			default:
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d mem_check invalid comparison %q", cpIdx, cpID, j, cond.MemCheck.Comparison)
+			}
+			if cond.MemCheck.Size != 0 && cond.MemCheck.Size != 1 && cond.MemCheck.Size != 2 && cond.MemCheck.Size != 4 {
+				return fmt.Errorf("checkpoint %d (%s): composite_check condition %d mem_check invalid size %d", cpIdx, cpID, j, cond.MemCheck.Size)
+			}
+		}
+		if cond.CompositeCheck != nil {
+			if err := validateCompositeCheck(cond.CompositeCheck, cpIdx, cpID); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
