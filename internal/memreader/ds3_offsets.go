@@ -118,21 +118,22 @@ const (
 
 // DS3 item IDs — Goods (prefix 0x4000, from TGA CT v3.4.0).
 const (
-	DS3ItemEmber              uint32 = 0x400001F4
-	DS3ItemGoldPineResin      uint32 = 0x4000014B
-	DS3ItemCarthusRouge       uint32 = 0x4000014F
-	DS3ItemHomewardBone       uint32 = 0x4000015E
-	DS3ItemFirebomb           uint32 = 0x40000124
-	DS3ItemTitaniteShard      uint32 = 0x400003E8
-	DS3ItemLargeTitaniteShard uint32 = 0x400003E9
-	DS3ItemTitaniteChunk      uint32 = 0x400003EA
-	DS3ItemTitaniteSlab       uint32 = 0x400003EB
-	DS3ItemEstusShard         uint32 = 0x4000085D
-	DS3ItemGraveWardenAshes   uint32 = 0x4000083E
-	DS3ItemMorticiansAshes    uint32 = 0x4000083B
-	DS3ItemSharpGem           uint32 = 0x40000456
-	DS3ItemAshenEstusFlask    uint32 = 0x400000BF
-	DS3ItemFarronCoal         uint32 = 0x40000837
+	DS3ItemEmber                uint32 = 0x400001F4
+	DS3ItemGoldPineResin        uint32 = 0x4000014B
+	DS3ItemCarthusRouge         uint32 = 0x4000014F
+	DS3ItemHomewardBone         uint32 = 0x4000015E
+	DS3ItemFirebomb             uint32 = 0x40000124
+	DS3ItemTitaniteShard        uint32 = 0x400003E8
+	DS3ItemLargeTitaniteShard   uint32 = 0x400003E9
+	DS3ItemTitaniteChunk        uint32 = 0x400003EA
+	DS3ItemTitaniteSlab         uint32 = 0x400003EB
+	DS3ItemEstusShard           uint32 = 0x4000085D
+	DS3ItemGraveWardenAshes     uint32 = 0x4000083E
+	DS3ItemMorticiansAshes      uint32 = 0x4000083B
+	DS3ItemSharpGem             uint32 = 0x40000456
+	DS3ItemAshenEstusFlaskEmpty uint32 = 0x400000BE
+	DS3ItemAshenEstusFlask      uint32 = 0x400000BF
+	DS3ItemFarronCoal           uint32 = 0x40000837
 )
 
 // DS3 item IDs — Rings/Accessories (prefix 0x2000, from TGA CT v3.4.0).
@@ -202,21 +203,22 @@ var DS3BossEncounteredNames = map[uint32]string{
 
 // DS3GoodsNames maps goods item IDs to display names.
 var DS3GoodsNames = map[uint32]string{
-	DS3ItemEmber:              "Ember",
-	DS3ItemGoldPineResin:      "Gold Pine Resin",
-	DS3ItemCarthusRouge:       "Carthus Rouge",
-	DS3ItemHomewardBone:       "Homeward Bone",
-	DS3ItemFirebomb:           "Firebomb",
-	DS3ItemTitaniteShard:      "Titanite Shard",
-	DS3ItemLargeTitaniteShard: "Large Titanite Shard",
-	DS3ItemTitaniteChunk:      "Titanite Chunk",
-	DS3ItemTitaniteSlab:       "Titanite Slab",
-	DS3ItemEstusShard:         "Estus Shard",
-	DS3ItemGraveWardenAshes:   "Grave Warden Ashes",
-	DS3ItemMorticiansAshes:    "Mortician's Ashes",
-	DS3ItemSharpGem:           "Sharp Gem",
-	DS3ItemAshenEstusFlask:    "Ashen Estus Flask",
-	DS3ItemFarronCoal:         "Farron Coal",
+	DS3ItemEmber:                "Ember",
+	DS3ItemGoldPineResin:        "Gold Pine Resin",
+	DS3ItemCarthusRouge:         "Carthus Rouge",
+	DS3ItemHomewardBone:         "Homeward Bone",
+	DS3ItemFirebomb:             "Firebomb",
+	DS3ItemTitaniteShard:        "Titanite Shard",
+	DS3ItemLargeTitaniteShard:   "Large Titanite Shard",
+	DS3ItemTitaniteChunk:        "Titanite Chunk",
+	DS3ItemTitaniteSlab:         "Titanite Slab",
+	DS3ItemEstusShard:           "Estus Shard",
+	DS3ItemGraveWardenAshes:     "Grave Warden Ashes",
+	DS3ItemMorticiansAshes:      "Mortician's Ashes",
+	DS3ItemSharpGem:             "Sharp Gem",
+	DS3ItemAshenEstusFlaskEmpty: "Ashen Estus Flask (Empty)",
+	DS3ItemAshenEstusFlask:      "Ashen Estus Flask",
+	DS3ItemFarronCoal:           "Farron Coal",
 }
 
 // DS3RingNames maps ring item IDs to display names.
