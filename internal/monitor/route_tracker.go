@@ -59,22 +59,16 @@ func (t *RouteTracker) detectSave(reader *memreader.GameReader) error {
 
 // recordDeathIfChanged checks if the death count changed and records it.
 // Returns true if the count changed.
-func (t *RouteTracker) recordDeathIfChanged(count uint32) bool {
-	if count != t.lastCount {
-		log.Printf("[%s] Death count: %d (previous: %d)", t.gameID, count, t.lastCount)
-		if t.currentSaveID > 0 {
-			if err := t.repo.RecordDeathForSave(count, t.currentSaveID); err != nil {
-				log.Printf("[%s] Failed to record death for save: %v", t.gameID, err)
-			}
-		} else {
-			if err := t.repo.RecordDeath(count); err != nil {
-				log.Printf("[%s] Failed to record death: %v", t.gameID, err)
-			}
-		}
-		t.lastCount = count
-		return true
+func (t *RouteTracker) recordDeathIfChanged(count uint32) (bool, error) {
+	if count == t.lastCount {
+		return false, nil
 	}
-	return false
+	log.Printf("[%s] Death count: %d (previous: %d)", t.gameID, count, t.lastCount)
+	if err := t.repo.RecordDeathForSave(count, t.currentSaveID); err != nil {
+		return false, fmt.Errorf("record death for save: %w", err)
+	}
+	t.lastCount = count
+	return true, nil
 }
 
 // setTrackerState transitions the tracker to a new state.
@@ -110,7 +104,9 @@ func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, err
 	if err != nil {
 		return t.buildUpdate(nil), err
 	}
-	t.recordDeathIfChanged(t.runner.LastDeathCount())
+	if _, err := t.recordDeathIfChanged(t.runner.LastDeathCount()); err != nil {
+		log.Printf("[%s] %v (saveID=%d slot=%d char=%q)", t.gameID, err, t.currentSaveID, t.currentSlotIdx, t.currentCharName)
+	}
 	return t.buildUpdate(events), nil
 }
 

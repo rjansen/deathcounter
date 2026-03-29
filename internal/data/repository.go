@@ -255,48 +255,6 @@ func (r *Repository) RecordDeathForSave(count uint32, saveID int64) error {
 	return err
 }
 
-// RecordDeath records a death count update
-func (r *Repository) RecordDeath(count uint32) error {
-	ctx := context.Background()
-	session, err := r.getCurrentSession()
-	if err != nil {
-		return err
-	}
-
-	_, err = dbm.Exec[any](ctx, r.db,
-		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
-		session.ID, count, time.Now(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to record death: %w", err)
-	}
-
-	_, err = dbm.Exec[any](ctx, r.db,
-		"UPDATE sessions SET deaths = ? WHERE id = ?",
-		count, session.ID,
-	)
-	return err
-}
-
-// getCurrentSession gets or creates the current gaming session
-func (r *Repository) getCurrentSession() (model.Session, error) {
-	ctx := context.Background()
-	session, err := dbm.QueryOne[model.Session](ctx, r.db,
-		"SELECT id, start_time, end_time, deaths, save_id FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
-	)
-	if err == nil {
-		return session, nil
-	}
-	if err != ErrNotFound {
-		return model.Session{}, err
-	}
-
-	return dbm.QueryOne[model.Session](ctx, r.db,
-		"INSERT INTO sessions (start_time, deaths) VALUES (?, 0) RETURNING id, start_time, end_time, deaths, save_id",
-		time.Now(),
-	)
-}
-
 // EndCurrentSession marks the current session as ended
 func (r *Repository) EndCurrentSession() error {
 	ctx := context.Background()
