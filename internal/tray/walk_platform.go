@@ -41,11 +41,6 @@ func (w *WalkPlatform) Init() error {
 		return fmt.Errorf("failed to create notify icon: %w", err)
 	}
 
-	w.notification, err = NewNotificationPopup()
-	if err != nil {
-		log.Printf("Warning: could not create notification popup: %v", err)
-	}
-
 	return nil
 }
 
@@ -163,7 +158,12 @@ func (w *WalkPlatform) SetMenuItemEnabled(id MenuItemID, enabled bool) error {
 
 func (w *WalkPlatform) ShowNotification(title, body, detail string) error {
 	if w.notification == nil {
-		return nil
+		var err error
+		w.notification, err = NewNotificationPopup()
+		if err != nil {
+			log.Printf("Warning: could not create notification popup: %v", err)
+			return nil
+		}
 	}
 	w.notification.Show(title, body, detail)
 	return nil
