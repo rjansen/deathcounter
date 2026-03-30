@@ -248,10 +248,11 @@ These addresses are for current game versions as of the DSDeaths project. If a g
      - Converts `image.Image` to `*walk.Icon` in `SetIcon`
      - `Synchronize` delegates to `mainWindow.Synchronize(fn)`
    - **walk_notification.go**: Checkpoint achievement popup (`//go:build windows`)
-     - Borderless topmost window showing checkpoint name, segment time, deaths
+     - Borderless topmost window showing checkpoint name, IGT (H:MM:SS), and segment time
+     - Queues multiple notifications and cycles them one-by-one via dismiss timer
      - Auto-dismisses after 4 seconds; positioned top-center of primary monitor
    - **display.go**: Pure text formatting functions (no walk dependency)
-     - `formatStatusText`, `formatGameText`, `formatCharacterText`, `formatDeathCountText`, `resolveRouteTexts`, `formatCheckpointNotification`
+     - `formatStatusText`, `formatGameText`, `formatCharacterText`, `formatDeathCountText`, `resolveRouteTexts`, `formatCheckpointNotification`, `formatIGT`
    - **icon.go**: Returns `image.Image` from embedded PNG (no walk dependency, no build tag)
    - **icon_data.go**: Generated ICO/PNG byte data
    - Requires Windows manifest resource (embedded via `rsrc` at build time) for WalkPlatform
