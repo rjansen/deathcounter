@@ -676,10 +676,10 @@ func TestReadEventFlag_NullPointer(t *testing.T) {
 func TestReadIGT(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	// DS3 IGTOffsets64: {0x4768E78, 0xA4}
-	// base + 0x4768E78 → pointer
-	mock.setMemory64(0x144768E78, 0x30000000)
-	// 0x30000000 + 0xA4 = 0x300000A4 → IGT value
+	// DS3 IGTOffsets64: {0x47572B8, 0xA4} — GameDataMan static pointer
+	// base(0x140000000) + 0x47572B8 = 0x1447572B8 → pointer to GameDataMan
+	mock.setMemory64(0x1447572B8, 0x30000000)
+	// GameDataMan(0x30000000) + 0xA4 = 0x300000A4 → IGT value
 	mock.setMemory32(0x300000A4, 1234567) // 1234567 ms
 
 	igt, err := reader.ReadIGT()
@@ -694,7 +694,7 @@ func TestReadIGT(t *testing.T) {
 func TestReadIGT_Zero(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	mock.setMemory64(0x144768E78, 0x30000000)
+	mock.setMemory64(0x1447572B8, 0x30000000)
 	mock.setMemory32(0x300000A4, 0)
 
 	igt, err := reader.ReadIGT()
@@ -813,7 +813,7 @@ func TestReadMemoryValue_NullPointer(t *testing.T) {
 func TestReadIGT_NullPointer(t *testing.T) {
 	mock, reader := attachDS3WithEventFlags(t)
 
-	mock.setMemory64(0x144768E78, 0)
+	mock.setMemory64(0x1447572B8, 0)
 
 	_, err := reader.ReadIGT()
 	if err == nil {

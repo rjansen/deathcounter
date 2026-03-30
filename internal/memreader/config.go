@@ -75,7 +75,7 @@ var supportedGames = map[string]GameConfig{
 		Offsets64:          []int64{0x47572B8, 0x98},
 		EventFlagOffsets64: []int64{0x4768E78, 0x0},
 		FieldAreaOffsets64: []int64{0x4768028, 0x0},
-		IGTOffsets64:       []int64{0x4768E78, 0xA4},
+		IGTOffsets64:       []int64{0x47572B8, 0xA4},
 		MemoryPaths: map[string][]int64{
 			// GameDataMan — resolved via GameDataManAOB; static offset 0x4768E78 is stale
 			"game_data_man": {},

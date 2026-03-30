@@ -164,9 +164,9 @@ func setupDS3Mock(deathCount uint32) *mockProcessOps {
 	flagValueBytes := make([]byte, 4)
 	mock.memory[uintptr(flagDataPtr+12)] = flagValueBytes
 
-	// IGT value: sprjBase + 0xA4 (static chain [0x4768E78, 0xA4] reads here)
+	// IGT value: GameDataMan + 0xA4 (ReadIGT uses GameDataMan AOB)
 	igtBytes := make([]byte, 8)
-	mock.memory[uintptr(sprjBase+0xA4)] = igtBytes
+	mock.memory[uintptr(gameDataManPtr+0xA4)] = igtBytes
 
 	return mock
 }

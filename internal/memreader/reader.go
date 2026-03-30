@@ -660,14 +660,12 @@ func (r *GameReader) ReadIGT() (int64, error) {
 
 	offsets := r.game.IGTOffsets64
 
-	// If AOB resolved SprjEventFlagMan and the IGT chain shares the same base
-	// offset, use the AOB-resolved address for the first pointer dereference.
-	if r.sprjEventFlagManAOBAddr != 0 && len(offsets) >= 2 &&
-		len(r.game.EventFlagOffsets64) > 0 && offsets[0] == r.game.EventFlagOffsets64[0] {
-		// Dereference the AOB-resolved global pointer to get the base object
-		basePtr, err := r.readPtr(r.sprjEventFlagManAOBAddr)
+	// If AOB resolved GameDataMan, use it directly — IGT lives on GameDataMan.
+	if r.gameDataManAOBAddr != 0 && len(offsets) >= 2 {
+		// Dereference the AOB-resolved global pointer to get the GameDataMan object
+		basePtr, err := r.readPtr(r.gameDataManAOBAddr)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read SprjEventFlagMan pointer for IGT: %w", err)
+			return 0, fmt.Errorf("failed to read GameDataMan pointer for IGT: %w", err)
 		}
 		if basePtr == 0 {
 			return 0, ErrNullPointer

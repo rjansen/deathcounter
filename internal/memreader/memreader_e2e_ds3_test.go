@@ -168,11 +168,14 @@ func TestE2E_ReadIGT(t *testing.T) {
 		t.Fatalf("ReadIGT failed: %v", err)
 	}
 
-	t.Logf("[DS3] In-game time: %d ms (%.1f seconds)", igt, float64(igt)/1000.0)
+	mins := igt / 60000
+	secs := (igt % 60000) / 1000
+	t.Logf("[DS3] In-game time: %d ms (%d:%02d)", igt, mins, secs)
 
-	// IGT should be non-negative; a loaded save should have positive IGT
-	if igt < 0 {
-		t.Errorf("IGT should be non-negative, got %d", igt)
+	// A loaded save with any gameplay should have at least 5 minutes of IGT
+	fiveMinMs := int64(5 * 60 * 1000)
+	if igt < fiveMinMs {
+		t.Errorf("IGT = %d ms (%d:%02d), want >= 5:00 — is the save freshly loaded?", igt, mins, secs)
 	}
 }
 
@@ -737,7 +740,7 @@ func TestE2E_SaveIdentity_WithFullTick(t *testing.T) {
 	t.Logf("[DS3] Full tick with save identity:")
 	t.Logf("  Character: %q (Slot %d)", name, slot)
 	t.Logf("  Deaths: %d, Iudex defeated: %v", deaths, iudex)
-	t.Logf("  IGT: %d ms (%.1f seconds)", igt, float64(igt)/1000.0)
+	t.Logf("  IGT: %d:%02d (%d ms)", igt/60000, (igt%60000)/1000, igt)
 	t.Logf("  Hollowing: %d", hollowing)
 }
 
@@ -768,7 +771,19 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Character Name: %q", name)
 
-	// 3. Player stats via player_game_data path
+	// 3. In-game time
+	igt, err := reader.ReadIGT()
+	if err != nil {
+		t.Fatalf("ReadIGT failed: %v", err)
+	}
+	igtMins := igt / 60000
+	igtSecs := (igt % 60000) / 1000
+	t.Logf("IGT: %d:%02d (%d ms)", igtMins, igtSecs, igt)
+	if igt < 5*60*1000 {
+		t.Errorf("IGT = %d:%02d, want >= 5:00", igtMins, igtSecs)
+	}
+
+	// 5. Player stats via player_game_data path
 	t.Log("Player Stats:")
 	for offset, statName := range DS3StatNames {
 		maxVal := uint32(99)
@@ -786,7 +801,7 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 		}
 	}
 
-	// 4. Hollowing (GameMan + DS3OffsetHollowing, Byte)
+	// 6. Hollowing (GameMan + DS3OffsetHollowing, Byte)
 	hollowing, err := reader.ReadHollowing()
 	if err != nil {
 		t.Fatalf("ReadHollowing failed: %v", err)
@@ -796,7 +811,7 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("Hollowing: %d", hollowing)
 
-	// 5. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +DS3OffsetReinforceLv, Byte)
+	// 7. Weapon reinforcement level (TGA CT: GameDataMan → +0x10 → +DS3OffsetReinforceLv, Byte)
 	reinforceLv, err := reader.ReadMemoryValue("player_game_data", DS3OffsetReinforceLv, 1)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(player_game_data, 0xB3) ReinforceLv failed: %v", err)
@@ -806,7 +821,7 @@ func TestE2E_ReadAllImportantData(t *testing.T) {
 	}
 	t.Logf("ReinforceLv: +%d", reinforceLv)
 
-	// 6. Last Bonfire (TGA CT: GameMan → +DS3OffsetLastBonfire, 4 Bytes signed)
+	// 8. Last Bonfire (TGA CT: GameMan → +DS3OffsetLastBonfire, 4 Bytes signed)
 	lastBonfire, err := reader.ReadMemoryValue("game_man", DS3OffsetLastBonfire, 4)
 	if err != nil {
 		t.Fatalf("ReadMemoryValue(game_man, 0xACC) Last Bonfire failed: %v", err)
