@@ -54,7 +54,9 @@ func (w *WalkPlatform) Synchronize(fn func()) {
 
 func (w *WalkPlatform) Shutdown() {
 	if w.ni != nil {
-		_ = w.ni.Dispose()
+		if err := w.ni.Dispose(); err != nil {
+			log.Printf("Warning: dispose notify icon: %v", err)
+		}
 	}
 	if w.mainWindow != nil {
 		w.mainWindow.Close()
@@ -161,12 +163,10 @@ func (w *WalkPlatform) ShowNotification(title, body, detail string) error {
 		var err error
 		w.notification, err = NewNotificationPopup()
 		if err != nil {
-			log.Printf("Warning: could not create notification popup: %v", err)
-			return nil
+			return fmt.Errorf("create notification popup: %w", err)
 		}
 	}
-	w.notification.Show(title, body, detail)
-	return nil
+	return w.notification.Display(title, body, detail)
 }
 
 // --- walkSubMenu ---

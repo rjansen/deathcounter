@@ -190,12 +190,12 @@ func (a *App) onExit() {
 
 // refreshDisplay updates all tray menu items from a DisplayUpdate.
 func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
-	_ = a.platform.SetMenuItemText(MenuStatus, formatStatusText(update.Status))
-	_ = a.platform.SetMenuItemText(MenuGame, formatGameText(update.GameName))
-	_ = a.platform.SetMenuItemText(MenuCharacter, formatCharacterText(update.CharacterName, update.SaveSlotIndex))
-	_ = a.platform.SetTooltip(formatTooltip(update.Status, update.GameName))
-	_ = a.platform.SetMenuItemText(MenuCount, formatDeathCountText("Current", update.DeathCount))
-	_ = a.platform.SetMenuItemText(MenuSession, formatDeathCountText("Session", update.DeathCount))
+	logIfErr("set status", a.platform.SetMenuItemText(MenuStatus, formatStatusText(update.Status)))
+	logIfErr("set game", a.platform.SetMenuItemText(MenuGame, formatGameText(update.GameName)))
+	logIfErr("set character", a.platform.SetMenuItemText(MenuCharacter, formatCharacterText(update.CharacterName, update.SaveSlotIndex)))
+	logIfErr("set tooltip", a.platform.SetTooltip(formatTooltip(update.Status, update.GameName)))
+	logIfErr("set count", a.platform.SetMenuItemText(MenuCount, formatDeathCountText("Current", update.DeathCount)))
+	logIfErr("set session", a.platform.SetMenuItemText(MenuSession, formatDeathCountText("Session", update.DeathCount)))
 	a.updateTotalDeaths()
 	a.refreshRouteDisplay(update.Route)
 
@@ -203,7 +203,9 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 	if update.Route != nil {
 		for _, evt := range update.Route.CompletedEvents {
 			title, cp, stats := formatCheckpointNotification(evt)
-			_ = a.platform.ShowNotification(title, cp, stats)
+			if err := a.platform.ShowNotification(title, cp, stats); err != nil {
+				log.Printf("Warning: notification failed for %q: %v", evt.Name, err)
+			}
 		}
 	}
 }
@@ -211,9 +213,9 @@ func (a *App) refreshDisplay(update monitor.DisplayUpdate) {
 // refreshRouteDisplay updates route-specific menu items.
 func (a *App) refreshRouteDisplay(route *monitor.RouteDisplay) {
 	texts := resolveRouteTexts(route)
-	_ = a.platform.SetMenuItemText(MenuRouteName, texts.name)
-	_ = a.platform.SetMenuItemText(MenuRouteProgress, texts.progress)
-	_ = a.platform.SetMenuItemText(MenuRouteCurrent, texts.current)
+	logIfErr("set route name", a.platform.SetMenuItemText(MenuRouteName, texts.name))
+	logIfErr("set route progress", a.platform.SetMenuItemText(MenuRouteProgress, texts.progress))
+	logIfErr("set route current", a.platform.SetMenuItemText(MenuRouteCurrent, texts.current))
 }
 
 // updateTotalDeaths updates the total deaths display.
@@ -226,7 +228,14 @@ func (a *App) updateTotalDeaths() {
 		log.Printf("Error getting total deaths: %v", err)
 		return
 	}
-	_ = a.platform.SetMenuItemText(MenuTotal, formatTotalDeathsText(total))
+	logIfErr("set total", a.platform.SetMenuItemText(MenuTotal, formatTotalDeathsText(total)))
+}
+
+// logIfErr logs a warning if err is non-nil. Used for non-fatal display updates.
+func logIfErr(context string, err error) {
+	if err != nil {
+		log.Printf("Warning: %s: %v", context, err)
+	}
 }
 
 // showCurrentSessionStats shows current session statistics.
