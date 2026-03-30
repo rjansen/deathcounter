@@ -37,15 +37,26 @@ var (
 	procCreateBr   = gdi32Extra.NewProc("CreateSolidBrush")
 )
 
+// notificationItem holds the pre-formatted text for a single notification.
+type notificationItem struct {
+	title      string
+	checkpoint string
+	stats      string
+}
+
 // NotificationPopup is a borderless topmost window that shows checkpoint
 // completion achievements. Uses direct WM_PAINT for text rendering — walk
 // labels don't render text on a WS_POPUP FormBase because WM_CTLCOLORSTATIC
 // routing fails between the form, clientComposite, and STATIC controls.
+//
+// When multiple checkpoints complete in the same tick, items are queued and
+// cycled one-by-one via the dismiss timer — no stacking.
 type NotificationPopup struct {
 	walk.FormBase
 	title      string
 	checkpoint string
 	stats      string
+	queue      []notificationItem
 }
 
 // NewNotificationPopup creates the popup window.
@@ -89,12 +100,26 @@ func (p *NotificationPopup) hideClientComposite() {
 	}
 }
 
-// Display shows the notification popup with the given pre-formatted text.
-// The popup auto-dismisses after dismissDelayMs milliseconds.
+// Display enqueues a notification and shows it immediately if the popup is
+// not already visible. When multiple items arrive (e.g. several checkpoints
+// in one tick), they are cycled one-by-one via the dismiss timer.
 func (p *NotificationPopup) Display(title, checkpoint, stats string) error {
-	p.title = title
-	p.checkpoint = checkpoint
-	p.stats = stats
+	item := notificationItem{title: title, checkpoint: checkpoint, stats: stats}
+
+	if win.IsWindowVisible(p.Handle()) {
+		// Already showing — queue for later; the dismiss timer will cycle.
+		p.queue = append(p.queue, item)
+		return nil
+	}
+
+	return p.showItem(item)
+}
+
+// showItem renders a single notification item in the popup window.
+func (p *NotificationPopup) showItem(item notificationItem) error {
+	p.title = item.title
+	p.checkpoint = item.checkpoint
+	p.stats = item.stats
 
 	// Position at top-center of the primary monitor's work area
 	x, y := p.centerTop()
@@ -105,6 +130,10 @@ func (p *NotificationPopup) Display(title, checkpoint, stats string) error {
 		notificationWidth, notificationHeight,
 		win.SWP_NOACTIVATE|win.SWP_SHOWWINDOW,
 	)
+
+	// Invalidate so WM_ERASEBKGND clears old text before WM_PAINT draws new.
+	win.InvalidateRect(p.Handle(), nil, true)
+	win.UpdateWindow(p.Handle())
 
 	// Draw text directly on the window's DC (not via WM_PAINT, which has
 	// clip region issues with walk's FormBase).
@@ -131,7 +160,16 @@ func (p *NotificationPopup) WndProc(hwnd win.HWND, msg uint32, wParam, lParam ui
 	case win.WM_TIMER:
 		if wParam == dismissTimerID {
 			win.KillTimer(hwnd, dismissTimerID)
-			win.ShowWindow(hwnd, win.SW_HIDE)
+			// Cycle to next queued notification, or hide if empty.
+			if len(p.queue) > 0 {
+				next := p.queue[0]
+				p.queue = p.queue[1:]
+				if err := p.showItem(next); err != nil {
+					log.Printf("Warning: failed to show queued notification: %v", err)
+				}
+			} else {
+				win.ShowWindow(hwnd, win.SW_HIDE)
+			}
 			return 0
 		}
 

@@ -88,8 +88,17 @@ func formatCheckpointNotification(n monitor.CheckpointNotification) (title, chec
 	secs := n.Duration / 1000
 	mins := secs / 60
 	secs = secs % 60
-	stats = fmt.Sprintf("Segment: %d:%02d", mins, secs)
+	stats = fmt.Sprintf("IGT: %s / Segment: %d:%02d", formatIGT(n.IGT), mins, secs)
 	return title, checkpoint, stats
+}
+
+// formatIGT formats milliseconds as H:MM:SS.
+func formatIGT(ms int64) string {
+	totalSecs := ms / 1000
+	hours := totalSecs / 3600
+	mins := (totalSecs % 3600) / 60
+	secs := totalSecs % 60
+	return fmt.Sprintf("%d:%02d:%02d", hours, mins, secs)
 }
 
 // iconPNGOffset is the byte offset where the PNG payload starts in the ICO data.

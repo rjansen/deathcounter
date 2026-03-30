@@ -204,44 +204,56 @@ func TestFormatCheckpointNotification(t *testing.T) {
 			name: "typical boss kill",
 			notification: monitor.CheckpointNotification{
 				Name:     "Iudex Gundyr",
-				IGT:      222000,
-				Duration: 180000,
+				IGT:      155020,
+				Duration: 101752,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Iudex Gundyr",
-			wantStats:      "Segment: 3:00",
+			wantStats:      "IGT: 0:02:35 / Segment: 1:41",
 		},
 		{
-			name: "zero deaths and short segment",
+			name: "short segment with IGT",
 			notification: monitor.CheckpointNotification{
 				Name:     "Vordt of the Boreal Valley",
-				IGT:      600000,
-				Duration: 45000,
+				IGT:      542847,
+				Duration: 81110,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Vordt of the Boreal Valley",
-			wantStats:      "Segment: 0:45",
+			wantStats:      "IGT: 0:09:02 / Segment: 1:21",
 		},
 		{
-			name: "long segment with many deaths",
+			name: "hour-plus run",
 			notification: monitor.CheckpointNotification{
 				Name:     "Nameless King",
-				IGT:      3600000,
+				IGT:      3661000,
 				Duration: 1234000,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Nameless King",
-			wantStats:      "Segment: 20:34",
+			wantStats:      "IGT: 1:01:01 / Segment: 20:34",
 		},
 		{
-			name: "zero duration",
+			name: "zero duration and IGT",
 			notification: monitor.CheckpointNotification{
 				Name:     "Already Done",
+				IGT:      0,
 				Duration: 0,
 			},
 			wantTitle:      "🎉 Checkpoint Complete!",
 			wantCheckpoint: "Already Done",
-			wantStats:      "Segment: 0:00",
+			wantStats:      "IGT: 0:00:00 / Segment: 0:00",
+		},
+		{
+			name: "sub-second segment",
+			notification: monitor.CheckpointNotification{
+				Name:     "Titanite Chunk",
+				IGT:      258073,
+				Duration: 480,
+			},
+			wantTitle:      "🎉 Checkpoint Complete!",
+			wantCheckpoint: "Titanite Chunk",
+			wantStats:      "IGT: 0:04:18 / Segment: 0:00",
 		},
 	}
 	for _, tt := range tests {
@@ -257,6 +269,25 @@ func TestFormatCheckpointNotification(t *testing.T) {
 				t.Errorf("stats = %q, want %q", gotStats, tt.wantStats)
 			}
 		})
+	}
+}
+
+func TestFormatIGT(t *testing.T) {
+	tests := []struct {
+		ms   int64
+		want string
+	}{
+		{0, "0:00:00"},
+		{11503, "0:00:11"},
+		{155020, "0:02:35"},
+		{542847, "0:09:02"},
+		{3661000, "1:01:01"},
+		{7200000, "2:00:00"},
+	}
+	for _, tt := range tests {
+		if got := formatIGT(tt.ms); got != tt.want {
+			t.Errorf("formatIGT(%d) = %q, want %q", tt.ms, got, tt.want)
+		}
 	}
 }
 

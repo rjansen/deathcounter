@@ -7,9 +7,11 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -19,6 +21,28 @@ import (
 	"github.com/rjansen/deathcounter/internal/data"
 	"github.com/rjansen/deathcounter/internal/monitor"
 )
+
+// testCheckpoints contains real checkpoint data from a DS3 Glitchless Any% run.
+// Used by notification e2e tests to exercise the dialog with varied shapes.
+var testCheckpoints = []monitor.CheckpointNotification{
+	{Name: "Ashen Estus Flask", IGT: 11503, Duration: 11503, Deaths: 0},
+	{Name: "Titanite Shard", IGT: 38382, Duration: 26879, Deaths: 0},
+	{Name: "Firebomb", IGT: 53268, Duration: 14886, Deaths: 0},
+	{Name: "Iudex Gundyr", IGT: 155020, Duration: 101752, Deaths: 0},
+	{Name: "Ember x2", IGT: 196301, Duration: 41281, Deaths: 0},
+	{Name: "Homeward Bone x3", IGT: 227029, Duration: 30728, Deaths: 0},
+	{Name: "Estus Shard", IGT: 241909, Duration: 14880, Deaths: 0},
+	{Name: "Large Titanite Shard", IGT: 257593, Duration: 15684, Deaths: 0},
+	{Name: "Titanite Chunk", IGT: 258073, Duration: 480, Deaths: 0},
+	{Name: "Covetous Silver Serpent Ring", IGT: 269122, Duration: 11049, Deaths: 0},
+	{Name: "Dagger", IGT: 309281, Duration: 40159, Deaths: 0},
+	{Name: "Shortsword", IGT: 310241, Duration: 960, Deaths: 0},
+	{Name: "Endurance 13", IGT: 330410, Duration: 20169, Deaths: 0},
+	{Name: "Dexterity 16", IGT: 330874, Duration: 464, Deaths: 0},
+	{Name: "Golden Pine Resin x2", IGT: 396439, Duration: 65565, Deaths: 0},
+	{Name: "Ember x4", IGT: 461737, Duration: 65298, Deaths: 0},
+	{Name: "Vordt of the Boreal Valley", IGT: 542847, Duration: 81110, Deaths: 0},
+}
 
 // Shared walk resources — a single MainWindow+NotifyIcon lives for the
 // entire test process. The main goroutine runs the Win32 message pump
@@ -207,13 +231,12 @@ func TestWalkPlatform_RouteDisplay(t *testing.T) {
 func TestWalkPlatform_ShowNotification(t *testing.T) {
 	_, wp := newWalkTestApp(t)
 
-	// After the Show→Display rename, NotificationPopup properly implements
-	// walk.Form, so InitWindow calls FormBase.init() to set up clientComposite.
-	err := wp.ShowNotification(
-		"\U0001f389 Checkpoint Complete!",
-		"Ashen Estus Flask",
-		"Segment: 0:19",
-	)
+	// Pick a random checkpoint to exercise varied IGT/duration/name shapes
+	cp := testCheckpoints[rand.Intn(len(testCheckpoints))]
+	title, cpName, stats := formatCheckpointNotification(cp)
+	t.Logf("Random checkpoint: %s → %s", cp.Name, stats)
+
+	err := wp.ShowNotification(title, cpName, stats)
 	if err != nil {
 		t.Fatalf("ShowNotification() error: %v", err)
 	}
@@ -239,10 +262,11 @@ func TestWalkPlatform_ShowNotification(t *testing.T) {
 		t.Errorf("notification size = %dx%d, want %dx%d", gotW, gotH, notificationWidth, notificationHeight)
 	}
 
-	// Capture screenshot of the notification popup
+	// Capture screenshot with checkpoint name for traceability
 	outDir := filepath.Join(os.TempDir(), "deathcounter_test")
 	os.MkdirAll(outDir, 0o755)
-	outPath := filepath.Join(outDir, "notification_checkpoint.png")
+	safeName := strings.ReplaceAll(cp.Name, " ", "_")
+	outPath := filepath.Join(outDir, fmt.Sprintf("notification_%s.png", safeName))
 
 	if err := captureWindowScreenshot(wp.notification.Handle(), outPath); err != nil {
 		t.Fatalf("screenshot failed: %v", err)
@@ -265,6 +289,10 @@ func TestWalkPlatform_ShowNotification_ViaRefreshDisplay(t *testing.T) {
 	app, wp := newWalkTestApp(t)
 	app.buildMenu()
 
+	// Pick a random checkpoint for the notification
+	cp := testCheckpoints[rand.Intn(len(testCheckpoints))]
+	t.Logf("Random checkpoint: %s (IGT: %dms, Duration: %dms)", cp.Name, cp.IGT, cp.Duration)
+
 	// Trigger notification through the full refreshDisplay path
 	app.refreshDisplay(monitor.DisplayUpdate{
 		Status:   "Tracking route",
@@ -275,9 +303,7 @@ func TestWalkPlatform_ShowNotification_ViaRefreshDisplay(t *testing.T) {
 			TotalCount:        25,
 			CompletionPercent: 4.0,
 			CurrentCheckpoint: "Iudex Gundyr",
-			CompletedEvents: []monitor.CheckpointNotification{
-				{Name: "Ashen Estus Flask", Duration: 19000, Deaths: 0},
-			},
+			CompletedEvents:   []monitor.CheckpointNotification{cp},
 		},
 	})
 
@@ -295,7 +321,8 @@ func TestWalkPlatform_ShowNotification_ViaRefreshDisplay(t *testing.T) {
 	// Capture screenshot
 	outDir := filepath.Join(os.TempDir(), "deathcounter_test")
 	os.MkdirAll(outDir, 0o755)
-	outPath := filepath.Join(outDir, "notification_refresh_display.png")
+	safeName := strings.ReplaceAll(cp.Name, " ", "_")
+	outPath := filepath.Join(outDir, fmt.Sprintf("notification_refresh_%s.png", safeName))
 
 	if err := captureWindowScreenshot(wp.notification.Handle(), outPath); err != nil {
 		t.Fatalf("screenshot failed: %v", err)
