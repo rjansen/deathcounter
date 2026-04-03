@@ -281,6 +281,21 @@ func allItemIDs() []struct {
 		{"SharpGem", DS3ItemSharpGem},
 		{"AshenEstusFlask", DS3ItemAshenEstusFlask},
 		{"FarronCoal", DS3ItemFarronCoal},
+		{"CharcoalPineBundle", DS3ItemCharcoalPineBundle},
+		{"UndeadBoneShard", DS3ItemUndeadBoneShard},
+		{"SmallLothricBanner", DS3ItemSmallLothricBanner},
+		{"CharcoalPineResin", DS3ItemCharcoalPineResin},
+		{"PalePineResin", DS3ItemPalePineResin},
+		{"RottenPineResin", DS3ItemRottenPineResin},
+		{"HumanPineResin", DS3ItemHumanPineResin},
+		{"PurpleMossClump", DS3ItemPurpleMossClump},
+		{"BloodredMossClump", DS3ItemBloodredMossClump},
+		{"BloomingPurpleMossClump", DS3ItemBloomingPurpleMossClump},
+		{"RimeBlueMossClump", DS3ItemRimeBlueMossClump},
+		{"Siegbrau", DS3ItemSiegbrau},
+		{"GreenBlossom", DS3ItemGreenBlossom},
+		{"BuddingGreenBlossom", DS3ItemBuddingGreenBlossom},
+		{"BlackFirebomb", DS3ItemBlackFirebomb},
 		// Rings
 		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing},
 		{"ChloranthyRing", DS3ItemChloranthyRing},
@@ -290,13 +305,17 @@ func allItemIDs() []struct {
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades},
 		{"Dagger", DS3ItemDagger},
 		{"Shortsword", DS3ItemShortsword},
+		{"AnrisStraightSword", DS3ItemAnrisStraightSword},
+		{"ExileGreatsword", DS3ItemExileGreatsword},
+		{"LargeClub", DS3ItemLargeClub},
+		{"CaduceusRoundShield", DS3ItemCaduceusRoundShield},
 	}
 }
 
 func TestDS3ItemIDs_Count(t *testing.T) {
 	items := allItemIDs()
-	if len(items) != 22 {
-		t.Errorf("expected 22 item ID constants, got %d", len(items))
+	if len(items) != 41 {
+		t.Errorf("expected 41 item ID constants, got %d", len(items))
 	}
 }
 
@@ -332,6 +351,21 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"SharpGem", DS3ItemSharpGem, 0x40000456},
 		{"AshenEstusFlask", DS3ItemAshenEstusFlask, 0x400000BF},
 		{"FarronCoal", DS3ItemFarronCoal, 0x40000837},
+		{"CharcoalPineBundle", DS3ItemCharcoalPineBundle, 0x40000154},
+		{"UndeadBoneShard", DS3ItemUndeadBoneShard, 0x4000085F},
+		{"SmallLothricBanner", DS3ItemSmallLothricBanner, 0x40000836},
+		{"CharcoalPineResin", DS3ItemCharcoalPineResin, 0x4000014A},
+		{"PalePineResin", DS3ItemPalePineResin, 0x40000150},
+		{"RottenPineResin", DS3ItemRottenPineResin, 0x40000157},
+		{"HumanPineResin", DS3ItemHumanPineResin, 0x4000014E},
+		{"PurpleMossClump", DS3ItemPurpleMossClump, 0x4000010F},
+		{"BloodredMossClump", DS3ItemBloodredMossClump, 0x4000010E},
+		{"BloomingPurpleMossClump", DS3ItemBloomingPurpleMossClump, 0x40000110},
+		{"RimeBlueMossClump", DS3ItemRimeBlueMossClump, 0x40000114},
+		{"Siegbrau", DS3ItemSiegbrau, 0x400001C8},
+		{"GreenBlossom", DS3ItemGreenBlossom, 0x40000104},
+		{"BuddingGreenBlossom", DS3ItemBuddingGreenBlossom, 0x40000105},
+		{"BlackFirebomb", DS3ItemBlackFirebomb, 0x40000129},
 		// Rings
 		{"CovetousSilverSerpentRing", DS3ItemCovetousSilverSerpentRing, 0x20004FB0},
 		{"ChloranthyRing", DS3ItemChloranthyRing, 0x20004E2A},
@@ -341,6 +375,10 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"SellswordTwinblades", DS3ItemSellswordTwinblades, 0x00F42400},
 		{"Dagger", DS3ItemDagger, 0x000F4240},
 		{"Shortsword", DS3ItemShortsword, 0x001E8480},
+		{"AnrisStraightSword", DS3ItemAnrisStraightSword, 0x002206F0},
+		{"ExileGreatsword", DS3ItemExileGreatsword, 0x005DD770},
+		{"LargeClub", DS3ItemLargeClub, 0x007AFC60},
+		{"CaduceusRoundShield", DS3ItemCaduceusRoundShield, 0x01341330},
 	}
 
 	for _, tc := range expected {
@@ -359,7 +397,7 @@ func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
 	for _, item := range goods {
 		prefix := item.id & 0xFFFF0000
 		switch prefix {
-		case 0x00F40000, 0x000F0000, 0x001E0000: // weapon
+		case 0x00F40000, 0x000F0000, 0x001E0000, 0x00220000, 0x005D0000, 0x007A0000, 0x01340000: // weapon
 			continue
 		case 0x20000000: // ring
 			continue
@@ -399,8 +437,8 @@ func TestDS3BossEncounteredNames_KeysMatchConstants(t *testing.T) {
 }
 
 func TestDS3GoodsNames_Count(t *testing.T) {
-	if len(DS3GoodsNames) != 16 {
-		t.Errorf("expected 16 entries in DS3GoodsNames, got %d", len(DS3GoodsNames))
+	if len(DS3GoodsNames) != 31 {
+		t.Errorf("expected 31 entries in DS3GoodsNames, got %d", len(DS3GoodsNames))
 	}
 }
 
@@ -435,8 +473,8 @@ func TestDS3RingNames_KeysMatchConstants(t *testing.T) {
 }
 
 func TestDS3WeaponNames_Count(t *testing.T) {
-	if len(DS3WeaponNames) != 3 {
-		t.Errorf("expected 3 entries in DS3WeaponNames, got %d", len(DS3WeaponNames))
+	if len(DS3WeaponNames) != 7 {
+		t.Errorf("expected 7 entries in DS3WeaponNames, got %d", len(DS3WeaponNames))
 	}
 }
 
