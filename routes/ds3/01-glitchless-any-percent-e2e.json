@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - e2e",
   "game": "ds3",
   "category": "Any% Glitchless",
-  "version": "10",
+  "version": "11",
   "checkpoints": [
     {
       "id": "ashen-estus-flask-1",
@@ -114,6 +114,174 @@
       "event_type": "boss_kill",
       "event_flag_check": {"flag_id": 13000800},
       "backup_flag_check": {"flag_id": 13000801}
+    },
+    {
+      "id": "charcoal-pine-bundle-2",
+      "name": "Charcoal Pine Bundle x2",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742164, "comparison": "gte", "value": 2, "state_var": "charcoal_pine_bundles"}
+    },
+    {
+      "id": "charcoal-pine-bundle-4",
+      "name": "Charcoal Pine Bundle x4",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742164, "comparison": "gte", "value": 4, "state_var": "charcoal_pine_bundles"}
+    },
+    {
+      "id": "estus-shard-2",
+      "name": "Estus Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 2}
+    },
+    {
+      "id": "ember-5",
+      "name": "Ember x5",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 5, "state_var": "embers"}
+    },
+    {
+      "id": "titanite-shard-2",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 2}
+    },
+    {
+      "id": "titanite-shard-3",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 3}
+    },
+    {
+      "id": "sharp-gem-1",
+      "name": "Sharp Gem",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742934, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "morticians-ashes-1",
+      "name": "Mortician's Ashes",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743931, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "undead-bone-shard-1",
+      "name": "Undead Bone Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743967, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "titanite-shard-4",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 4}
+    },
+    {
+      "id": "ember-6",
+      "name": "Ember x6",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 6, "state_var": "embers"}
+    },
+    {
+      "id": "titanite-shard-5",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 5}
+    },
+    {
+      "id": "titanite-shard-6",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 6}
+    },
+    {
+      "id": "titanite-shard-7",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 7}
+    },
+    {
+      "id": "estus-shard-3",
+      "name": "Estus Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 3}
+    },
+    {
+      "id": "ember-7",
+      "name": "Ember x7",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 7, "state_var": "embers"}
+    },
+    {
+      "id": "sellsword-twinblades-1",
+      "name": "Sellsword Twinblades",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 16000000, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "farron-coal-1",
+      "name": "Farron Coal",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743927, "comparison": "eq", "value": 1}
+    },
+    {
+      "id": "homeward-bone-4",
+      "name": "Homeward Bone x4",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742174, "comparison": "eq", "value": 4}
+    },
+    {
+      "id": "titanite-shard-8",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 8}
+    },
+    {
+      "id": "titanite-shard-9",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 9}
+    },
+    {
+      "id": "titanite-shard-10",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 10}
+    },
+    {
+      "id": "titanite-shard-11",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 11}
+    },
+    {
+      "id": "titanite-shard-12",
+      "name": "Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742824, "comparison": "eq", "value": 12}
+    },
+    {
+      "id": "undead-bone-shard-2",
+      "name": "Undead Bone Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073743967, "comparison": "eq", "value": 2}
+    },
+    {
+      "id": "large-titanite-shard-2",
+      "name": "Large Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742825, "comparison": "eq", "value": 2}
+    },
+    {
+      "id": "large-titanite-shard-3",
+      "name": "Large Titanite Shard",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742825, "comparison": "eq", "value": 3}
+    },
+    {
+      "id": "charcoal-pine-bundle-6",
+      "name": "Charcoal Pine Bundle x6",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742164, "comparison": "gte", "value": 6, "state_var": "charcoal_pine_bundles"}
     },
     {
       "id": "abyss-watchers",
