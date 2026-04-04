@@ -309,13 +309,14 @@ func allItemIDs() []struct {
 		{"ExileGreatsword", DS3ItemExileGreatsword},
 		{"LargeClub", DS3ItemLargeClub},
 		{"CaduceusRoundShield", DS3ItemCaduceusRoundShield},
+		{"GrassCrestShield", DS3ItemGrassCrestShield},
 	}
 }
 
 func TestDS3ItemIDs_Count(t *testing.T) {
 	items := allItemIDs()
-	if len(items) != 41 {
-		t.Errorf("expected 41 item ID constants, got %d", len(items))
+	if len(items) != 42 {
+		t.Errorf("expected 42 item ID constants, got %d", len(items))
 	}
 }
 
@@ -379,6 +380,7 @@ func TestDS3ItemIDs_KnownValues(t *testing.T) {
 		{"ExileGreatsword", DS3ItemExileGreatsword, 0x005DD770},
 		{"LargeClub", DS3ItemLargeClub, 0x007AFC60},
 		{"CaduceusRoundShield", DS3ItemCaduceusRoundShield, 0x01341330},
+		{"GrassCrestShield", DS3ItemGrassCrestShield, 0x01437C80},
 	}
 
 	for _, tc := range expected {
@@ -397,7 +399,7 @@ func TestDS3ItemIDs_GoodsPrefix(t *testing.T) {
 	for _, item := range goods {
 		prefix := item.id & 0xFFFF0000
 		switch prefix {
-		case 0x00F40000, 0x000F0000, 0x001E0000, 0x00220000, 0x005D0000, 0x007A0000, 0x01340000: // weapon
+		case 0x00F40000, 0x000F0000, 0x001E0000, 0x00220000, 0x005D0000, 0x007A0000, 0x01340000, 0x01430000: // weapon
 			continue
 		case 0x20000000: // ring
 			continue
@@ -473,8 +475,8 @@ func TestDS3RingNames_KeysMatchConstants(t *testing.T) {
 }
 
 func TestDS3WeaponNames_Count(t *testing.T) {
-	if len(DS3WeaponNames) != 7 {
-		t.Errorf("expected 7 entries in DS3WeaponNames, got %d", len(DS3WeaponNames))
+	if len(DS3WeaponNames) != 8 {
+		t.Errorf("expected 8 entries in DS3WeaponNames, got %d", len(DS3WeaponNames))
 	}
 }
 

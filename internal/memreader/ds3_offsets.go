@@ -168,6 +168,7 @@ const (
 	DS3ItemExileGreatsword     uint32 = 0x005DD770
 	DS3ItemLargeClub           uint32 = 0x007AFC60
 	DS3ItemCaduceusRoundShield uint32 = 0x01341330
+	DS3ItemGrassCrestShield    uint32 = 0x01437C80
 )
 
 // DS3BossNames maps defeated boss event flag IDs to display names.
@@ -272,6 +273,7 @@ var DS3WeaponNames = map[uint32]string{
 	DS3ItemExileGreatsword:     "Exile Greatsword",
 	DS3ItemLargeClub:           "Large Club",
 	DS3ItemCaduceusRoundShield: "Caduceus Round Shield",
+	DS3ItemGrassCrestShield:    "Grass Crest Shield",
 }
 
 // DS3StatNames maps player stat offsets to display names.
