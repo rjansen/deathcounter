@@ -3,7 +3,7 @@
   "name": "DS3 Glitchless Any% - e2e",
   "game": "ds3",
   "category": "Any% Glitchless",
-  "version": "11",
+  "version": "12",
   "checkpoints": [
     {
       "id": "ashen-estus-flask-1",
@@ -46,7 +46,7 @@
       "id": "homeward-bone-3",
       "name": "Homeward Bone x3",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073742174, "comparison": "eq", "value": 3}
+      "inventory_check": {"item_id": 1073742174, "comparison": "gte", "value": 3, "state_var": "homewardBones"}
     },
     {
       "id": "estus-shard-1",
@@ -212,6 +212,18 @@
       "inventory_check": {"item_id": 1073742324, "comparison": "gte", "value": 7, "state_var": "embers"}
     },
     {
+      "id": "grass-crest-shield-1",
+      "name": "Grass Crest Shield",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 21200000, "comparison": "gte", "value": 1}
+    },
+    {
+      "id": "green-blossom-2",
+      "name": "Green Blossom x2",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742084, "comparison": "gte", "value": 2, "state_var": "greenBlossoms"}
+    },
+    {
       "id": "sellsword-twinblades-1",
       "name": "Sellsword Twinblades",
       "event_type": "inventory_check",
@@ -224,10 +236,16 @@
       "inventory_check": {"item_id": 1073743927, "comparison": "eq", "value": 1}
     },
     {
+      "id": "purple-moss-clump-3",
+      "name": "Purple Moss Clump x3",
+      "event_type": "inventory_check",
+      "inventory_check": {"item_id": 1073742095, "comparison": "gte", "value": 3, "state_var": "purpleMossClumps"}
+    },
+    {
       "id": "homeward-bone-4",
       "name": "Homeward Bone x4",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073742174, "comparison": "eq", "value": 4}
+      "inventory_check": {"item_id": 1073742174, "comparison": "gte", "value": 4, "state_var": "homewardBones"}
     },
     {
       "id": "titanite-shard-8",
