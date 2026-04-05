@@ -294,6 +294,22 @@ func (r *Runner) CatchUp(reader GameReader) error {
 			}
 		}
 
+		if cp.MemCheck != nil && !r.state.CompletedFlags[cp.ID] {
+			size := cp.MemCheck.Size
+			if size == 0 {
+				size = 4
+			}
+			val, err := reader.ReadMemoryValue(cp.MemCheck.Path, cp.MemCheck.Offset, size)
+			if err != nil {
+				return err
+			}
+			if compareValue(val, cp.MemCheck.Comparison, cp.MemCheck.Value) {
+				r.state.CompletedFlags[cp.ID] = true
+				log.Printf("[Route] Already completed: %s", cp.Name)
+				caughtUpList = append(caughtUpList, caughtUp{id: cp.ID, name: cp.Name})
+			}
+		}
+
 		if cp.CompositeCheck != nil && !r.state.CompletedFlags[cp.ID] {
 			result, err := evaluateCompositeCheck(reader, cp.CompositeCheck)
 			if err != nil {

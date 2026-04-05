@@ -1130,6 +1130,64 @@ func TestRunner_CatchUp_InventoryCheck(t *testing.T) {
 	}
 }
 
+func TestRunner_CatchUp_MemCheck(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-mem-catchup",
+		Name: "MemCheck CatchUp Route",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "reinforce-4", Name: "Twinblades +4", EventType: "weapon_upgrade",
+				MemCheck: &MemCheck{Path: "player_stats", Offset: 0xB3, Comparison: "gte", Value: 4, Size: 1},
+			},
+			{ID: "boss1", Name: "Boss 1", EventType: "boss_kill", EventFlagCheck: &EventFlagCheck{FlagID: 100}},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	reader.memValues["player_stats"] = 4 // already at +4
+
+	if err := runner.CatchUp(reader); err != nil {
+		t.Fatalf("CatchUp failed: %v", err)
+	}
+	if !runner.state.CompletedFlags["reinforce-4"] {
+		t.Error("expected reinforce-4 to be marked completed in CatchUp")
+	}
+	if runner.state.CompletedFlags["boss1"] {
+		t.Error("boss1 should not be completed")
+	}
+}
+
+func TestRunner_CatchUp_MemCheck_NotMet(t *testing.T) {
+	repo := newTestRepo(t)
+	r := &Route{
+		ID:   "test-mem-catchup-notmet",
+		Name: "MemCheck CatchUp Not Met",
+		Game: "ds3",
+		Checkpoints: []Checkpoint{
+			{
+				ID: "reinforce-4", Name: "Twinblades +4", EventType: "weapon_upgrade",
+				MemCheck: &MemCheck{Path: "player_stats", Offset: 0xB3, Comparison: "gte", Value: 4, Size: 1},
+			},
+		},
+	}
+	reader := newMockGameReader()
+	runner := NewRunner(r, repo, nil)
+	_ = runner.Start(0, 0)
+
+	reader.memValues["player_stats"] = 2 // only +2, not met
+
+	if err := runner.CatchUp(reader); err != nil {
+		t.Fatalf("CatchUp failed: %v", err)
+	}
+	if runner.state.CompletedFlags["reinforce-4"] {
+		t.Error("reinforce-4 should not be completed when value is below threshold")
+	}
+}
+
 func TestRunner_Resume(t *testing.T) {
 	repo := newTestRepo(t)
 	r := &Route{
