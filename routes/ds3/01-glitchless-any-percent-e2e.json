@@ -52,7 +52,7 @@
       "id": "estus-shard-1",
       "name": "Estus Shard",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 1}
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 1, "state_var": "estusShards"}
     },
     {
       "id": "large-titanite-shard-1",
@@ -131,7 +131,7 @@
       "id": "estus-shard-2",
       "name": "Estus Shard",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 2}
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 2, "state_var": "estusShards"}
     },
     {
       "id": "ember-5",
@@ -203,7 +203,7 @@
       "id": "estus-shard-3",
       "name": "Estus Shard",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 3}
+      "inventory_check": {"item_id": 1073743965, "comparison": "eq", "value": 3, "state_var": "estusShards"}
     },
     {
       "id": "ember-7",
