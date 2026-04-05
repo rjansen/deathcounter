@@ -296,10 +296,16 @@
       "inventory_check": {"item_id": 1073742825, "comparison": "eq", "value": 3}
     },
     {
-      "id": "charcoal-pine-bundle-6",
-      "name": "Charcoal Pine Bundle x6",
+      "id": "twinblades-plus4",
+      "name": "Sellsword Twinblades +4",
+      "event_type": "weapon_upgrade",
+      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 4, "size": 1}
+    },
+    {
+      "id": "charcoal-pine-resin-2",
+      "name": "Charcoal Pine Resin x2",
       "event_type": "inventory_check",
-      "inventory_check": {"item_id": 1073742164, "comparison": "gte", "value": 6, "state_var": "charcoal_pine_bundles"}
+      "inventory_check": {"item_id": 1073742154, "comparison": "gte", "value": 2, "state_var": "charcoal_pine_resins"}
     },
     {
       "id": "abyss-watchers",
@@ -314,20 +320,6 @@
       "event_type": "boss_kill",
       "event_flag_check": {"flag_id": 13800800},
       "backup_flag_check": {"flag_id": 13800801}
-    },
-    {
-      "id": "twinblades-plus3",
-      "name": "Sellsword Twinblades +3",
-      "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 3, "size": 1},
-      "optional": true
-    },
-    {
-      "id": "dex-33",
-      "name": "Level DEX to 33",
-      "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 33, "size": 4},
-      "optional": true
     },
     {
       "id": "crystal-sage",
@@ -363,20 +355,6 @@
       "event_flag_check": {"flag_id": 13700800}
     },
     {
-      "id": "twinblades-plus6",
-      "name": "Sellsword Twinblades +6",
-      "event_type": "weapon_upgrade",
-      "mem_check": {"path": "player_stats", "offset": 179, "comparison": "gte", "value": 6, "size": 1},
-      "optional": true
-    },
-    {
-      "id": "dex-38",
-      "name": "Level DEX to 38",
-      "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 38, "size": 4},
-      "optional": true
-    },
-    {
       "id": "dancer",
       "name": "Dancer of the Boreal Valley",
       "event_type": "boss_kill",
@@ -394,13 +372,6 @@
       "event_type": "boss_kill",
       "event_flag_check": {"flag_id": 13410830},
       "backup_flag_check": {"flag_id": 13410831}
-    },
-    {
-      "id": "dex-47",
-      "name": "Level DEX to 47",
-      "event_type": "level_up",
-      "mem_check": {"path": "player_stats", "offset": 84, "comparison": "gte", "value": 47, "size": 4},
-      "optional": true
     },
     {
       "id": "soul-of-cinder",
