@@ -77,23 +77,6 @@ func TestFormatTooltip(t *testing.T) {
 	}
 }
 
-func TestFormatDeathCountText(t *testing.T) {
-	tests := []struct {
-		label string
-		count uint32
-		want  string
-	}{
-		{"Current", 0, "Current: 0"},
-		{"Session", 42, "Session: 42"},
-		{"Current", 999, "Current: 999"},
-	}
-	for _, tt := range tests {
-		if got := formatDeathCountText(tt.label, tt.count); got != tt.want {
-			t.Errorf("formatDeathCountText(%q, %d) = %q, want %q", tt.label, tt.count, got, tt.want)
-		}
-	}
-}
-
 func TestFormatTotalDeathsText(t *testing.T) {
 	tests := []struct {
 		total uint32

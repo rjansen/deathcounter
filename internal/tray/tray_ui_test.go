@@ -137,8 +137,6 @@ func TestWalkPlatform_BuildMenu(t *testing.T) {
 		MenuStatus:    "Status: Starting...",
 		MenuGame:      "Game: None",
 		MenuCharacter: "Character: -",
-		MenuCount:     "Current: 0",
-		MenuSession:   "Session: 0",
 		MenuTotal:     "Total: 0",
 		MenuRouteName: "Route: None",
 	}
@@ -179,8 +177,6 @@ func TestWalkPlatform_RefreshDisplay(t *testing.T) {
 		MenuStatus:    "Status: Connected",
 		MenuGame:      "Game: Dark Souls III",
 		MenuCharacter: "Character: Solaire (Slot 1)",
-		MenuCount:     "Current: 42",
-		MenuSession:   "Session: 42",
 	}
 	for id, want := range checks {
 		action, ok := wp.actions[id]

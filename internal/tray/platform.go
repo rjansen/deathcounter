@@ -12,24 +12,22 @@ const (
 	MenuStatus        MenuItemID = "status"
 	MenuGame          MenuItemID = "game"
 	MenuCharacter     MenuItemID = "character"
-	MenuCount         MenuItemID = "count"
-	MenuSession       MenuItemID = "session"
 	MenuTotal         MenuItemID = "total"
 	MenuRouteName     MenuItemID = "route_name"
 	MenuRouteProgress MenuItemID = "route_progress"
 	MenuRouteCurrent  MenuItemID = "route_current"
 	MenuQuit          MenuItemID = "quit"
-	MenuStatsSession  MenuItemID = "stats_session"
-	MenuStatsHistory  MenuItemID = "stats_history"
+	MenuBackupNow     MenuItemID = "backup_now"
 )
 
-// TrayPlatform is the bridge implementation interface. It composes four
+// TrayPlatform is the bridge implementation interface. It composes five
 // focused interfaces following ISP: icon management, menu building,
-// notifications, and window lifecycle.
+// notifications, dialogs, and window lifecycle.
 type TrayPlatform interface {
 	TrayIcon
 	MenuBuilder
 	Notifier
+	DialogProvider
 	Lifecycle
 }
 
@@ -54,11 +52,22 @@ type MenuBuilder interface {
 // SubMenu represents a submenu created by AddSubmenu.
 type SubMenu interface {
 	AddMenuItem(id MenuItemID, text string, onClick func()) error
+	// AddClickableItem adds an ephemeral clickable item without a MenuItemID.
+	// Used for dynamic items that are cleared and rebuilt (e.g. backup list).
+	AddClickableItem(text string, onClick func()) error
+	// Clear removes all items from the submenu.
+	Clear() error
 }
 
 // Notifier displays popup notifications.
 type Notifier interface {
 	ShowNotification(title, body, detail string) error
+}
+
+// DialogProvider displays confirmation dialogs.
+type DialogProvider interface {
+	// ConfirmDialog shows a Yes/No dialog and returns true if the user confirms.
+	ConfirmDialog(title, message string) bool
 }
 
 // Lifecycle manages the window / message-pump lifecycle.

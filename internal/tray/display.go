@@ -35,11 +35,6 @@ func formatTooltip(status, gameName string) string {
 	return "Death Counter - " + status
 }
 
-// formatDeathCountText returns the menu text for a labeled death count.
-func formatDeathCountText(label string, count uint32) string {
-	return fmt.Sprintf("%s: %d", label, count)
-}
-
 // formatTotalDeathsText returns the menu text for total deaths.
 func formatTotalDeathsText(total uint32) string {
 	return fmt.Sprintf("Total: %d", total)

@@ -156,6 +156,13 @@ func (w *WalkPlatform) SetMenuItemEnabled(id MenuItemID, enabled bool) error {
 	return nil
 }
 
+// --- DialogProvider ---
+
+func (w *WalkPlatform) ConfirmDialog(title, message string) bool {
+	result := walk.MsgBox(w.mainWindow, title, message, walk.MsgBoxYesNo|walk.MsgBoxIconWarning)
+	return result == win.IDYES
+}
+
 // --- Notifier ---
 
 func (w *WalkPlatform) ShowNotification(title, body, detail string) error {
@@ -187,4 +194,17 @@ func (s *walkSubMenu) AddMenuItem(id MenuItemID, text string, onClick func()) er
 	}
 	s.actions[id] = action
 	return nil
+}
+
+func (s *walkSubMenu) AddClickableItem(text string, onClick func()) error {
+	action := walk.NewAction()
+	if err := action.SetText(text); err != nil {
+		return err
+	}
+	action.Triggered().Attach(onClick)
+	return s.menu.Actions().Add(action)
+}
+
+func (s *walkSubMenu) Clear() error {
+	return s.menu.Actions().Clear()
 }

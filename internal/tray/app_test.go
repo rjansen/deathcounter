@@ -3,6 +3,8 @@ package tray
 import (
 	"errors"
 	"image"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ type mockPlatform struct {
 	clickHandlers  map[MenuItemID]func()
 	separators     int
 	submenus       []string
+	lastSubMenu    *mockSubMenu
 	tooltip        string
 	visible        bool
 	notifications  []mockNotification
@@ -39,6 +42,10 @@ type mockPlatform struct {
 	iconSet          bool
 	tooltipCalls     int
 	synchronizeCalls int
+
+	// Dialog
+	confirmResult bool
+	confirmCalled bool
 
 	mu sync.Mutex // protects fields updated from goroutines
 }
@@ -120,7 +127,9 @@ func (m *mockPlatform) AddSeparator() error {
 
 func (m *mockPlatform) AddSubmenu(text string) (SubMenu, error) {
 	m.submenus = append(m.submenus, text)
-	return &mockSubMenu{platform: m}, nil
+	sub := &mockSubMenu{platform: m}
+	m.lastSubMenu = sub
+	return sub, nil
 }
 
 func (m *mockPlatform) SetMenuItemText(id MenuItemID, text string) error {
@@ -145,6 +154,14 @@ func (m *mockPlatform) ShowNotification(title, body, detail string) error {
 	return nil
 }
 
+// DialogProvider
+func (m *mockPlatform) ConfirmDialog(title, message string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.confirmCalled = true
+	return m.confirmResult
+}
+
 // getMenuItemText returns a menu item's text (thread-safe).
 func (m *mockPlatform) getMenuItemText(id MenuItemID) string {
 	m.mu.Lock()
@@ -160,8 +177,14 @@ func (m *mockPlatform) getSynchronizeCalls() int {
 }
 
 // mockSubMenu
+type mockSubMenuItem struct {
+	text    string
+	onClick func()
+}
+
 type mockSubMenu struct {
 	platform *mockPlatform
+	items    []mockSubMenuItem
 }
 
 func (s *mockSubMenu) AddMenuItem(id MenuItemID, text string, onClick func()) error {
@@ -170,6 +193,21 @@ func (s *mockSubMenu) AddMenuItem(id MenuItemID, text string, onClick func()) er
 	s.platform.menuItems[id] = text
 	s.platform.menuEnabled[id] = true
 	s.platform.clickHandlers[id] = onClick
+	s.items = append(s.items, mockSubMenuItem{text: text, onClick: onClick})
+	return nil
+}
+
+func (s *mockSubMenu) AddClickableItem(text string, onClick func()) error {
+	s.platform.mu.Lock()
+	defer s.platform.mu.Unlock()
+	s.items = append(s.items, mockSubMenuItem{text: text, onClick: onClick})
+	return nil
+}
+
+func (s *mockSubMenu) Clear() error {
+	s.platform.mu.Lock()
+	defer s.platform.mu.Unlock()
+	s.items = nil
 	return nil
 }
 
@@ -264,8 +302,6 @@ func TestBuildMenu(t *testing.T) {
 		MenuStatus:        "Status: Starting...",
 		MenuGame:          "Game: None",
 		MenuCharacter:     "Character: -",
-		MenuCount:         "Current: 0",
-		MenuSession:       "Session: 0",
 		MenuTotal:         "Total: 0",
 		MenuRouteName:     "Route: None",
 		MenuRouteProgress: "Progress: -",
@@ -285,8 +321,7 @@ func TestBuildMenu(t *testing.T) {
 
 	// Info items should be enabled (render as normal labels)
 	enabledItems := []MenuItemID{
-		MenuTitle, MenuStatus, MenuGame, MenuCharacter,
-		MenuCount, MenuSession, MenuTotal,
+		MenuTitle, MenuStatus, MenuGame, MenuCharacter, MenuTotal,
 		MenuRouteName, MenuRouteProgress, MenuRouteCurrent,
 	}
 	for _, id := range enabledItems {
@@ -299,19 +334,27 @@ func TestBuildMenu(t *testing.T) {
 	if _, ok := p.clickHandlers[MenuQuit]; !ok {
 		t.Error("Quit handler not registered")
 	}
-	if _, ok := p.clickHandlers[MenuStatsSession]; !ok {
-		t.Error("Stats Session handler not registered")
-	}
-	if _, ok := p.clickHandlers[MenuStatsHistory]; !ok {
-		t.Error("Stats History handler not registered")
+	if _, ok := p.clickHandlers[MenuBackupNow]; !ok {
+		t.Error("Backup Now handler not registered")
 	}
 
 	// Submenu and separators
-	if len(p.submenus) != 1 || p.submenus[0] != "View Statistics" {
-		t.Errorf("submenus = %v, want [View Statistics]", p.submenus)
+	if len(p.submenus) != 1 || p.submenus[0] != "Backups" {
+		t.Errorf("submenus = %v, want [Backups]", p.submenus)
 	}
 	if p.separators == 0 {
 		t.Error("no separators added")
+	}
+
+	// Backups submenu should have placeholder
+	if p.lastSubMenu == nil {
+		t.Fatal("no submenu created")
+	}
+	if len(p.lastSubMenu.items) != 1 {
+		t.Fatalf("backup submenu items = %d, want 1", len(p.lastSubMenu.items))
+	}
+	if p.lastSubMenu.items[0].text != "(No route active)" {
+		t.Errorf("backup placeholder = %q, want %q", p.lastSubMenu.items[0].text, "(No route active)")
 	}
 }
 
@@ -333,8 +376,6 @@ func TestRefreshDisplay_Connected(t *testing.T) {
 		MenuStatus:    "Status: Connected",
 		MenuGame:      "Game: Dark Souls III",
 		MenuCharacter: "Character: Solaire (Slot 1)",
-		MenuCount:     "Current: 42",
-		MenuSession:   "Session: 42",
 	}
 	for id, want := range checks {
 		if got := p.menuItems[id]; got != want {
@@ -563,9 +604,6 @@ func TestRun_HappyPath(t *testing.T) {
 	if got := p.getMenuItemText(MenuGame); got != "Game: Dark Souls III" {
 		t.Errorf("DisplayUpdate not processed: game = %q, want %q", got, "Game: Dark Souls III")
 	}
-	if got := p.getMenuItemText(MenuCount); got != "Current: 7" {
-		t.Errorf("DisplayUpdate not processed: count = %q, want %q", got, "Current: 7")
-	}
 }
 
 func TestRun_InitError(t *testing.T) {
@@ -649,8 +687,8 @@ func TestRun_ConsumesMultipleUpdates(t *testing.T) {
 	}
 
 	// The last update should be reflected
-	if got := p.getMenuItemText(MenuCount); got != "Current: 10" {
-		t.Errorf("last update not applied: count = %q, want %q", got, "Current: 10")
+	if got := p.getMenuItemText(MenuGame); got != "Game: Dark Souls III" {
+		t.Errorf("last update not applied: game = %q, want %q", got, "Game: Dark Souls III")
 	}
 
 	// Synchronize should have been called at least once per update
@@ -745,73 +783,140 @@ func TestUpdateTotalDeaths_EmptyDB(t *testing.T) {
 	}
 }
 
-// --- Stats Menu Callback Tests ---
+// --- Backups Menu Tests ---
 
-func TestStatsHandlers_NilRepo_DoNotPanic(t *testing.T) {
-	p := newMockPlatform()
-	mon := newMockMonitor()
-	app := NewApp(p, mon, nil)
-	mustBuildMenu(t, app)
-
-	if handler, ok := p.clickHandlers[MenuStatsSession]; ok {
-		handler() // should not panic
-	} else {
-		t.Fatal("no stats session handler")
-	}
-
-	if handler, ok := p.clickHandlers[MenuStatsHistory]; ok {
-		handler() // should not panic
-	} else {
-		t.Fatal("no stats history handler")
-	}
-}
-
-func TestStatsSessionHandler_DoesNotPanic(t *testing.T) {
+func TestRefreshBackupsMenu_WithBackups(t *testing.T) {
 	app, p, _ := newTestApp(t)
 	mustBuildMenu(t, app)
 
-	handler, ok := p.clickHandlers[MenuStatsSession]
-	if !ok {
-		t.Fatal("no stats session handler")
+	// Create temp backup dir with files
+	dir := t.TempDir()
+	for _, name := range []string{"boss-a_20260401_100000.sl2", "boss-b_20260401_110000.sl2"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	// Should not panic even with no session data
-	handler()
+	app.lastBackupDir = dir
+	app.refreshBackupsMenu()
+
+	sub := p.lastSubMenu
+	if sub == nil {
+		t.Fatal("no submenu")
+	}
+	if len(sub.items) != 2 {
+		t.Fatalf("submenu items = %d, want 2", len(sub.items))
+	}
 }
 
-func TestStatsHistoryHandler_DoesNotPanic(t *testing.T) {
+func TestRefreshBackupsMenu_EmptyDir(t *testing.T) {
 	app, p, _ := newTestApp(t)
 	mustBuildMenu(t, app)
 
-	handler, ok := p.clickHandlers[MenuStatsHistory]
-	if !ok {
-		t.Fatal("no stats history handler")
-	}
+	app.lastBackupDir = t.TempDir()
+	app.refreshBackupsMenu()
 
-	// Should not panic with empty DB
-	handler()
+	sub := p.lastSubMenu
+	if sub == nil {
+		t.Fatal("no submenu")
+	}
+	if len(sub.items) != 1 {
+		t.Fatalf("submenu items = %d, want 1", len(sub.items))
+	}
+	if sub.items[0].text != "(No backups yet)" {
+		t.Errorf("placeholder = %q, want %q", sub.items[0].text, "(No backups yet)")
+	}
 }
 
-func TestStatsHistoryHandler_WithSessions(t *testing.T) {
+func TestRefreshBackupsMenu_NoRouteActive(t *testing.T) {
 	app, p, _ := newTestApp(t)
 	mustBuildMenu(t, app)
 
-	// Seed some session data
-	save, err := app.repo.FindOrCreateSave("ds3", 0, "TestChar")
+	app.lastBackupDir = ""
+	app.refreshBackupsMenu()
+
+	sub := p.lastSubMenu
+	if sub == nil {
+		t.Fatal("no submenu")
+	}
+	if len(sub.items) != 1 {
+		t.Fatalf("submenu items = %d, want 1", len(sub.items))
+	}
+	if sub.items[0].text != "(No route active)" {
+		t.Errorf("placeholder = %q, want %q", sub.items[0].text, "(No route active)")
+	}
+}
+
+func TestRestoreBackup_Cancelled(t *testing.T) {
+	app, p, _ := newTestApp(t)
+	mustBuildMenu(t, app)
+
+	p.confirmResult = false
+
+	dir := t.TempDir()
+	backupPath := filepath.Join(dir, "boss_20260401_100000.sl2")
+	if err := os.WriteFile(backupPath, []byte("backup"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	savePath := filepath.Join(dir, "save.sl2")
+	if err := os.WriteFile(savePath, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	app.restoreBackup(backupPath)
+
+	if !p.confirmCalled {
+		t.Error("ConfirmDialog not called")
+	}
+
+	// Save file should NOT be overwritten
+	got, err := os.ReadFile(savePath)
 	if err != nil {
-		t.Fatalf("FindOrCreateSave: %v", err)
+		t.Fatal(err)
 	}
-	if err := app.repo.RecordDeathForSave(3, save.ID); err != nil {
-		t.Fatalf("RecordDeathForSave: %v", err)
+	if string(got) != "original" {
+		t.Errorf("save was modified despite cancel: %q", got)
 	}
+}
 
-	handler, ok := p.clickHandlers[MenuStatsHistory]
-	if !ok {
-		t.Fatal("no stats history handler")
-	}
+func TestTriggerAdHocBackup_NoActiveRoute(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	mustBuildMenu(t, app)
 
-	// Should not panic with actual session data
-	handler()
+	app.lastBackupDir = ""
+	app.lastGameID = ""
+
+	// Should not panic
+	app.triggerAdHocBackup()
+}
+
+func TestBackupNowDisabledWithoutRoute(t *testing.T) {
+	app, p, _ := newTestApp(t)
+	mustBuildMenu(t, app)
+
+	app.refreshDisplay(monitor.DisplayUpdate{
+		Status:    "Connected",
+		BackupDir: "",
+	})
+
+	if p.menuEnabled[MenuBackupNow] {
+		t.Error("Backup Now should be disabled without active route")
+	}
+}
+
+func TestBackupNowEnabledWithRoute(t *testing.T) {
+	app, p, _ := newTestApp(t)
+	mustBuildMenu(t, app)
+
+	app.refreshDisplay(monitor.DisplayUpdate{
+		Status:    "Connected",
+		BackupDir: t.TempDir(),
+		GameID:    "ds3",
+	})
+
+	if !p.menuEnabled[MenuBackupNow] {
+		t.Error("Backup Now should be enabled with active route")
+	}
 }
 
 // --- Multiple Notifications ---
