@@ -22,6 +22,7 @@ type RouteTracker struct {
 	route         *route.Route
 	routeID       string
 	routesDir     string
+	backupDir     string
 	state         trackerState
 }
 
@@ -113,8 +114,8 @@ func (t *RouteTracker) tickRun(reader *memreader.GameReader) (DisplayUpdate, err
 }
 
 func (t *RouteTracker) startRouteRun(reader *memreader.GameReader) error {
-	backupDir := filepath.Join(backup.ExeDir(), "backups", t.route.ID, fmt.Sprint(t.currentSaveID))
-	backupMgr := backup.NewManager(backupDir)
+	t.backupDir = filepath.Join(backup.ExeDir(), "backups", t.route.ID, fmt.Sprint(t.currentSaveID))
+	backupMgr := backup.NewManager(t.backupDir)
 	t.runner = route.NewRunner(t.route, t.repo, backupMgr)
 
 	// Try to find the latest run for this route+save
@@ -163,6 +164,8 @@ func (t *RouteTracker) buildUpdate(events []route.CheckpointEvent) DisplayUpdate
 		DeathCount:    t.lastCount,
 		CharacterName: t.currentCharName,
 		SaveSlotIndex: t.currentSlotIdx,
+		GameID:        t.gameID,
+		BackupDir:     t.backupDir,
 	}
 
 	if t.state.IsRunning() && t.runner != nil {

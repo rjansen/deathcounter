@@ -63,6 +63,8 @@ type DisplayUpdate struct {
 	CharacterName string
 	SaveSlotIndex int
 	Route         *RouteDisplay // nil when no route is active
+	GameID        string        // game identifier (e.g. "ds3")
+	BackupDir     string        // active backup directory (empty when no route)
 }
 
 // CheckpointNotification carries display data for a newly completed checkpoint.

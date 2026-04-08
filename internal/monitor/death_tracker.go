@@ -43,6 +43,7 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 				Status:        PhaseLoaded.StatusText(),
 				CharacterName: t.currentCharName,
 				SaveSlotIndex: t.currentSlotIdx,
+				GameID:        t.gameID,
 			}, nil
 		}
 
@@ -65,6 +66,7 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 				Status:        PhaseLoaded.StatusText(),
 				CharacterName: t.currentCharName,
 				SaveSlotIndex: t.currentSlotIdx,
+				GameID:        t.gameID,
 			}, nil
 		}
 		return DisplayUpdate{}, fmt.Errorf("read death count: %w", memreader.ErrGameRead)
@@ -87,5 +89,6 @@ func (t *DeathTracker) Tick(reader *memreader.GameReader) (DisplayUpdate, error)
 		IGT:           igt,
 		CharacterName: t.currentCharName,
 		SaveSlotIndex: t.currentSlotIdx,
+		GameID:        t.gameID,
 	}, nil
 }
