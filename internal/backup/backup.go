@@ -1,10 +1,12 @@
 package backup
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -61,6 +63,66 @@ func (m *Manager) Backup(savePath, label string) (string, error) {
 	}
 
 	return destPath, nil
+}
+
+// BackupEntry represents a single backup file.
+type BackupEntry struct {
+	Name    string    // filename without path
+	Path    string    // full path to the backup file
+	ModTime time.Time // last modification time
+}
+
+// List returns all backup files in dir, sorted newest-first by modification time.
+// Returns an empty slice (not an error) if the directory does not exist or is empty.
+func List(dir string) ([]BackupEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read backup directory: %w", err)
+	}
+
+	var result []BackupEntry
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		result = append(result, BackupEntry{
+			Name:    e.Name(),
+			Path:    filepath.Join(dir, e.Name()),
+			ModTime: info.ModTime(),
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ModTime.After(result[j].ModTime)
+	})
+	return result, nil
+}
+
+// Restore copies a backup file over the target save file.
+func Restore(backupPath, savePath string) error {
+	src, err := os.Open(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup file: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(savePath)
+	if err != nil {
+		return fmt.Errorf("failed to create save file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy backup to save: %w", err)
+	}
+	return nil
 }
 
 // ResolveSavePath expands environment variables and handles glob patterns

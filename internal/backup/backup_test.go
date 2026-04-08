@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBackup_CopiesFile(t *testing.T) {
@@ -125,6 +126,110 @@ func TestExeDir_ReturnsExistingDir(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Errorf("ExeDir returned non-directory path %q", dir)
+	}
+}
+
+func TestList_ReturnsEntries(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create 3 files with different mod times
+	files := []struct {
+		name    string
+		content string
+		age     time.Duration
+	}{
+		{"boss-a_20260401_100000.sl2", "oldest", 3 * time.Hour},
+		{"boss-b_20260401_110000.sl2", "middle", 2 * time.Hour},
+		{"boss-c_20260401_120000.sl2", "newest", 1 * time.Hour},
+	}
+
+	now := time.Now()
+	for _, f := range files {
+		path := filepath.Join(dir, f.name)
+		if err := os.WriteFile(path, []byte(f.content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		modTime := now.Add(-f.age)
+		if err := os.Chtimes(path, modTime, modTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries, err := List(dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("got %d entries, want 3", len(entries))
+	}
+	// Newest first
+	if entries[0].Name != "boss-c_20260401_120000.sl2" {
+		t.Errorf("first entry = %q, want boss-c", entries[0].Name)
+	}
+	if entries[2].Name != "boss-a_20260401_100000.sl2" {
+		t.Errorf("last entry = %q, want boss-a", entries[2].Name)
+	}
+	// Path is full
+	if entries[0].Path != filepath.Join(dir, entries[0].Name) {
+		t.Errorf("path = %q, want full path", entries[0].Path)
+	}
+}
+
+func TestList_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	entries, err := List(dir)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("got %d entries, want 0", len(entries))
+	}
+}
+
+func TestList_NonExistentDir(t *testing.T) {
+	entries, err := List(filepath.Join(t.TempDir(), "nonexistent"))
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("got %d entries, want 0", len(entries))
+	}
+}
+
+func TestRestore_CopiesFile(t *testing.T) {
+	dir := t.TempDir()
+	backupPath := filepath.Join(dir, "boss_20260401_100000.sl2")
+	savePath := filepath.Join(dir, "save.sl2")
+
+	backupContent := []byte("backup save data")
+	if err := os.WriteFile(backupPath, backupContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(savePath, []byte("current save"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Restore(backupPath, savePath); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	got, err := os.ReadFile(savePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(backupContent) {
+		t.Errorf("restored content = %q, want %q", got, backupContent)
+	}
+}
+
+func TestRestore_SourceNotFound(t *testing.T) {
+	savePath := filepath.Join(t.TempDir(), "save.sl2")
+	if err := os.WriteFile(savePath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := Restore("/nonexistent/backup.sl2", savePath)
+	if err == nil {
+		t.Fatal("expected error for missing backup file")
 	}
 }
 
