@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rjansen/deathcounter/internal/data/dbm"
 	"github.com/rjansen/deathcounter/internal/data/model"
+	"github.com/rjansen/raizel"
 
 	_ "modernc.org/sqlite"
 )
 
 // ErrNotFound is returned when a queried record does not exist.
-var ErrNotFound = dbm.ErrNotFound
+var ErrNotFound = raizel.ErrNotFound
 
 // Repository handles death statistics and persistence
 type Repository struct {
@@ -119,7 +119,7 @@ func (r *Repository) initDB() error {
 	);
 	`
 
-	_, err := dbm.Exec[any](ctx, r.db, schema)
+	_, err := raizel.Exec(ctx, r.db, schema)
 	return err
 }
 
@@ -167,7 +167,7 @@ func (r *Repository) migrateDB() error {
 // tableExists checks if a table exists in the database.
 func (r *Repository) tableExists(table string) bool {
 	ctx := context.Background()
-	_, err := dbm.QueryOne[string](ctx, r.db,
+	_, err := raizel.QueryOne[string](ctx, r.db,
 		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
 	return err == nil
 }
@@ -199,7 +199,7 @@ func (r *Repository) columnExists(table, column string) bool {
 func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName string) (model.Save, error) {
 	ctx := context.Background()
 	now := time.Now()
-	_, err := dbm.Exec[any](ctx, r.db, `
+	_, err := raizel.Exec(ctx, r.db, `
 		INSERT INTO saves (game, slot_index, character_name, created_at, last_seen_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(game, slot_index, character_name) DO UPDATE SET last_seen_at = ?`,
@@ -209,7 +209,7 @@ func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName strin
 		return model.Save{}, fmt.Errorf("failed to upsert save: %w", err)
 	}
 
-	return dbm.QueryOne[model.Save](ctx, r.db,
+	return raizel.QueryOne[model.Save](ctx, r.db,
 		"SELECT id, game, slot_index, character_name, created_at, last_seen_at FROM saves WHERE game = ? AND slot_index = ? AND character_name = ?",
 		game, slotIndex, charName,
 	)
@@ -218,7 +218,7 @@ func (r *Repository) FindOrCreateSave(game string, slotIndex int, charName strin
 // GetOrCreateSessionForSave finds an open session for the given save, or creates one.
 func (r *Repository) GetOrCreateSessionForSave(saveID int64) (model.Session, error) {
 	ctx := context.Background()
-	session, err := dbm.QueryOne[model.Session](ctx, r.db,
+	session, err := raizel.QueryOne[model.Session](ctx, r.db,
 		"SELECT id, start_time, end_time, deaths, save_id FROM sessions WHERE end_time IS NULL AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		saveID,
 	)
@@ -229,7 +229,7 @@ func (r *Repository) GetOrCreateSessionForSave(saveID int64) (model.Session, err
 		return model.Session{}, err
 	}
 
-	return dbm.QueryOne[model.Session](ctx, r.db,
+	return raizel.QueryOne[model.Session](ctx, r.db,
 		"INSERT INTO sessions (start_time, deaths, save_id) VALUES (?, 0, ?) RETURNING id, start_time, end_time, deaths, save_id",
 		time.Now(), saveID,
 	)
@@ -243,7 +243,7 @@ func (r *Repository) RecordDeathForSave(count uint32, saveID int64) error {
 		return err
 	}
 
-	_, err = dbm.Exec[any](ctx, r.db,
+	_, err = raizel.Exec(ctx, r.db,
 		"INSERT INTO death_events (session_id, death_count, timestamp) VALUES (?, ?, ?)",
 		session.ID, count, time.Now(),
 	)
@@ -251,14 +251,14 @@ func (r *Repository) RecordDeathForSave(count uint32, saveID int64) error {
 		return fmt.Errorf("failed to record death: %w", err)
 	}
 
-	_, err = dbm.Exec[any](ctx, r.db, "UPDATE sessions SET deaths = ? WHERE id = ?", count, session.ID)
+	_, err = raizel.Exec(ctx, r.db, "UPDATE sessions SET deaths = ? WHERE id = ?", count, session.ID)
 	return err
 }
 
 // EndCurrentSession marks the current session as ended
 func (r *Repository) EndCurrentSession() error {
 	ctx := context.Background()
-	_, err := dbm.Exec[any](ctx, r.db,
+	_, err := raizel.Exec(ctx, r.db,
 		"UPDATE sessions SET end_time = ? WHERE end_time IS NULL",
 		time.Now(),
 	)
@@ -302,7 +302,7 @@ func (r *Repository) GetCurrentSessionDeaths() (uint32, error) {
 // GetSessionHistory returns recent sessions
 func (r *Repository) GetSessionHistory(limit int) ([]model.Session, error) {
 	ctx := context.Background()
-	return dbm.Query[model.Session](ctx, r.db, `
+	return raizel.Query[model.Session](ctx, r.db, `
 		SELECT id, start_time, end_time, deaths, save_id
 		FROM sessions
 		ORDER BY start_time DESC
@@ -315,12 +315,12 @@ func (r *Repository) GetSessionHistory(limit int) ([]model.Session, error) {
 func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (model.RouteRun, error) {
 	ctx := context.Background()
 	if saveID > 0 {
-		return dbm.QueryOne[model.RouteRun](ctx, r.db,
+		return raizel.QueryOne[model.RouteRun](ctx, r.db,
 			"INSERT INTO route_runs (route_id, game, status, start_time, save_id) VALUES (?, ?, 'in_progress', ?, ?) RETURNING id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id",
 			routeID, game, time.Now(), saveID,
 		)
 	}
-	return dbm.QueryOne[model.RouteRun](ctx, r.db,
+	return raizel.QueryOne[model.RouteRun](ctx, r.db,
 		"INSERT INTO route_runs (route_id, game, status, start_time) VALUES (?, ?, 'in_progress', ?) RETURNING id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id",
 		routeID, game, time.Now(),
 	)
@@ -329,7 +329,7 @@ func (r *Repository) StartRouteRun(routeID, game string, saveID int64) (model.Ro
 // RecordCheckpoint records a completed checkpoint.
 func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, igtMs, checkpointMs int64, deaths uint32) error {
 	ctx := context.Background()
-	_, err := dbm.Exec[any](ctx, r.db,
+	_, err := raizel.Exec(ctx, r.db,
 		`INSERT INTO route_checkpoints (run_id, checkpoint_id, checkpoint_name, igt_ms, checkpoint_duration_ms, deaths, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runID, checkpointID, name, igtMs, checkpointMs, deaths, time.Now(),
@@ -343,7 +343,7 @@ func (r *Repository) RecordCheckpoint(runID int64, checkpointID, name string, ig
 // EndRouteRun marks a route run as finished.
 func (r *Repository) EndRouteRun(runID int64, status string, totalDeaths uint32, finalIGT int64) error {
 	ctx := context.Background()
-	_, err := dbm.Exec[any](ctx, r.db,
+	_, err := raizel.Exec(ctx, r.db,
 		"UPDATE route_runs SET status = ?, end_time = ?, total_deaths = ?, final_igt_ms = ? WHERE id = ?",
 		status, time.Now(), totalDeaths, finalIGT, runID,
 	)
@@ -353,7 +353,7 @@ func (r *Repository) EndRouteRun(runID int64, status string, totalDeaths uint32,
 // GetPersonalBest returns the personal best checkpoints for a route.
 func (r *Repository) GetPersonalBest(routeID string) ([]model.RoutePB, error) {
 	ctx := context.Background()
-	return dbm.Query[model.RoutePB](ctx, r.db,
+	return raizel.Query[model.RoutePB](ctx, r.db,
 		"SELECT id, route_id, checkpoint_id, best_igt_ms, best_split_ms FROM route_pbs WHERE route_id = ? ORDER BY best_igt_ms",
 		routeID,
 	)
@@ -362,7 +362,7 @@ func (r *Repository) GetPersonalBest(routeID string) ([]model.RoutePB, error) {
 // UpdatePersonalBest updates the PB for a checkpoint if the new time is better.
 func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, splitMs int64) error {
 	ctx := context.Background()
-	_, err := dbm.Exec[any](ctx, r.db, `
+	_, err := raizel.Exec(ctx, r.db, `
 		INSERT INTO route_pbs (route_id, checkpoint_id, best_igt_ms, best_split_ms)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(route_id, checkpoint_id) DO UPDATE SET
@@ -376,7 +376,7 @@ func (r *Repository) UpdatePersonalBest(routeID, checkpointID string, igtMs, spl
 func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, acquired, consumed uint32) error {
 	ctx := context.Background()
 	sv := model.RouteStateVar{RunID: runID, VarName: varName, ItemID: itemID, LastQuantity: lastQty, Acquired: acquired, Consumed: consumed}
-	_, err := dbm.Exec[model.RouteStateVar](ctx, r.db, `
+	_, err := raizel.ExecNamed(ctx, r.db, raizel.DialectSQLite, `
 		INSERT INTO route_state_vars (run_id, var_name, item_id, last_quantity, acquired, consumed)
 		VALUES (:run_id, :var_name, :item_id, :last_quantity, :acquired, :consumed)
 		ON CONFLICT(run_id, var_name) DO UPDATE SET
@@ -395,7 +395,7 @@ func (r *Repository) SaveStateVar(runID int64, varName string, itemID, lastQty, 
 // LoadStateVars loads all state variables for a run.
 func (r *Repository) LoadStateVars(runID int64) ([]model.RouteStateVar, error) {
 	ctx := context.Background()
-	return dbm.Query[model.RouteStateVar](ctx, r.db,
+	return raizel.Query[model.RouteStateVar](ctx, r.db,
 		"SELECT id, run_id, var_name, item_id, last_quantity, acquired, consumed FROM route_state_vars WHERE run_id = ?",
 		runID,
 	)
@@ -405,7 +405,7 @@ func (r *Repository) LoadStateVars(runID int64) ([]model.RouteStateVar, error) {
 // Returns ErrNotFound if no matching run exists.
 func (r *Repository) FindLatestRun(routeID string, saveID int64) (model.RouteRun, error) {
 	ctx := context.Background()
-	return dbm.QueryOne[model.RouteRun](ctx, r.db,
+	return raizel.QueryOne[model.RouteRun](ctx, r.db,
 		"SELECT id, route_id, game, status, start_time, end_time, total_deaths, final_igt_ms, save_id FROM route_runs WHERE route_id = ? AND save_id = ? ORDER BY start_time DESC LIMIT 1",
 		routeID, saveID,
 	)
@@ -414,7 +414,7 @@ func (r *Repository) FindLatestRun(routeID string, saveID int64) (model.RouteRun
 // LoadCompletedCheckpoints returns the checkpoint IDs already recorded for a run.
 func (r *Repository) LoadCompletedCheckpoints(runID int64) ([]string, error) {
 	ctx := context.Background()
-	return dbm.Query[string](ctx, r.db,
+	return raizel.Query[string](ctx, r.db,
 		"SELECT checkpoint_id FROM route_checkpoints WHERE run_id = ?", runID,
 	)
 }

@@ -1,5 +1,5 @@
 // Package model defines the data structures that map to database tables.
-// Fields use `db` tags matching column names for automatic scanning by dbm.
+// Fields use `db` tags matching column names for automatic scanning by raizel.
 // Relationship fields (pointers/slices) are populated only when the query
 // includes the corresponding JOIN — they are not eagerly loaded.
 package model
